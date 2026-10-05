@@ -1,0 +1,78 @@
+# Health Hub
+
+Persoonlijke health- en fitnessapp: één overzicht van **Apple Health** (inclusief Garmin-data die daarheen synct), **voeding** (via Apple Health) en **Hevy** (krachttraining), met een **AI-assistent** die vragen beantwoordt op basis van je eigen data.
+
+Installeerbaar op je iPhone als app (PWA), zonder App Store.
+
+## Architectuur
+
+```
+iPhone: Health Auto Export ──(elk uur, JSON)──► Supabase Edge Function  ingest-health ─┐
+Hevy API ◄──(elke 30 min, pg_cron)──── Supabase Edge Function  sync-hevy ──────────────┤
+                                                                                        ▼
+                                                     PostgreSQL (Supabase)
+                                                     ├─ health.*  ruwe + genormaliseerde data
+                                                     ├─ ai.*      analyse-views (daily_summary, sleep, …)
+                                                     └─ app.*     eigenaar, instellingen, chat, logs
+                                                                                        ▲
+PWA (Vercel, map /web) ──── RPC-functies (alleen eigenaar) ─────────────────────────────┤
+        └── Vraag-tab ──► Edge Function  ask ──► Claude API (tool: run_sql, read-only rol ai_reader)
+```
+
+| Onderdeel | Waar | Wat |
+|---|---|---|
+| `web/` | Vercel | De app: Vandaag, Training, Voeding, Trends, Vraag, Instellingen |
+| `supabase/migrations/` | Supabase | Schema, views, beveiliging, cronjob |
+| `supabase/functions/ingest-health` | Supabase | Ontvangt Apple Health-exports (token-beveiligd) |
+| `supabase/functions/sync-hevy` | Supabase | Haalt Hevy-trainingen op (incrementeel, via events) |
+| `supabase/functions/ask` | Supabase | AI-chat met Claude, die je data bevraagt via SQL |
+
+### Beveiliging
+
+- Alleen **jij** hebt toegang: de eerste account die zich registreert wordt eigenaar, en alle data-functies controleren dat. Andere accounts zien niets.
+- Data-tabellen zitten in schema's die niet via de API bereikbaar zijn. De app praat alleen via RPC-functies met eigenaarscontrole.
+- API-keys (Hevy, Claude) staan versleuteld in **Supabase Vault**, nooit in de browser.
+- De AI draait queries als rol `ai_reader`: alleen `SELECT` op de `ai`-views, met een timeout van 8 s, en geen toegang tot secrets of ruwe tabellen.
+- Het Apple Health-endpoint vereist een geheim token (vervangbaar in Instellingen).
+
+## In gebruik nemen (eenmalig)
+
+1. **Account aanmaken:** open de app-URL, tik "Eerste keer? Account aanmaken", vul je e-mail en een wachtwoord in en bevestig via de mail. Log daarna in.
+   ➜ Zet daarna in Supabase → Authentication → Sign In / Providers → **"Allow new users to sign up" UIT**. Extra accounts hebben toch geen toegang, maar zo is het helemaal dicht.
+   ➜ Zet in Supabase → Authentication → URL Configuration de **Site URL** op je app-URL, zodat bevestigingsmails naar de juiste plek linken.
+2. **Op je iPhone installeren:** open de app in Safari → deelknop → **"Zet op beginscherm"**.
+3. **Hevy:** Hevy-app → Settings → Developer → API-key kopiëren (vereist Hevy Pro). In de app: Instellingen → Hevy → plakken → Opslaan → "Nu synchroniseren". Daarna gebeurt het automatisch elke 30 min.
+4. **Claude (AI):** maak een API-key op <https://console.anthropic.com> (met wat tegoed). In de app: Instellingen → AI → plakken → Opslaan.
+5. **Apple Health:** installeer **Health Auto Export** (App Store; de REST API-automatisatie vereist de premium-versie). Neem de URL en het token over uit Instellingen in de app:
+   - Automations → **+** → **REST API**
+   - URL: `https://jzqqriddjpcigmxmnaug.supabase.co/functions/v1/ingest-health`
+   - Headers: key `Authorization`, value `Bearer <jouw token>`
+   - Data type **Health Metrics**: selecteer alles wat je wil (stappen, energie, hartslag, HRV, rusthartslag, VO2 max, gewicht, slaap, **alle voeding**…)
+   - Export format **JSON**, Export version **2**
+   - **Aggregate data: aan**, interval **Hours** (zo blijft het licht en zie je per maaltijdmoment wat je at)
+   - **Summarize sleep: aan**
+   - Sync cadence: elk uur
+   - Maak een **tweede automatisatie** met data type **Workouts** (zelfde URL en header). Zet "include route" en "heart rate data" uit, die heb je niet nodig.
+   - **Historiek ophalen:** gebruik "Manual Export" per maand (bv. de laatste 12 maanden), maand per maand.
+6. Controleer in Instellingen → Data → Synclogboek of alles binnenkomt.
+
+## Garmin
+
+Garmin heeft geen publieke API voor particulieren. Zet in de **Garmin Connect-app → Instellingen → Gekoppelde apps → Apple Health** alles aan (activiteiten, stappen, slaap, hartslag, gewicht). Dan komt Garmin-data via Apple Health binnen.
+
+## Dubbels
+
+Hevy schrijft trainingen ook naar Apple Health. De app herkent dat (overlappende krachttraining ±15 min) en telt die maar één keer. Details per set komen altijd uit Hevy.
+
+## Ontwikkelen
+
+- Frontend: puur HTML/CSS/JS-modules, geen buildstap. Lokaal testen: `npx serve web` (inloggen werkt tegen de echte Supabase).
+- Database-wijzigingen: nieuw bestand in `supabase/migrations/` en uitvoeren in Supabase → SQL Editor.
+- Edge functions: `supabase functions deploy <naam> --no-verify-jwt` (de functies doen hun eigen authenticatie).
+
+## Kosten
+
+- Supabase Free (500 MB database, ruim genoeg voor jaren data met uur-aggregatie). Let op: een gratis project wordt na 7 dagen zonder activiteit gepauzeerd. Door de syncs is er normaal altijd activiteit.
+- Vercel Hobby: gratis.
+- Claude API: betalen per gebruik, typisch enkele eurocent per vraag met Sonnet.
+- Hevy Pro en Health Auto Export Premium: eigen abonnementen.
