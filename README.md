@@ -25,7 +25,8 @@ PWA (Vercel, map /web) ──── RPC-functies (alleen eigenaar) ────�
 | `supabase/migrations/` | Supabase | Schema, views, beveiliging, cronjob |
 | `supabase/functions/ingest-health` | Supabase | Ontvangt Apple Health-exports (token-beveiligd) |
 | `supabase/functions/sync-hevy` | Supabase | Haalt Hevy-trainingen op (incrementeel, via events) |
-| `supabase/functions/ask` | Supabase | AI-chat met Claude, die je data bevraagt via SQL |
+| `supabase/functions/ask` | Supabase | AI-chat met Claude (data bevragen, routines maken, metingen loggen) + weekoverzicht |
+| `supabase/functions/notify` | Supabase | Pushmeldingen voor routines (pg_cron elke 5 min) |
 
 ### Beveiliging
 
@@ -41,9 +42,10 @@ PWA (Vercel, map /web) ──── RPC-functies (alleen eigenaar) ────�
    ➜ Zet daarna in Supabase → Authentication → Sign In / Providers → **"Allow new users to sign up" UIT**. Extra accounts hebben toch geen toegang, maar zo is het helemaal dicht.
    ➜ Zet in Supabase → Authentication → URL Configuration de **Site URL** op je app-URL, zodat bevestigingsmails naar de juiste plek linken.
 2. **Op je iPhone installeren:** open de app in Safari → deelknop → **"Zet op beginscherm"**.
-3. **Hevy:** Hevy-app → Settings → Developer → API-key kopiëren (vereist Hevy Pro). In de app: Instellingen → Hevy → plakken → Opslaan → "Nu synchroniseren". Daarna gebeurt het automatisch elke 30 min.
-4. **Claude (AI):** maak een API-key op <https://console.anthropic.com> (met wat tegoed). In de app: Instellingen → AI → plakken → Opslaan.
-5. **Apple Health:** installeer **Health Auto Export** (App Store; de REST API-automatisatie vereist de premium-versie). Neem de URL en het token over uit Instellingen in de app:
+3. **Hevy (zonder Pro):** Hevy → Profiel → Instellingen → Export & Import Data → *Export workouts* → CSV bewaren. In de app: Training → "Hevy importeren" (of Instellingen → Hevy). Herhaal dit wanneer je wil; opnieuw importeren maakt geen dubbels. Met Hevy Pro kan je in plaats daarvan een API-key invullen voor automatische sync.
+4. **Meldingen:** open de app vanaf je beginscherm → Instellingen → "Meldingen aanzetten" → Testmelding. Routines maak je in Instellingen of via de Vraag-tab ("Stuur me elke maandag om 8u een melding om mijn gewicht te loggen").
+5. **Claude (AI):** maak een API-key op <https://console.anthropic.com> (met wat tegoed). In de app: Instellingen → AI → plakken → Opslaan.
+6. **Apple Health:** installeer **Health Auto Export** (App Store; de REST API-automatisatie vereist de premium-versie). Neem de URL en het token over uit Instellingen in de app:
    - Automations → **+** → **REST API**
    - URL: `https://jzqqriddjpcigmxmnaug.supabase.co/functions/v1/ingest-health`
    - Headers: key `Authorization`, value `Bearer <jouw token>`
@@ -54,7 +56,18 @@ PWA (Vercel, map /web) ──── RPC-functies (alleen eigenaar) ────�
    - Sync cadence: elk uur
    - Maak een **tweede automatisatie** met data type **Workouts** (zelfde URL en header). Zet "include route" en "heart rate data" uit, die heb je niet nodig.
    - **Historiek ophalen:** gebruik "Manual Export" per maand (bv. de laatste 12 maanden), maand per maand.
-6. Controleer in Instellingen → Data → Synclogboek of alles binnenkomt.
+7. Controleer in Instellingen → Data → Synclogboek of alles binnenkomt.
+
+## Functies
+
+- **Vandaag:** beweging, training van vandaag, voeding, water (+500 ml-knop), cafeïne (+50 mg-knop), herstel, gewicht loggen, dagboek en het weekoverzicht van de AI.
+- **Dagboek:** inspreken (spraakherkenning in Safari) of typen; de AI kan het lezen.
+- **Routines:** terugkerende pushmeldingen; standaard staat "Weekoverzicht" op maandag 08:00.
+- **Doelen:** aanpasbaar in Instellingen (stappen, actieve kcal, slaap, kcal, eiwit, water, cafeïne-max).
+
+## Wearables (Garmin, Apple Watch, Fitbit)
+
+Alles wat naar Apple Health schrijft werkt automatisch. Fitbit schrijft niet zelf naar Apple Health en heeft een brug-app nodig.
 
 ## Garmin
 

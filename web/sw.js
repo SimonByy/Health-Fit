@@ -1,6 +1,5 @@
-// Eenvoudige service worker: app-shell offline beschikbaar, altijd eerst netwerk.
-// Data (Supabase) wordt nooit gecachet.
-const CACHE = "health-hub-v1";
+// Service worker: app-shell offline, pushmeldingen. Data (Supabase) wordt nooit gecachet.
+const CACHE = "health-hub-v2";
 const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/config.js", "/manifest.webmanifest", "/icons/icon-192.png"];
 
 self.addEventListener("install", (e) => {
@@ -21,4 +20,31 @@ self.addEventListener("fetch", (e) => {
       })
       .catch(() => caches.match(e.request).then((r) => r || caches.match("/index.html")))
   );
+});
+
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { title: "Health Hub", body: e.data?.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || "Health Hub", {
+    body: d.body || "",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    tag: d.tag || undefined,
+    data: { url: d.url || "/#/vandaag" },
+  }));
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const target = new URL(e.notification.data?.url || "/#/vandaag", self.location.origin).href;
+  e.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const w of wins) {
+      if (new URL(w.url).origin === self.location.origin) {
+        await w.focus();
+        return w.navigate(target);
+      }
+    }
+    return self.clients.openWindow(target);
+  })());
 });

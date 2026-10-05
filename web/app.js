@@ -54,12 +54,28 @@ const timeAgo = (ts) => {
   return `${Math.round(s / 86400)} d geleden`;
 };
 
-function toast(msg, ms = 2600) {
+function toast(msg, ms = 2600, action = null) {
   const t = $("#toast");
-  t.textContent = msg;
+  t.innerHTML = `<span>${esc(msg)}</span>${action ? `<button class="toast-btn">${esc(action.label)}</button>` : ""}`;
+  if (action) t.querySelector(".toast-btn").onclick = () => { t.classList.remove("show"); action.run(); };
+  t.classList.toggle("has-action", !!action);
   t.classList.add("show");
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => t.classList.remove("show"), ms);
+  toast._t = setTimeout(() => t.classList.remove("show"), action ? Math.max(ms, 5000) : ms);
+}
+
+// Snel loggen (water, cafeïne, gewicht) met ongedaan maken
+async function quickLog(metric, value, label, after) {
+  try {
+    const r = await rpc("log_entry", { p_metric: metric, p_value: value });
+    toast(label, 5000, {
+      label: "Ongedaan maken",
+      run: async () => { await rpc("void_entry", { p_metric: metric, p_ts: r.ts }); toast("Ongedaan gemaakt"); after?.(); },
+    });
+    after?.();
+  } catch (e) {
+    toast(e.message, 4000);
+  }
 }
 
 async function rpc(fn, args = {}) {
@@ -217,11 +233,12 @@ function drawChart(el, { points, color, type = "bar", unit = "", dec = 0, goal =
 // Router
 // ======================================================================
 const state = { day: today(), nutDay: today(), trendDays: 30, trainTab: "workouts", conversation: null };
-const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen" };
-const ACCENT = { vandaag: "--move", training: "--strength", voeding: "--fuel", trends: "--heart", vraag: "--sleep" };
+const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek" };
+const ACCENT = { dagboek: "--sleep", vandaag: "--move", training: "--strength", voeding: "--fuel", trends: "--heart", vraag: "--sleep" };
 
 async function route() {
-  const name = (location.hash.replace(/^#\/?/, "") || "vandaag").split("/")[0];
+  let [name, param] = (location.hash.replace(/^#\/?/, "") || "vandaag").split("/");
+  if (name === "log") { state.openWeight = param === "gewicht"; state.day = today(); name = "vandaag"; }
   const fn = ROUTES[name] || ROUTES.vandaag;
   $("#title").textContent = TITLES[name] || "Vandaag";
   document.querySelectorAll(".tabbar a").forEach((a) => {
@@ -235,7 +252,7 @@ async function route() {
   view.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
   window.scrollTo(0, 0);
   try {
-    await fn();
+    await fn(param);
   } catch (e) {
     console.error(e);
     showError(e);
@@ -340,8 +357,12 @@ async function renderToday() {
   const a = d.avg7 || {};
   const g = d.goals || {};
   const isToday = state.day === today();
-
   const nothing = !d.series?.length && !d.recent?.length;
+  const water = num(t.water_ml) || 0;
+  const caff = num(t.caffeine_mg) || 0;
+  const acts = d.day_activities || [];
+  const ins = d.insight;
+
   view.innerHTML = `
     <div class="daynav">
       <button id="prev" aria-label="Vorige dag">‹</button>
@@ -349,13 +370,50 @@ async function renderToday() {
       <button id="next" aria-label="Volgende dag" ${isToday ? "disabled" : ""}>›</button>
     </div>
     ${nothing ? onboardingCard() : ""}
+    ${ins && isToday ? `<section class="panel insight ${ins.read_at ? "" : "unread"}">
+        <details ${ins.read_at ? "" : "open"} id="insDet"><summary>${esc(ins.title)} <span class="muted small">${esc(shortDate(ins.created_at.slice(0, 10)))}</span></summary>
+        <div class="md">${md(ins.content)}</div></details>
+      </section>` : ""}
     <div class="board">
       <section class="domain" style="--c:${DOMAIN.move}">
         <h2>Beweging</h2>
         ${statRow({ name: "Stappen", value: t.steps, goal: g.steps, avg: a.steps, color: DOMAIN.move })}
         ${statRow({ name: "Actieve energie", value: t.active_kcal, unit: "kcal", goal: g.active_kcal, avg: a.active_kcal, color: DOMAIN.move })}
-        ${t.cardio_min || t.strength_min ? statRow({ name: "Getraind", value: (num(t.cardio_min) || 0) + (num(t.strength_min) || 0), unit: "min", color: DOMAIN.move }) : ""}
       </section>
+
+      <section class="domain" style="--c:${DOMAIN.strength}">
+        <h2>Training ${isToday ? "vandaag" : "deze dag"}</h2>
+        ${acts.length ? `<div class="list flat" id="dayActs">${acts.map(activityItem).join("")}</div>`
+          : `<p class="muted small" style="margin:6px 0 12px">Rustdag, nog geen training ${isToday ? "vandaag" : ""} geregistreerd.</p>`}
+      </section>
+
+      <section class="domain" style="--c:${DOMAIN.fuel}">
+        <h2>Voeding</h2>
+        ${statRow({ name: "Calorieën", value: t.kcal_in, unit: "kcal", goal: g.kcal_in, avg: a.kcal_in, color: DOMAIN.fuel })}
+        ${statRow({ name: "Eiwit", value: t.protein_g, unit: "g", goal: g.protein_g, avg: a.protein_g, color: DOMAIN.fuel })}
+        ${t.kcal_in != null ? `<div class="sub muted small" style="margin:-4px 0 10px">Koolhydraten ${fmt(t.carbs_g)} g · Vet ${fmt(t.fat_g)} g</div>` : ""}
+      </section>
+
+      <section class="domain" style="--c:${DOMAIN.heart}">
+        <h2>Drinken</h2>
+        <div class="quick">
+          <div>
+            <div class="name">Water</div>
+            <div class="num">${fmt(water / 1000, 1)}<small>/ ${fmt((g.water_ml || 2500) / 1000, 1)} L</small></div>
+            <div class="bar" aria-hidden="true" style="--c:${DOMAIN.heart}"><i style="width:${Math.min(100, (water / (g.water_ml || 2500)) * 100)}%"></i></div>
+          </div>
+          ${isToday ? `<button class="btn quick-btn" id="addWater" style="--c:${DOMAIN.heart}">+500 ml</button>` : ""}
+        </div>
+        <div class="quick">
+          <div>
+            <div class="name">Cafeïne</div>
+            <div class="num">${fmt(caff)}<small>/ ${fmt(g.caffeine_mg || 400)} mg</small></div>
+            <div class="bar" aria-hidden="true" style="--c:${caff > (g.caffeine_mg || 400) ? "var(--bad)" : DOMAIN.fuel}"><i style="width:${Math.min(100, (caff / (g.caffeine_mg || 400)) * 100)}%"></i></div>
+          </div>
+          ${isToday ? `<button class="btn quick-btn" id="addCaff" style="--c:${DOMAIN.fuel}">+50 mg</button>` : ""}
+        </div>
+      </section>
+
       <section class="domain" style="--c:${DOMAIN.sleep}">
         <h2>Herstel</h2>
         ${statRow({ name: "Slaap", value: t.sleep_h, display: t.sleep_h == null ? null : hours(t.sleep_h), goal: g.sleep_h, avg: a.sleep_h, color: DOMAIN.sleep })}
@@ -363,38 +421,66 @@ async function renderToday() {
         ${statRow({ name: "Rusthartslag", value: t.resting_hr, unit: "bpm", avg: a.resting_hr, color: DOMAIN.heart, higherIsBetter: false })}
         ${statRow({ name: "HRV", value: t.hrv_ms, unit: "ms", avg: a.hrv_ms, color: DOMAIN.heart })}
       </section>
-      <section class="domain" style="--c:${DOMAIN.fuel}">
-        <h2>Voeding</h2>
-        ${statRow({ name: "Calorieën", value: t.kcal_in, unit: "kcal", goal: g.kcal_in, avg: a.kcal_in, color: DOMAIN.fuel })}
-        ${statRow({ name: "Eiwit", value: t.protein_g, unit: "g", goal: g.protein_g, avg: a.protein_g, color: DOMAIN.fuel })}
-        ${t.kcal_in != null ? `<div class="sub muted small" style="margin:-4px 0 10px">Koolhydraten ${fmt(t.carbs_g)} g · Vet ${fmt(t.fat_g)} g · Vezels ${fmt(t.fiber_g)} g</div>` : ""}
-      </section>
-      <section class="domain" style="--c:${DOMAIN.heart}">
+
+      <section class="domain" style="--c:${DOMAIN.move}">
         <h2>Lichaam</h2>
         ${statRow({
           name: t.weight_kg != null ? "Gewicht" : `Gewicht${d.last_weight ? ` (${shortDate(d.last_weight.day)})` : ""}`,
-          value: t.weight_kg ?? d.last_weight?.kg, unit: "kg", dec: 1, color: DOMAIN.heart,
+          value: t.weight_kg ?? d.last_weight?.kg, unit: "kg", dec: 1, color: DOMAIN.move,
         })}
+        <div id="weightBox">${isToday ? `<button class="btn secondary" id="logWeight" style="margin:4px 0 12px">Gewicht loggen</button>` : ""}</div>
+      </section>
+
+      <section class="domain" style="--c:${DOMAIN.sleep}">
+        <h2>Dagboek</h2>
+        ${d.journal ? `<p class="journal-snip">${esc(d.journal.length > 220 ? d.journal.slice(0, 220) + "…" : d.journal)}</p>`
+          : `<p class="muted small" style="margin:6px 0 8px">${isToday ? "Hoe was je dag? Spreek het in of typ het." : "Geen dagboek voor deze dag."}</p>`}
+        <a class="btn secondary" href="#/dagboek/${state.day}" style="display:inline-block;text-decoration:none;margin-bottom:12px">${d.journal ? "Openen" : "Vertel over je dag"}</a>
       </section>
     </div>
 
-    <h2 class="section-title">Laatste trainingen</h2>
-    <div class="list" id="recent">${(d.recent || []).map(activityItem).join("") || `<div class="empty">Nog geen trainingen gesynchroniseerd.</div>`}</div>
-
     <p class="muted small" style="margin-top:18px">
-      Apple Health: ${esc(timeAgo(d.sync?.apple_health?.last_success))} ·
-      Hevy: ${esc(timeAgo(d.sync?.hevy?.last_success))}${d.sync?.hevy?.last_error ? ` <span class="warn">(fout)</span>` : ""}
+      Apple Health: ${esc(timeAgo(d.sync?.apple_health?.last_success))}
+      ${d.sync?.hevy_csv ? ` · Hevy-import: ${esc(timeAgo(d.sync.hevy_csv.last_success))}` : ""}
     </p>`;
 
+  const reload = () => renderToday();
   $("#prev").onclick = () => { state.day = addDays(state.day, -1); renderToday(); };
   $("#next").onclick = () => { if (!isToday) { state.day = addDays(state.day, 1); renderToday(); } };
-  bindActivityList($("#recent"));
+  if ($("#dayActs")) bindActivityList($("#dayActs"));
+  $("#addWater")?.addEventListener("click", () => quickLog("dietary_water", 500, "500 ml water gelogd", reload));
+  $("#addCaff")?.addEventListener("click", () => quickLog("dietary_caffeine", 50, "50 mg cafeïne gelogd", reload));
+  $("#logWeight")?.addEventListener("click", () => openWeightForm(d.last_weight?.kg));
+  $("#insDet")?.addEventListener("toggle", (e) => { if (e.target.open && !ins.read_at) rpc("mark_insight_read", { p_id: ins.id }).catch(() => {}); });
+  if (ins && !ins.read_at && isToday) rpc("mark_insight_read", { p_id: ins.id }).catch(() => {});
+  if (state.openWeight) { state.openWeight = false; openWeightForm(d.last_weight?.kg); }
+}
+
+function openWeightForm(last) {
+  const box = $("#weightBox");
+  if (!box) return;
+  box.innerHTML = `<form class="row" id="wf" style="margin:4px 0 12px">
+      <input class="input" id="wv" type="number" inputmode="decimal" step="0.1" min="20" max="400" placeholder="kg" value="${last ?? ""}" aria-label="Gewicht in kg" style="max-width:140px">
+      <button class="btn" type="submit">Opslaan</button>
+      <button class="btn ghost" type="button" id="wc">Annuleren</button>
+    </form>`;
+  const inp = $("#wv");
+  inp.focus();
+  inp.select();
+  $("#wc").onclick = () => renderToday();
+  $("#wf").onsubmit = (e) => {
+    e.preventDefault();
+    const v = num(String(inp.value).replace(",", "."));
+    if (!v) return toast("Vul een gewicht in");
+    quickLog("weight_body_mass", v, `${fmt(v, 1)} kg gelogd`, () => renderToday());
+  };
+  box.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function onboardingCard() {
   return `<div class="panel" style="margin-bottom:12px">
     <h3>Welkom! Nog geen data binnen.</h3>
-    <p class="hint">Koppel je bronnen in Instellingen: de Health Auto Export-app voor Apple Health, en je Hevy API-key.</p>
+    <p class="hint">Koppel Apple Health in Instellingen (via Health Auto Export) en importeer eventueel je Hevy-trainingen.</p>
     <a class="btn" href="#/instellingen" style="display:inline-block;text-decoration:none">Naar instellingen</a>
   </div>`;
 }
@@ -410,23 +496,23 @@ async function renderTraining() {
         <button data-t="workouts" aria-pressed="${tab === "workouts"}">Trainingen</button>
         <button data-t="exercises" aria-pressed="${tab === "exercises"}">Oefeningen</button>
       </div>
-      <button class="btn ghost" id="syncHevy" style="margin-bottom:14px">Sync Hevy</button>
+      <label class="btn ghost" style="margin-bottom:14px;cursor:pointer">Hevy importeren<input type="file" id="hevyCsv" accept=".csv,text/csv" hidden></label>
     </div>
     <div id="tcontent"><div class="skeleton"></div></div>`;
   view.querySelectorAll(".seg button").forEach((b) => (b.onclick = () => { state.trainTab = b.dataset.t; renderTraining(); }));
-  $("#syncHevy").onclick = () => syncHevy($("#syncHevy"), false, renderTraining);
+  $("#hevyCsv").onchange = (e) => importHevyFile(e.target.files?.[0], renderTraining);
   const box = $("#tcontent");
 
   if (tab === "workouts") {
     const list = await rpc("get_activities", { p_limit: 60, p_offset: 0 });
     box.innerHTML = list.length
       ? `<div class="list" id="acts">${list.map(activityItem).join("")}</div>`
-      : `<div class="empty"><strong>Nog geen trainingen.</strong>Stel je Hevy API-key in bij Instellingen en synchroniseer. Cardio komt binnen via Apple Health.</div>`;
+      : `<div class="empty"><strong>Nog geen trainingen.</strong>Cardio komt binnen via Apple Health. Krachttraining: exporteer in Hevy (Profiel → Instellingen → Export &amp; Import Data → Export workouts) en tik op "Hevy importeren".</div>`;
     if (list.length) bindActivityList($("#acts"));
   } else {
     const ex = await rpc("get_exercises");
     if (!ex.length) {
-      box.innerHTML = `<div class="empty"><strong>Nog geen oefeningen.</strong>Zodra Hevy gesynchroniseerd is, zie je hier je progressie per oefening.</div>`;
+      box.innerHTML = `<div class="empty"><strong>Nog geen oefeningen.</strong>Importeer je Hevy-export om je progressie per oefening te zien.</div>`;
       return;
     }
     box.innerHTML = `<div class="list" id="exlist">${ex
@@ -455,6 +541,113 @@ async function renderTraining() {
         color: DOMAIN.strength, type: "line", unit: "kg", dec: 1, zero: false, height: 140,
       });
     });
+  }
+}
+
+// ---------- Hevy CSV-import (werkt zonder Hevy Pro) ----------
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else q = false; }
+      else field += c;
+    } else if (c === '"') q = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); field = "";
+      if (row.length > 1 || row[0] !== "") rows.push(row);
+      row = [];
+    } else field += c;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+  mrt: 3, mei: 5, okt: 10 };
+function zonedToUtc(y, mo, d, h, mi) {
+  const guess = Date.UTC(y, mo - 1, d, h, mi);
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: TZ, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+    .formatToParts(new Date(guess));
+  const g = (k) => Number(parts.find((p) => p.type === k).value);
+  const asTz = Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute"));
+  return new Date(guess - (asTz - guess)).toISOString();
+}
+function parseHevyDate(s) {
+  if (!s) return null;
+  let m = s.match(/^(\d{1,2})\s+([A-Za-z]{3})[a-z]*\.?\s+(\d{4}),?\s+(\d{1,2}):(\d{2})/);
+  if (m && MONTHS[m[2].toLowerCase()]) return zonedToUtc(+m[3], MONTHS[m[2].toLowerCase()], +m[1], +m[4], +m[5]);
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (m) return /Z|[+-]\d{2}:?\d{2}$/.test(s) ? new Date(s).toISOString() : zonedToUtc(+m[1], +m[2], +m[3], +m[4], +m[5]);
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+function hash(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, "0");
+}
+
+function hevyCsvToWorkouts(text) {
+  const rows = parseCsv(text.replace(/^﻿/, ""));
+  if (rows.length < 2) throw new Error("Leeg bestand");
+  const head = rows[0].map((h) => h.trim().toLowerCase());
+  const col = (name) => head.indexOf(name);
+  const need = ["title", "start_time", "exercise_title"];
+  for (const n of need) if (col(n) < 0) throw new Error(`Dit lijkt geen Hevy-export (kolom "${n}" ontbreekt)`);
+  const v = (r, name) => { const i = col(name); return i < 0 ? "" : (r[i] ?? "").trim(); };
+  const n = (x) => (x === "" ? null : Number(String(x).replace(",", ".")));
+  const map = new Map();
+  for (const r of rows.slice(1)) {
+    const key = `${v(r, "title")}|${v(r, "start_time")}`;
+    const start = parseHevyDate(v(r, "start_time"));
+    if (!start) continue;
+    if (!map.has(key)) {
+      map.set(key, { id: "csv-" + hash(key), title: v(r, "title"), description: v(r, "description"),
+        start_time: start, end_time: parseHevyDate(v(r, "end_time")) || start, exercises: [], _ex: new Map() });
+    }
+    const w = map.get(key);
+    const exKey = `${v(r, "exercise_title")}|${v(r, "superset_id")}`;
+    if (!w._ex.has(exKey)) {
+      const ex = { index: w.exercises.length, title: v(r, "exercise_title"), notes: v(r, "exercise_notes"),
+        superset_id: v(r, "superset_id") || null, exercise_template_id: null, sets: [] };
+      w._ex.set(exKey, ex);
+      w.exercises.push(ex);
+    }
+    const ex = w._ex.get(exKey);
+    let kg = n(v(r, "weight_kg"));
+    if (kg === null && col("weight_lbs") >= 0) { const lb = n(v(r, "weight_lbs")); kg = lb === null ? null : lb * 0.45359237; }
+    const km = n(v(r, "distance_km"));
+    const mi = col("distance_miles") >= 0 ? n(v(r, "distance_miles")) : null;
+    ex.sets.push({
+      index: n(v(r, "set_index")) ?? ex.sets.length,
+      type: v(r, "set_type") || "normal",
+      weight_kg: kg, reps: n(v(r, "reps")),
+      distance_meters: km !== null ? km * 1000 : mi !== null ? mi * 1609.344 : null,
+      duration_seconds: n(v(r, "duration_seconds")), rpe: n(v(r, "rpe")),
+    });
+  }
+  return [...map.values()].map(({ _ex, ...w }) => w);
+}
+
+async function importHevyFile(file, after) {
+  if (!file) return;
+  try {
+    const workouts = hevyCsvToWorkouts(await file.text());
+    if (!workouts.length) throw new Error("Geen trainingen gevonden in het bestand");
+    toast(`Importeren: ${workouts.length} trainingen…`, 10000);
+    let done = 0;
+    for (let i = 0; i < workouts.length; i += 40) {
+      await rpc("import_hevy_workouts", { p: workouts.slice(i, i + 40) });
+      done += Math.min(40, workouts.length - i);
+    }
+    toast(`${done} Hevy-trainingen geïmporteerd`);
+    after?.();
+  } catch (e) {
+    toast(e.message, 6000);
   }
 }
 
@@ -654,8 +847,8 @@ function msgHtml(m) {
   if (m.role === "user") return `<div class="msg user">${esc(m.content)}</div>`;
   const qs = m.meta?.queries || [];
   return `<div class="msg assistant">${md(m.content)}${qs.length ? `
-    <details class="sources"><summary>Gebaseerd op ${qs.length} opzoeking${qs.length > 1 ? "en" : ""} in je data</summary>
-      <ul>${qs.map((q) => `<li>${esc(q.purpose || "Query")}${q.error ? ` <span class="warn">(fout)</span>` : ` (${q.rows} rijen)`}</li>`).join("")}</ul>
+    <details class="sources"><summary>${qs.some((q) => q.summary) ? qs.filter((q) => q.summary).map((q) => esc(q.summary)).join(" · ") : `Gebaseerd op ${qs.length} opzoeking${qs.length > 1 ? "en" : ""} in je data`}</summary>
+      <ul>${qs.map((q) => `<li>${esc(q.summary || q.purpose || "Opzoeking")}${q.error ? ` <span class="warn">(fout)</span>` : q.rows != null ? ` (${q.rows} rijen)` : ""}</li>`).join("")}</ul>
     </details>` : ""}</div>`;
 }
 
@@ -665,6 +858,8 @@ const SUGGESTIONS = [
   "Hoe evolueert mijn sterkste oefening de laatste 3 maanden?",
   "Is mijn rusthartslag lager na een week met veel slaap?",
   "Vat mijn laatste 7 dagen samen: wat ging goed, wat kan beter?",
+  "Stuur me elke maandag om 8u een melding om mijn gewicht te loggen",
+  "Herinner me elke avond om 21u30 aan mijn dagboek",
 ];
 
 async function renderAsk() {
@@ -729,21 +924,183 @@ async function ask(q) {
 }
 
 // ======================================================================
+// Dagboek (inspreken of typen)
+// ======================================================================
+async function renderJournal(param) {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(param || "") ? param : today();
+  const isToday = day === today();
+  const list = await rpc("get_journal", { p_limit: 60 });
+  const cur = list.find((j) => j.day === day);
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  view.innerHTML = `
+    <div class="daynav">
+      <a class="navbtn" href="#/dagboek/${addDays(day, -1)}" aria-label="Vorige dag">‹</a>
+      <span class="label">${esc(dayLabel(day))}</span>
+      ${isToday ? `<span class="navbtn disabled" aria-hidden="true">›</span>` : `<a class="navbtn" href="#/dagboek/${addDays(day, 1)}" aria-label="Volgende dag">›</a>`}
+    </div>
+    <section class="panel">
+      <h3>Hoe was je dag?</h3>
+      <p class="hint">${SR ? "Tik op de microfoon en vertel. Je tekst verschijnt hieronder; pas aan waar nodig." : "Tik in het tekstvak op de microfoon van je toetsenbord om in te spreken."}</p>
+      <textarea class="input journal" id="jt" rows="8" placeholder="Training, energie, stress, slaap, wat goed ging…">${esc(cur?.content || "")}</textarea>
+      <div class="row" style="margin-top:10px">
+        ${SR ? `<button class="btn secondary mic" id="mic" type="button" aria-pressed="false"><span class="dot"></span><span id="micL">Inspreken</span></button>` : ""}
+        <button class="btn" id="saveJ">Opslaan</button>
+        <span class="muted small" id="jStatus">${cur ? `Laatst bewaard ${esc(timeAgo(cur.updated_at))}` : ""}</span>
+      </div>
+    </section>
+    <h2 class="section-title">Eerdere dagen</h2>
+    <div class="list">${list.filter((j) => j.day !== day).map((j) => `<a class="item" style="--c:var(--sleep);text-decoration:none" href="#/dagboek/${j.day}">
+        <span class="swatch"></span>
+        <span><div class="t">${esc(dayLabel(j.day))}</div><div class="m">${esc(j.content.length > 110 ? j.content.slice(0, 110) + "…" : j.content)}</div></span><span></span>
+      </a>`).join("") || `<div class="empty">Nog geen eerdere dagboekmomenten.</div>`}</div>`;
+
+  const ta = $("#jt");
+  let dirty = false;
+  ta.addEventListener("input", () => { dirty = true; $("#jStatus").textContent = "Niet bewaard"; });
+  const save = async () => {
+    try {
+      await rpc("save_journal", { p_day: day, p_text: ta.value, p_append: false });
+      dirty = false;
+      $("#jStatus").textContent = "Bewaard";
+    } catch (e) { toast(e.message); }
+  };
+  $("#saveJ").onclick = save;
+
+  if (SR) {
+    let rec = null, base = "";
+    const btn = $("#mic");
+    const stop = () => { rec?.stop(); };
+    btn.onclick = () => {
+      if (rec) return stop();
+      rec = new SR();
+      rec.lang = "nl-BE";
+      rec.continuous = true;
+      rec.interimResults = true;
+      base = ta.value ? ta.value.replace(/\s*$/, "") + " " : "";
+      rec.onresult = (ev) => {
+        let fin = "", inter = "";
+        for (let i = 0; i < ev.results.length; i++) {
+          const r = ev.results[i];
+          (r.isFinal ? (fin += r[0].transcript) : (inter += r[0].transcript));
+        }
+        ta.value = base + fin + inter;
+        dirty = true;
+      };
+      rec.onerror = (e) => toast(e.error === "not-allowed" ? "Geef de app toegang tot je microfoon" : "Inspreken gestopt: " + e.error);
+      rec.onend = () => {
+        rec = null;
+        btn.setAttribute("aria-pressed", "false");
+        $("#micL").textContent = "Inspreken";
+        if (dirty) save();
+      };
+      rec.start();
+      btn.setAttribute("aria-pressed", "true");
+      $("#micL").textContent = "Stop";
+    };
+  }
+  window.addEventListener("hashchange", () => { if (dirty) save(); }, { once: true });
+}
+
+// ======================================================================
 // Instellingen
 // ======================================================================
+const DAY_NAMES = ["ma", "di", "wo", "do", "vr", "za", "zo"];
+const daysLabel = (ds) => {
+  const a = [...ds].sort();
+  if (a.length === 7) return "elke dag";
+  if (a.join() === "1,2,3,4,5") return "weekdagen";
+  if (a.join() === "6,7") return "weekend";
+  return a.map((d) => DAY_NAMES[d - 1]).join(", ");
+};
+
+function b64ToUint8(b64) {
+  const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+
+async function enablePush(vapid) {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    throw new Error("Meldingen werken pas als je de app op je beginscherm zet (Safari → deel → Zet op beginscherm) en daar opent.");
+  }
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") throw new Error("Meldingen zijn niet toegestaan. Zet ze aan via iPhone-instellingen → Meldingen → Health Hub.");
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToUint8(vapid) });
+  await rpc("save_push_subscription", { p: sub.toJSON(), p_ua: navigator.userAgent.slice(0, 200) });
+}
+
+async function pushState() {
+  if (!("Notification" in window) || !("serviceWorker" in navigator)) return "unsupported";
+  if (Notification.permission === "denied") return "denied";
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = await reg?.pushManager?.getSubscription();
+    return sub && Notification.permission === "granted" ? "on" : "off";
+  } catch { return "off"; }
+}
+
 async function renderSettings() {
-  const s = await rpc("get_settings");
+  const [s, routines, pstate] = await Promise.all([rpc("get_settings"), rpc("get_routines"), pushState()]);
   const { data: { user } } = await sb.auth.getUser();
   const goals = s.settings?.goals || {};
   const model = s.settings?.ai_model || "claude-sonnet-5-5";
+  const vapid = s.settings?.vapid_public;
   const ingestUrl = `${SUPABASE_URL}/functions/v1/ingest-health`;
   const sync = s.sync || {};
   const c = s.counts || {};
 
   view.innerHTML = `
     <section class="panel">
+      <h3>Meldingen</h3>
+      <p class="hint">${pstate === "on" ? `<span class="ok">Aan op dit toestel</span>` : pstate === "denied" ? `<span class="warn">Geblokkeerd</span>: zet ze aan via iPhone-instellingen → Meldingen → Health Hub.` : pstate === "unsupported" ? `Zet de app eerst op je beginscherm en open hem daar; daarna kan je meldingen aanzetten.` : "Nog niet aangezet op dit toestel."}</p>
+      <div class="row">
+        ${pstate !== "on" ? `<button class="btn" id="pushOn" ${pstate === "unsupported" ? "disabled" : ""}>Meldingen aanzetten</button>` : ""}
+        <button class="btn secondary" id="pushTest" ${pstate !== "on" ? "disabled" : ""}>Testmelding</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3>Routines</h3>
+      <p class="hint">Terugkerende meldingen. Maak ze hier of vraag het aan de AI, bv. <i>"Stuur me elke maandag om 8u een melding om mijn gewicht te loggen."</i></p>
+      <div id="routineList">${routines.length ? routines.map((r) => `
+        <div class="routine" data-id="${r.id}">
+          <div>
+            <div class="t">${esc(r.title)}${r.kind === "weekly_review" ? ` <span class="badge">AI</span>` : ""}</div>
+            <div class="m">${esc(daysLabel(r.days))} om ${esc(r.time_local.slice(0, 5))}${r.body ? ` · ${esc(r.body)}` : ""}</div>
+          </div>
+          <label class="switch" title="Aan/uit"><input type="checkbox" data-act="toggle" ${r.active ? "checked" : ""}><span></span></label>
+          <button class="icon-btn" data-act="del" aria-label="Verwijderen">✕</button>
+        </div>`).join("") : `<p class="muted small">Nog geen routines.</p>`}
+      </div>
+      <details style="margin-top:10px"><summary>Nieuwe routine</summary>
+        <form id="rf">
+          <div class="field"><label for="rt">Titel</label><input class="input" id="rt" required placeholder="Log je gewicht"></div>
+          <div class="field"><label for="rb">Tekst (optioneel)</label><input class="input" id="rb" placeholder="Stap even op de weegschaal"></div>
+          <div class="field"><label>Dagen</label><div class="daypick">${DAY_NAMES.map((d, i) => `<label><input type="checkbox" value="${i + 1}" checked><span>${d}</span></label>`).join("")}</div></div>
+          <div class="row">
+            <div class="field" style="flex:1"><label for="rtime">Uur</label><input class="input" id="rtime" type="time" value="08:00" required></div>
+            <div class="field" style="flex:1"><label for="rurl">Opent</label>
+              <select class="input" id="rurl"><option value="/#/vandaag">Vandaag</option><option value="/#/log/gewicht">Gewicht loggen</option><option value="/#/dagboek">Dagboek</option><option value="/#/voeding">Voeding</option></select></div>
+          </div>
+          <button class="btn" type="submit">Routine toevoegen</button>
+        </form>
+      </details>
+    </section>
+
+    <section class="panel">
+      <h3>Doelen</h3>
+      <div class="goals">
+        ${[["steps", "Stappen per dag"], ["active_kcal", "Actieve kcal"], ["sleep_h", "Slaap (uren)"], ["kcal_in", "Calorieën (kcal)"], ["protein_g", "Eiwit (g)"], ["water_ml", "Water (ml)"], ["caffeine_mg", "Cafeïne max (mg)"]]
+          .map(([k, l]) => `<div class="field"><label for="g_${k}">${l}</label><input class="input" inputmode="decimal" id="g_${k}" value="${esc(goals[k] ?? "")}"></div>`).join("")}
+      </div>
+      <button class="btn" id="saveGoals">Doelen opslaan</button>
+    </section>
+
+    <section class="panel">
       <h3>Apple Health</h3>
-      <p class="hint">Via de iOS-app <b>Health Auto Export</b> (REST API-automatisatie). Status: ${sync.apple_health?.last_success ? `<span class="ok">laatst ontvangen ${esc(timeAgo(sync.apple_health.last_success))}</span>` : `<span class="warn">nog niets ontvangen</span>`}</p>
+      <p class="hint">Via de iOS-app <b>Health Auto Export</b>. Status: ${sync.apple_health?.last_success ? `<span class="ok">laatst ontvangen ${esc(timeAgo(sync.apple_health.last_success))}</span>` : `<span class="warn">nog niets ontvangen</span>`}</p>
       <div class="field"><label>URL</label>
         <div class="row"><input class="input mono" readonly value="${esc(ingestUrl)}" id="ingUrl"><button class="btn secondary" data-copy="ingUrl">Kopieer</button></div></div>
       <div class="field"><label>Header: <span class="mono">Authorization</span> = <span class="mono">Bearer &lt;token&gt;</span></label>
@@ -755,23 +1112,28 @@ async function renderSettings() {
           <li>URL hierboven plakken. Bij Headers: key <span class="mono">Authorization</span>, value <span class="mono">Bearer</span> + spatie + token.</li>
           <li>Data type: <b>Health Metrics</b> (selecteer alles wat je wil) en een tweede automatisatie voor <b>Workouts</b>.</li>
           <li>Export format <b>JSON</b>, versie 2. Aggregate data: <b>aan</b>, interval <b>Hours</b>. Summarize sleep: <b>aan</b>.</li>
-          <li>Sync cadence: elk uur (of zo vaak als je wil). Gebruik eerst "Manual export" met een periode om je historiek op te halen (bv. per maand).</li>
+          <li>Sync cadence: elk uur. Historiek (bv. 6 maanden): "Manual export", één maand per keer.</li>
         </ol>
+      </details>
+      <details style="margin-top:6px"><summary>Welke wearable?</summary>
+        <p class="small">Alles wat naar Apple Health schrijft werkt automatisch: <b>Garmin</b> (Garmin Connect → Gekoppelde apps → Apple Health) en <b>Apple Watch</b> (standaard). <b>Fitbit</b> schrijft niet zelf naar Apple Health; daarvoor heb je een brug-app nodig. Draag je meerdere tegelijk, dan ontdubbelt Apple Health stappen en energie bij uur-aggregatie.</p>
       </details>
       <div class="row" style="margin-top:10px"><button class="btn ghost" id="rotTok">Nieuw token maken</button></div>
     </section>
 
     <section class="panel">
       <h3>Hevy</h3>
-      <p class="hint">API-key uit Hevy → Settings → Developer (vereist Hevy Pro). Status: ${s.secrets?.hevy_api_key ? `<span class="ok">ingesteld</span>` : `<span class="warn">niet ingesteld</span>`}
-        ${sync.hevy ? ` · laatste sync ${esc(timeAgo(sync.hevy.last_success))}${sync.hevy.last_error ? ` · <span class="warn">${esc(sync.hevy.last_error)}</span>` : ""}` : ""}</p>
-      <div class="row"><input class="input" type="password" id="hevyKey" placeholder="${s.secrets?.hevy_api_key ? "•••••••• (opgeslagen)" : "Plak je Hevy API-key"}" autocomplete="off">
-        <button class="btn" id="saveHevy">Opslaan</button></div>
-      <div class="row" style="margin-top:10px">
-        <button class="btn secondary" id="syncNow">Nu synchroniseren</button>
-        <button class="btn ghost" id="syncFull">Alles opnieuw ophalen</button>
-      </div>
-      <p class="hint" style="margin-top:8px">Synchroniseert automatisch elke 30 minuten.</p>
+      <p class="hint">Zonder Hevy Pro: exporteer in Hevy via <b>Profiel → Instellingen → Export &amp; Import Data → Export workouts</b> en importeer het CSV-bestand hier. Opnieuw importeren overschrijft niets dubbel. ${sync.hevy_csv ? `Laatste import ${esc(timeAgo(sync.hevy_csv.last_success))}.` : ""}</p>
+      <label class="btn" style="display:inline-block;cursor:pointer">CSV importeren<input type="file" id="hevyCsv2" accept=".csv,text/csv" hidden></label>
+      <details style="margin-top:12px"><summary>Heb je Hevy Pro? (automatische sync)</summary>
+        <p class="hint" style="margin-top:8px">API-key uit Hevy → Settings → Developer. Status: ${s.secrets?.hevy_api_key ? `<span class="ok">ingesteld</span>` : "niet ingesteld"}</p>
+        <div class="row"><input class="input" type="password" id="hevyKey" placeholder="${s.secrets?.hevy_api_key ? "•••••••• (opgeslagen)" : "Plak je Hevy API-key"}" autocomplete="off">
+          <button class="btn" id="saveHevy">Opslaan</button></div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn secondary" id="syncNow">Nu synchroniseren</button>
+          <button class="btn ghost" id="syncFull">Alles opnieuw ophalen</button>
+        </div>
+      </details>
     </section>
 
     <section class="panel">
@@ -781,24 +1143,15 @@ async function renderSettings() {
         <button class="btn" id="saveAi">Opslaan</button></div>
       <div class="field"><label for="model">Model</label>
         <select class="input" id="model">
-          ${[["claude-sonnet-5-5", "Claude Sonnet 5.5 (aanbevolen)"], ["claude-opus-5-5", "Claude Opus 5.5 (grondigst, duurder)"], ["claude-haiku-4-5-20251001", "Claude Haiku 4.5 (goedkoopst)"]]
+          ${[["claude-sonnet-5-5", "Claude Sonnet 5.5 (aanbevolen)"], ["claude-haiku-4-5-20251001", "Claude Haiku 4.5 (goedkoopst)"], ["claude-opus-5-5", "Claude Opus 5.5 (grondigst, duurder)"]]
             .map(([v, l]) => `<option value="${v}" ${v === model ? "selected" : ""}>${l}</option>`).join("")}
         </select></div>
     </section>
 
     <section class="panel">
-      <h3>Doelen</h3>
-      <div class="goals">
-        ${[["steps", "Stappen per dag"], ["active_kcal", "Actieve kcal"], ["sleep_h", "Slaap (uren)"], ["kcal_in", "Calorieën (kcal)"], ["protein_g", "Eiwit (g)"]]
-          .map(([k, l]) => `<div class="field"><label for="g_${k}">${l}</label><input class="input" inputmode="decimal" id="g_${k}" value="${esc(goals[k] ?? "")}"></div>`).join("")}
-      </div>
-      <button class="btn" id="saveGoals">Doelen opslaan</button>
-    </section>
-
-    <section class="panel">
       <h3>Data</h3>
       <dl class="kv">
-        <dt>Metingen (Apple Health)</dt><dd>${fmt(c.samples)}</dd>
+        <dt>Metingen (Apple Health + zelf gelogd)</dt><dd>${fmt(c.samples)}</dd>
         <dt>Slaapnachten</dt><dd>${fmt(c.sleep_nights)}</dd>
         <dt>Workouts (Apple Health)</dt><dd>${fmt(c.workouts)}</dd>
         <dt>Hevy-trainingen</dt><dd>${fmt(c.hevy_workouts)}</dd>
@@ -816,6 +1169,43 @@ async function renderSettings() {
       <button class="btn ghost" id="logout">Uitloggen</button>
     </section>`;
 
+  // meldingen
+  $("#pushOn")?.addEventListener("click", async () => {
+    try { await enablePush(vapid); toast("Meldingen staan aan"); renderSettings(); } catch (e) { toast(e.message, 7000); }
+  });
+  $("#pushTest").onclick = async () => {
+    try { const r = await invoke("notify", { test: true }); toast(r.sent ? "Testmelding verstuurd" : "Geen toestel gevonden om naar te sturen", 4000); }
+    catch (e) { toast(e.message, 5000); }
+  };
+  // routines
+  $("#routineList").addEventListener("click", async (e) => {
+    const row = e.target.closest(".routine");
+    if (!row) return;
+    const act = e.target.dataset.act;
+    if (act === "del") {
+      if (!confirm("Deze routine verwijderen?")) return;
+      await rpc("save_routine", { p: { id: row.dataset.id, archived: true } });
+      toast("Routine verwijderd");
+      renderSettings();
+    }
+  });
+  $("#routineList").addEventListener("change", async (e) => {
+    if (e.target.dataset.act !== "toggle") return;
+    const row = e.target.closest(".routine");
+    await rpc("save_routine", { p: { id: row.dataset.id, active: e.target.checked } });
+    toast(e.target.checked ? "Routine aan" : "Routine gepauzeerd");
+  });
+  $("#rf").onsubmit = async (e) => {
+    e.preventDefault();
+    const days = [...view.querySelectorAll(".daypick input:checked")].map((i) => Number(i.value));
+    if (!days.length) return toast("Kies minstens één dag");
+    try {
+      await rpc("save_routine", { p: { title: $("#rt").value, body: $("#rb").value || null, days, time: $("#rtime").value, url: $("#rurl").value } });
+      toast("Routine toegevoegd");
+      renderSettings();
+    } catch (er) { toast(er.message); }
+  };
+  // overige
   view.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = async () => {
     const inp = $("#" + b.dataset.copy);
     try { await navigator.clipboard.writeText(inp.value); toast("Gekopieerd"); }
@@ -824,8 +1214,7 @@ async function renderSettings() {
   $("#showTok").onclick = () => { const i = $("#ingTok"); i.type = i.type === "password" ? "text" : "password"; };
   $("#rotTok").onclick = async () => {
     if (!confirm("Nieuw token maken? Je moet het daarna ook in Health Auto Export aanpassen.")) return;
-    const t = await rpc("rotate_ingest_token");
-    $("#ingTok").value = t;
+    $("#ingTok").value = await rpc("rotate_ingest_token");
     toast("Nieuw token aangemaakt");
   };
   const saveSecret = async (name, inputId) => {
@@ -836,6 +1225,7 @@ async function renderSettings() {
     toast("Sleutel opgeslagen");
     renderSettings();
   };
+  $("#hevyCsv2").onchange = (e) => importHevyFile(e.target.files?.[0], renderSettings);
   $("#saveHevy").onclick = () => saveSecret("hevy_api_key", "#hevyKey").catch((e) => toast(e.message));
   $("#saveAi").onclick = () => saveSecret("anthropic_api_key", "#aiKey").catch((e) => toast(e.message));
   $("#syncNow").onclick = () => syncHevy($("#syncNow"), false, renderSettings);
@@ -843,7 +1233,7 @@ async function renderSettings() {
   $("#model").onchange = async (e) => { await rpc("set_setting", { p_key: "ai_model", p_value: e.target.value }); toast("Model opgeslagen"); };
   $("#saveGoals").onclick = async () => {
     const out = {};
-    for (const k of ["steps", "active_kcal", "sleep_h", "kcal_in", "protein_g"]) {
+    for (const k of ["steps", "active_kcal", "sleep_h", "kcal_in", "protein_g", "water_ml", "caffeine_mg"]) {
       const v = num(String($("#g_" + k).value).replace(",", "."));
       if (v !== null) out[k] = v;
     }
@@ -911,6 +1301,7 @@ const ROUTES = {
   trends: renderTrends,
   vraag: renderAsk,
   instellingen: renderSettings,
+  dagboek: renderJournal,
 };
 
 async function boot() {

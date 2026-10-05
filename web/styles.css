@@ -302,3 +302,61 @@ details[open] > summary::after { content: "–"; }
 .skeleton { height: 120px; border-radius: var(--radius-l); background: var(--surface); opacity: .6; margin-bottom: 12px; }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
+
+/* ---------- v2: snelle logs, dagboek, routines ---------- */
+.toast.has-action { pointer-events: auto; display: flex; gap: 14px; align-items: center; }
+.toast-btn { background: none; border: 0; color: var(--paper); font-weight: 700; text-decoration: underline; cursor: pointer; padding: 6px 0; }
+
+.quick { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center; padding: 8px 0 12px; border-top: 1px solid var(--line); }
+.domain h2 + .quick { border-top: 0; }
+.quick .name { font-size: 15px; }
+.quick .num { font-family: var(--font-num); font-weight: 600; font-size: 30px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.quick .num small { font-size: 15px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+.quick .bar { margin-top: 6px; }
+.quick-btn { background: var(--c); color: #fff; min-width: 92px; font-family: var(--font-num); font-size: 18px; letter-spacing: .2px; }
+.quick-btn:active { transform: scale(.97); }
+
+.list.flat { background: transparent; margin: 0 -16px 6px -12px; border-radius: 0; }
+.list.flat .item { padding-left: 12px; }
+
+.insight { border: 1px solid var(--line); }
+.insight.unread { border-color: var(--sleep); }
+.insight summary { font-family: var(--font-num); font-size: 20px; font-weight: 600; }
+.md p { margin: 8px 0; }
+.md ul, .md ol { margin: 6px 0; padding-left: 20px; }
+.md h4 { margin: 12px 0 4px; }
+
+textarea.journal { resize: vertical; min-height: 160px; line-height: 1.5; font-size: 16px; }
+.journal-snip { margin: 6px 0 10px; font-size: 15px; line-height: 1.5; white-space: pre-line; }
+.mic { display: inline-flex; align-items: center; gap: 8px; }
+.mic .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); }
+.mic[aria-pressed="true"] { background: var(--bad); color: #fff; }
+.mic[aria-pressed="true"] .dot { background: #fff; animation: pulse 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .mic[aria-pressed="true"] .dot { animation: none; } }
+
+.navbtn {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 999px; width: 36px; height: 36px;
+  display: grid; place-items: center; text-decoration: none; color: var(--ink);
+}
+.navbtn.disabled { opacity: .35; }
+
+.routine { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.routine:first-child { border-top: 0; }
+.routine .t { font-weight: 600; }
+.routine .m { font-size: 13px; color: var(--muted); }
+.badge { font-size: 11px; font-weight: 600; background: var(--sleep); color: #fff; border-radius: 6px; padding: 1px 6px; vertical-align: 2px; }
+.switch { position: relative; width: 46px; height: 28px; flex: none; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; z-index: 1; }
+.switch span { position: absolute; inset: 0; background: var(--surface-2); border-radius: 999px; transition: background .15s; }
+.switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform .15s; }
+.switch input:checked + span { background: var(--move); }
+.switch input:checked + span::after { transform: translateX(18px); }
+.switch input:focus-visible + span { outline: 2px solid var(--heart); outline-offset: 2px; }
+.daypick { display: flex; gap: 6px; flex-wrap: wrap; }
+.daypick label { position: relative; }
+.daypick input { position: absolute; opacity: 0; }
+.daypick span { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); font-size: 14px; cursor: pointer; }
+.daypick input:checked + span { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.daypick input:focus-visible + span { outline: 2px solid var(--heart); outline-offset: 2px; }
+.toast.has-action { width: max-content; }
+.toast span { white-space: nowrap; }
