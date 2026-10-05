@@ -360,3 +360,4 @@ textarea.journal { resize: vertical; min-height: 160px; line-height: 1.5; font-s
 .daypick input:focus-visible + span { outline: 2px solid var(--heart); outline-offset: 2px; }
 .toast.has-action { width: max-content; }
 .toast span { white-space: nowrap; }
+.sub-h { font-size: 14px; margin: 16px 0 4px; }

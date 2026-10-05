@@ -480,7 +480,7 @@ function openWeightForm(last) {
 function onboardingCard() {
   return `<div class="panel" style="margin-bottom:12px">
     <h3>Welkom! Nog geen data binnen.</h3>
-    <p class="hint">Koppel Apple Health in Instellingen (via Health Auto Export) en importeer eventueel je Hevy-trainingen.</p>
+    <p class="hint">Koppel Apple Health in Instellingen (gratis: export importeren en de Opdrachten-automatisering) en importeer je Hevy-trainingen.</p>
     <a class="btn" href="#/instellingen" style="display:inline-block;text-decoration:none">Naar instellingen</a>
   </div>`;
 }
@@ -1041,6 +1041,31 @@ async function pushState() {
   } catch { return "off"; }
 }
 
+async function importAppleHealth(file, months) {
+  if (!file) return;
+  const box = $("#ahProg");
+  const set = (h) => { if (box) box.innerHTML = h; };
+  try {
+    const { parseHealthExport } = await import("./healthimport.js");
+    const since = months ? addDays(today(), -Math.round(months * 30.44)) : "1900-01-01";
+    set(`Bestand lezen… 0%`);
+    const t0 = Date.now();
+    const { batches, stats } = await parseHealthExport(file, {
+      since,
+      onProgress: (p) => set(`Bestand lezen… ${Math.round(p * 100)}%`),
+    });
+    if (!stats.records && !stats.workouts) throw new Error("Geen bruikbare gegevens gevonden in deze periode.");
+    for (let i = 0; i < batches.length; i++) {
+      set(`Uploaden… ${i + 1}/${batches.length}`);
+      await rpc("import_health_export", { p: batches[i] });
+    }
+    set(`<span class="ok">Klaar</span> in ${Math.round((Date.now() - t0) / 1000)} s: ${fmt(stats.hours)} uurwaarden over ${stats.metrics} metingen, ${stats.sleepNights} nachten slaap, ${stats.workouts} workouts.`);
+    toast("Apple Health-gegevens geïmporteerd");
+  } catch (e) {
+    set(`<span class="warn">${esc(e.message)}</span>`);
+  }
+}
+
 async function renderSettings() {
   const [s, routines, pstate] = await Promise.all([rpc("get_settings"), rpc("get_routines"), pushState()]);
   const { data: { user } } = await sb.auth.getUser();
@@ -1100,23 +1125,52 @@ async function renderSettings() {
 
     <section class="panel">
       <h3>Apple Health</h3>
-      <p class="hint">Via de iOS-app <b>Health Auto Export</b>. Status: ${sync.apple_health?.last_success ? `<span class="ok">laatst ontvangen ${esc(timeAgo(sync.apple_health.last_success))}</span>` : `<span class="warn">nog niets ontvangen</span>`}</p>
-      <div class="field"><label>URL</label>
+      <p class="hint">Status: ${sync.apple_health?.last_success ? `<span class="ok">laatst ontvangen ${esc(timeAgo(sync.apple_health.last_success))}</span>` : `<span class="warn">nog niets ontvangen</span>`}</p>
+
+      <h4 class="sub-h">1. Historiek en workouts: export importeren</h4>
+      <p class="small">Gezondheid-app → je profielfoto → <b>Exporteer alle gezondheidsgegevens</b> → bewaar <i>export.zip</i> in Bestanden. Kies het hier. Tip: op een computer gaat het sneller (log daar in op dezelfde site).</p>
+      <div class="row">
+        <select class="input" id="ahSince" style="max-width:170px" aria-label="Periode">
+          <option value="3">Laatste 3 maanden</option><option value="6" selected>Laatste 6 maanden</option>
+          <option value="12">Laatste 12 maanden</option><option value="0">Alles</option>
+        </select>
+        <label class="btn" style="cursor:pointer">Export kiezen<input type="file" id="ahFile" accept=".zip,.xml,application/zip,text/xml" hidden></label>
+      </div>
+      <div id="ahProg" class="small muted" style="margin-top:8px"></div>
+
+      <h4 class="sub-h">2. Elke dag automatisch: iOS Opdrachten (gratis)</h4>
+      <p class="small">Een automatisering in de app <b>Opdrachten</b> stuurt elke avond je dagtotalen. Workouts en slaapfasen komen via de export hierboven.</p>
+      <details><summary>Stap voor stap instellen</summary>
+        <ol class="steps-list">
+          <li>Opdrachten → <b>Automatisering</b> → <b>+</b> → <b>Tijdstip</b>: 23:45, dagelijks, <b>Voer direct uit</b>.</li>
+          <li>Voeg <b>Opmaakdatum</b> toe (Format Date): datum = Huidige datum, notatie <b>Aangepast</b> → <span class="mono">yyyy-MM-dd</span>.</li>
+          <li>Per meting in de tabel: actie <b>Zoek gezondheidsstalen</b> (Find Health Samples): type zoals hieronder, <b>Begindatum is vandaag</b>, <b>Groepeer op: Dag</b>. Daarna actie <b>Bereken statistieken</b> (Calculate Statistics) met <b>Som</b> of <b>Gemiddelde</b>.</li>
+          <li>Voeg <b>Haal inhoud op van URL</b> (Get Contents of URL) toe: URL hieronder, methode <b>POST</b>, header <span class="mono">Authorization</span> = <span class="mono">Bearer</span> + spatie + token, verzoekbody <b>JSON</b>.</li>
+          <li>In de JSON-body: veld <span class="mono">date</span> (tekst) = de opgemaakte datum; daarna per meting een veld (type <b>Getal</b>) met de sleutel uit de tabel en als waarde de statistiek.</li>
+          <li>Test door de automatisering één keer met de hand te starten. In <b>Data → Synclogboek</b> hieronder zie je "opdrachten".</li>
+        </ol>
+        <table class="nutrients small">
+          <tr><td><b>Type in Gezondheid</b></td><td><b>Berekening</b></td><td><b>JSON-sleutel</b></td></tr>
+          ${[["Stappen", "Som", "step_count"], ["Actieve energie", "Som", "active_energy"], ["Rustenergie", "Som", "basal_energy_burned"],
+             ["Afstand wandelen + hardlopen", "Som", "walking_running_distance"], ["Rusthartslag", "Gemiddelde", "resting_heart_rate"],
+             ["Hartslagvariabiliteit", "Gemiddelde", "heart_rate_variability"], ["Energie (voeding)", "Som", "dietary_energy"],
+             ["Eiwitten", "Som", "protein"], ["Koolhydraten", "Som", "carbohydrates"], ["Totaal vet", "Som", "total_fat"],
+             ["Gewicht (optioneel)", "Gemiddelde", "weight_body_mass"]]
+            .map(([a, b, c]) => `<tr><td>${a}</td><td>${b}</td><td class="mono">${c}</td></tr>`).join("")}
+        </table>
+        <p class="small muted">Slaap (optioneel): sleutel <span class="mono">sleep_hours</span> met het aantal uren. Eenheden: kcal, km, bpm, ms, g. Een dag die later via de export binnenkomt, vervangt de dagtotalen automatisch (niets telt dubbel).</p>
+      </details>
+      <div class="field" style="margin-top:10px"><label>URL</label>
         <div class="row"><input class="input mono" readonly value="${esc(ingestUrl)}" id="ingUrl"><button class="btn secondary" data-copy="ingUrl">Kopieer</button></div></div>
-      <div class="field"><label>Header: <span class="mono">Authorization</span> = <span class="mono">Bearer &lt;token&gt;</span></label>
+      <div class="field"><label>Token (header <span class="mono">Authorization: Bearer …</span>)</label>
         <div class="row"><input class="input mono" readonly type="password" value="${esc(s.ingest_token)}" id="ingTok">
         <button class="btn secondary" id="showTok">Toon</button><button class="btn secondary" data-copy="ingTok">Kopieer</button></div></div>
-      <details style="margin-top:6px"><summary>Instellen in Health Auto Export</summary>
-        <ol class="steps-list">
-          <li>Automations → nieuwe automatisatie → <b>REST API</b>.</li>
-          <li>URL hierboven plakken. Bij Headers: key <span class="mono">Authorization</span>, value <span class="mono">Bearer</span> + spatie + token.</li>
-          <li>Data type: <b>Health Metrics</b> (selecteer alles wat je wil) en een tweede automatisatie voor <b>Workouts</b>.</li>
-          <li>Export format <b>JSON</b>, versie 2. Aggregate data: <b>aan</b>, interval <b>Hours</b>. Summarize sleep: <b>aan</b>.</li>
-          <li>Sync cadence: elk uur. Historiek (bv. 6 maanden): "Manual export", één maand per keer.</li>
-        </ol>
+
+      <details style="margin-top:6px"><summary>Liever volledig automatisch? (Health Auto Export, betalend)</summary>
+        <p class="small">Health Auto Export Premium ($6,99/jaar of $24,99 eenmalig) stuurt alles per uur, inclusief slaapfasen en workouts. Automations → REST API → zelfde URL en header, JSON versie 2, Aggregate data aan (Hours), Summarize sleep aan.</p>
       </details>
       <details style="margin-top:6px"><summary>Welke wearable?</summary>
-        <p class="small">Alles wat naar Apple Health schrijft werkt automatisch: <b>Garmin</b> (Garmin Connect → Gekoppelde apps → Apple Health) en <b>Apple Watch</b> (standaard). <b>Fitbit</b> schrijft niet zelf naar Apple Health; daarvoor heb je een brug-app nodig. Draag je meerdere tegelijk, dan ontdubbelt Apple Health stappen en energie bij uur-aggregatie.</p>
+        <p class="small">Alles wat naar Apple Health schrijft werkt: <b>Garmin</b> (Garmin Connect → Gekoppelde apps → Apple Health), <b>Apple Watch</b>, en apps zoals <b>Bevel</b>. <b>Fitbit</b> schrijft niet zelf naar Apple Health en heeft een brug-app nodig.</p>
       </details>
       <div class="row" style="margin-top:10px"><button class="btn ghost" id="rotTok">Nieuw token maken</button></div>
     </section>
@@ -1225,6 +1279,7 @@ async function renderSettings() {
     toast("Sleutel opgeslagen");
     renderSettings();
   };
+  $("#ahFile").onchange = (e) => importAppleHealth(e.target.files?.[0], Number($("#ahSince").value));
   $("#hevyCsv2").onchange = (e) => importHevyFile(e.target.files?.[0], renderSettings);
   $("#saveHevy").onclick = () => saveSecret("hevy_api_key", "#hevyKey").catch((e) => toast(e.message));
   $("#saveAi").onclick = () => saveSecret("anthropic_api_key", "#aiKey").catch((e) => toast(e.message));

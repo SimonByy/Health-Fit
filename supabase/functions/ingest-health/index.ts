@@ -1,4 +1,4 @@
-// Ontvangt Apple Health-data van de iOS-app "Health Auto Export" (REST API-automatisatie)
+// Ontvangt Apple Health-data: dagtotalen uit iOS Opdrachten (gratis) of Health Auto Export.
 // Auth: header  Authorization: Bearer <ingest_token>   (of x-ingest-token, of ?token=)
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -44,7 +44,16 @@ Deno.serve(async (req) => {
     return json({ error: "Body is geen geldige JSON" }, 400);
   }
 
-  const { data, error } = await admin.rpc("ingest_health_export", { p: payload });
+  // Dagtotalen uit iOS Opdrachten of Health Auto Export-formaat.
+  // Opdrachten mag plat sturen: {"date":"2026-10-05","step_count":8234,"protein":150,...}
+  let p = payload as Record<string, unknown>;
+  if (!p || typeof p !== "object" || Array.isArray(p)) return json({ error: "Verwacht een JSON-object" }, 400);
+  const isHae = "data" in p || "metrics" in p || "workouts" in p;
+  if (!isHae && !("values" in p) && !("days" in p)) {
+    const { date, ...rest } = p;
+    p = { date, values: rest };
+  }
+  const { data, error } = await admin.rpc(isHae ? "ingest_health_export" : "ingest_daily_values", { p });
   if (error) {
     await admin.rpc("sync_state_set", {
       p_source: "apple_health", p_cursor: null, p_ok: false, p_items: 0, p_error: error.message,

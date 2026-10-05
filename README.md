@@ -45,17 +45,10 @@ PWA (Vercel, map /web) ──── RPC-functies (alleen eigenaar) ────�
 3. **Hevy (zonder Pro):** Hevy → Profiel → Instellingen → Export & Import Data → *Export workouts* → CSV bewaren. In de app: Training → "Hevy importeren" (of Instellingen → Hevy). Herhaal dit wanneer je wil; opnieuw importeren maakt geen dubbels. Met Hevy Pro kan je in plaats daarvan een API-key invullen voor automatische sync.
 4. **Meldingen:** open de app vanaf je beginscherm → Instellingen → "Meldingen aanzetten" → Testmelding. Routines maak je in Instellingen of via de Vraag-tab ("Stuur me elke maandag om 8u een melding om mijn gewicht te loggen").
 5. **Claude (AI):** maak een API-key op <https://console.anthropic.com> (met wat tegoed). In de app: Instellingen → AI → plakken → Opslaan.
-6. **Apple Health:** installeer **Health Auto Export** (App Store; de REST API-automatisatie vereist de premium-versie). Neem de URL en het token over uit Instellingen in de app:
-   - Automations → **+** → **REST API**
-   - URL: `https://jzqqriddjpcigmxmnaug.supabase.co/functions/v1/ingest-health`
-   - Headers: key `Authorization`, value `Bearer <jouw token>`
-   - Data type **Health Metrics**: selecteer alles wat je wil (stappen, energie, hartslag, HRV, rusthartslag, VO2 max, gewicht, slaap, **alle voeding**…)
-   - Export format **JSON**, Export version **2**
-   - **Aggregate data: aan**, interval **Hours** (zo blijft het licht en zie je per maaltijdmoment wat je at)
-   - **Summarize sleep: aan**
-   - Sync cadence: elk uur
-   - Maak een **tweede automatisatie** met data type **Workouts** (zelfde URL en header). Zet "include route" en "heart rate data" uit, die heb je niet nodig.
-   - **Historiek ophalen:** gebruik "Manual Export" per maand (bv. de laatste 12 maanden), maand per maand.
+6. **Apple Health (gratis):**
+   - **Historiek + workouts:** Gezondheid-app → profielfoto → *Exporteer alle gezondheidsgegevens* → `export.zip`. In de app: Instellingen → Apple Health → periode kiezen → *Export kiezen*. De app leest het bestand in je browser, telt alles per uur op en ontdubbelt bronnen (iPhone + Garmin). Herhaal dit gerust; niets telt dubbel.
+   - **Dagelijks automatisch:** een automatisering in de iOS-app *Opdrachten* stuurt elke avond je dagtotalen naar dezelfde URL (stappen in Instellingen → Apple Health). Komt een dag later via de export binnen, dan vervangt die gedetailleerde data de dagtotalen.
+   - (Betalend alternatief: Health Auto Export Premium met REST API-automatisatie, zelfde URL en header.)
 7. Controleer in Instellingen → Data → Synclogboek of alles binnenkomt.
 
 ## Functies
