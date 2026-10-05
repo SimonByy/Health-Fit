@@ -48,6 +48,38 @@ const restLabel = (s) => (s ? (s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60)
 const e1rm = (kg, reps) => (kg > 0 && reps >= 1 && reps <= 15 ? kg * (1 + reps / 30) : null);
 
 let ctxCache = {};
+
+// ---------------- progressie: voorstel voor vandaag ----------------
+// Dubbele progressie: eerst herhalingen opbouwen binnen je bereik, dan zwaarder.
+export function repRange(c) {
+  if (c?.pref?.rep_min && c?.pref?.rep_max) return { min: c.pref.rep_min, max: c.pref.rep_max, own: true };
+  const t = c?.typical;
+  if (t?.rep_min && t?.rep_max) {
+    const min = Math.max(1, Math.round(t.rep_min));
+    return { min, max: Math.max(Math.round(t.rep_max), min + 2), own: false };
+  }
+  return { min: 8, max: 12, own: false };
+}
+export const incrementFor = (title, c) => Number(c?.pref?.increment_kg) || (/dumbbell/i.test(title) ? 2 : 2.5);
+const roundKg = (v) => Math.round(v * 4) / 4;
+
+export function suggestion(title) {
+  const c = ctxCache[title];
+  const work = (c?.last || []).filter((x) => x.type !== "warmup" && Number(x.reps) > 0);
+  if (!work.length) return null;
+  const { min, max } = repRange(c);
+  const inc = incrementFor(title, c);
+  const top = Math.max(...work.map((x) => Number(x.kg) || 0));
+  if (top <= 0) { // lichaamsgewicht
+    const reps = Math.min(...work.map((x) => Number(x.reps))) + 1;
+    return { kg: null, reps, why: "1 herhaling meer dan je zwakste set vorige keer" };
+  }
+  const atTop = work.filter((x) => Number(x.kg) === top).map((x) => Number(x.reps));
+  if (atTop.every((r) => r >= max)) return { kg: roundKg(top + inc), reps: min, why: `alle sets haalden ${max}+ → ${C.fmt(inc, 1)} kg zwaarder` };
+  if (atTop.every((r) => r < min - 2)) return { kg: roundKg(Math.max(0, top - inc)), reps: min, why: `ver onder ${min} herhalingen → iets lichter` };
+  if (atTop.every((r) => r < min)) return { kg: top, reps: min, why: `zelfde gewicht, mik op ${min} herhalingen` };
+  return { kg: top, reps: Math.min(max, Math.min(...atTop) + 1), why: "zelfde gewicht, 1 herhaling meer" };
+}
 async function loadContext(titles) {
   const need = titles.filter((t) => !(t in ctxCache));
   if (need.length) Object.assign(ctxCache, await C.rpc("get_exercise_context", { p_titles: need }));
@@ -119,6 +151,9 @@ export async function renderWorkout(ctx) {
     const best = ctxCache[e.title]?.best_1rm;
     const cur = e1rm(Number(s.kg), Number(s.reps));
     const pr = s.done && s.type !== "warmup" && cur && best && cur > best;
+    const sug = s.type !== "warmup" ? suggestion(e.title) : null;
+    const phKg = sug ? (sug.kg != null ? C.fmt(sug.kg, 2) : "kg") : prevSet?.kg != null ? C.fmt(prevSet.kg, 1) : "kg";
+    const phReps = sug ? sug.reps : prevSet?.reps ?? "reps";
     return `<div class="wset ${s.done ? "done" : ""} t-${s.type}" data-e="${e.key}" data-i="${i}">
       <select class="wtype" aria-label="Settype">
         <option value="normal" ${s.type === "normal" ? "selected" : ""}>${s.type === "normal" ? n : "Normaal"}</option>
@@ -127,11 +162,19 @@ export async function renderWorkout(ctx) {
         <option value="dropset" ${s.type === "dropset" ? "selected" : ""}>${s.type === "dropset" ? "D" : "Dropset (D)"}</option>
         <option value="__del">Set verwijderen</option>
       </select>
-      <button class="wprev" type="button" title="Vorige waarden overnemen">${C.esc(prev)}</button>
-      <input class="input wkg" inputmode="decimal" placeholder="${prevSet?.kg != null ? C.fmt(prevSet.kg, 1) : "kg"}" value="${C.esc(s.kg)}" aria-label="Gewicht in kg">
-      <input class="input wreps" inputmode="numeric" placeholder="${prevSet?.reps ?? "reps"}" value="${C.esc(s.reps)}" aria-label="Herhalingen">
+      <button class="wprev" type="button" title="Vorige waarden overnemen" data-kg="${prevSet?.kg ?? ""}" data-reps="${prevSet?.reps ?? ""}">${C.esc(prev)}</button>
+      <input class="input wkg" inputmode="decimal" placeholder="${C.esc(phKg)}" value="${C.esc(s.kg)}" aria-label="Gewicht in kg">
+      <input class="input wreps" inputmode="numeric" placeholder="${C.esc(phReps)}" value="${C.esc(s.reps)}" aria-label="Herhalingen">
       <button class="wcheck" type="button" aria-pressed="${s.done}" aria-label="Set voltooid">${pr ? "🏆" : "✓"}</button>
     </div>`;
+  }
+
+  function sugLine(title) {
+    const sg = suggestion(title);
+    const rr = repRange(ctxCache[title]);
+    return `<button class="wsug" type="button" data-pref="${C.esc(title)}" title="Bereik en stapgrootte aanpassen">
+      ${sg ? `🎯 <b>${sg.kg != null ? C.fmt(sg.kg, 2) + " kg × " : ""}${sg.reps}</b> <span>${C.esc(sg.why)}</span>` : `🎯 <span>Eerste keer: kies een gewicht waarmee je ${rr.min}–${rr.max} herhalingen haalt</span>`}
+      <span class="wsug-r">bereik ${rr.min}–${rr.max}${rr.own ? "" : " (auto)"} ✎</span></button>`;
   }
 
   function normalIndex(e, i) {
@@ -145,7 +188,8 @@ export async function renderWorkout(ctx) {
     return `<section class="panel wex" data-e="${e.key}">
       <div class="wex-head">
         <div><h3>${C.esc(e.title)}</h3>
-          <div class="m small muted">${e.muscle ? C.esc(MUSCLES[e.muscle] || e.muscle) : ""}${c.best_1rm ? `${e.muscle ? " · " : ""}record 1RM ≈ ${C.fmt(c.best_1rm, 1)} kg` : ""}</div></div>
+          <div class="m small muted">${C.esc(MUSCLES[c.muscle || e.muscle] || c.muscle || e.muscle || "")}${c.best_1rm ? ` · record 1RM ≈ ${C.fmt(c.best_1rm, 1)} kg` : ""}</div>
+          ${sugLine(e.title)}</div>
         <select class="input wrest" aria-label="Rusttijd" title="Rusttijd">${REST_OPTIONS.map((r) => `<option value="${r}" ${r === e.rest_s ? "selected" : ""}>⏱ ${restLabel(r)}</option>`).join("")}</select>
       </div>
       <input class="input wnotes" placeholder="Notitie" value="${C.esc(e.notes)}" aria-label="Notitie">
@@ -227,6 +271,8 @@ export async function renderWorkout(ctx) {
       persist();
     });
     list.addEventListener("click", (ev) => {
+      const sp = ev.target.closest(".wsug");
+      if (sp) { editExercisePref(C, sp.dataset.pref, () => { draw(); }); return; }
       const e = findEx(ev.target); if (!e) return;
       const row = ev.target.closest(".wset");
       const t = ev.target.closest("button");
@@ -247,9 +293,8 @@ export async function renderWorkout(ctx) {
       }
       if (t.classList.contains("wprev") && row) {
         const i = Number(row.dataset.i);
-        const k = row.querySelector(".wkg").placeholder, r = row.querySelector(".wreps").placeholder;
-        if (/\d/.test(k)) e.sets[i].kg = k.replace(",", ".").replace(/[^\d.]/g, "");
-        if (/\d/.test(r)) e.sets[i].reps = r.replace(/\D/g, "");
+        if (t.dataset.kg !== "") e.sets[i].kg = t.dataset.kg;
+        if (t.dataset.reps !== "") e.sets[i].reps = t.dataset.reps;
         persist(); draw(); return;
       }
       if (t.classList.contains("wadd")) {
@@ -471,4 +516,41 @@ export async function editTemplate(ctx, tpl, after) {
     });
   };
   draw();
+}
+
+// ---------------- instellingen per oefening (bereik, stap, spiergroep) ----------------
+export async function editExercisePref(ctx, title, after) {
+  C = ctx;
+  if (!ctxCache[title]) Object.assign(ctxCache, await C.rpc("get_exercise_context", { p_titles: [title] }));
+  const c = ctxCache[title] || {};
+  const rr = repRange(c);
+  const sheet = document.createElement("div");
+  sheet.className = "sheet";
+  sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Oefening instellen">
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h3 style="margin:0">${C.esc(title)}</h3><button class="icon-btn" id="eClose" aria-label="Sluiten">✕</button></div>
+    <p class="hint" style="margin-top:8px">Het voorstel volgt <b>dubbele progressie</b>: blijf op hetzelfde gewicht tot al je werksets het maximum halen, ga dan ${C.fmt(incrementFor(title, c), 1)} kg zwaarder en begin opnieuw aan het minimum.${rr.own ? "" : " Nu is het bereik afgeleid uit je laatste trainingen."}</p>
+    <div class="grid2">
+      <div class="field"><label for="eMin">Min. herhalingen</label><input class="input" id="eMin" inputmode="numeric" value="${rr.min}"></div>
+      <div class="field"><label for="eMax">Max. herhalingen</label><input class="input" id="eMax" inputmode="numeric" value="${rr.max}"></div>
+      <div class="field"><label for="eInc">Stap (kg)</label><input class="input" id="eInc" inputmode="decimal" value="${incrementFor(title, c)}"></div>
+      <div class="field"><label for="eMus">Spiergroep</label><select class="input" id="eMus">${Object.entries(MUSCLES).map(([k, v]) => `<option value="${k}" ${k === c.muscle ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+    </div>
+    <button class="btn" id="eSave" style="width:100%;margin-top:8px">Opslaan</button></div>`;
+  document.body.appendChild(sheet);
+  const close = () => sheet.remove();
+  sheet._close = close;
+  sheet.addEventListener("click", (e) => { if (e.target === sheet) close(); });
+  sheet.querySelector("#eClose").onclick = close;
+  sheet.querySelector("#eSave").onclick = async () => {
+    const v = (id) => Number(String(sheet.querySelector("#" + id).value).replace(",", "."));
+    const p = { title, rep_min: Math.round(v("eMin")), rep_max: Math.round(v("eMax")), increment_kg: v("eInc"), muscle: sheet.querySelector("#eMus").value };
+    if (!(p.rep_min > 0 && p.rep_max >= p.rep_min)) return C.toast("Controleer het herhalingsbereik");
+    if (!(p.increment_kg > 0)) return C.toast("Stap moet groter dan 0 zijn");
+    try {
+      const r = await C.rpc("set_exercise_pref", { p });
+      ctxCache[title] = { ...c, pref: r, muscle: r.muscle || c.muscle };
+      libCache = null;
+      close(); C.toast("Opgeslagen"); after?.();
+    } catch (e) { C.toast(e.message, 5000); }
+  };
 }

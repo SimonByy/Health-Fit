@@ -129,7 +129,7 @@ function drawChart(el, { points, color, type = "bar", unit = "", dec = 0, goal =
   const w = el.clientWidth || 320;
   el._w = w;
   const vals = points.map((p) => num(p.y));
-  const present = vals.filter((v) => v !== null);
+  const present = [...vals, ...points.map((p) => num(p.dot))].filter((v) => v !== null);
   if (!present.length) {
     el.innerHTML = `<p class="muted small" style="margin:8px 0 4px">Nog geen data voor deze periode.</p>`;
     return;
@@ -194,6 +194,8 @@ function drawChart(el, { points, color, type = "bar", unit = "", dec = 0, goal =
     const pts = points.map((p, i) => ({ v: num(p.y), i })).filter((o) => o.v !== null);
     const d = pts.map((o, k) => `${k ? "L" : "M"}${x(o.i).toFixed(1)},${y(o.v).toFixed(1)}`).join(" ");
     svg += `<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    // losse metingen (bv. dagelijkse wegingen rond de trendlijn)
+    points.forEach((p, i) => { const v = num(p.dot); if (v !== null) svg += `<circle cx="${x(i)}" cy="${y(v)}" r="2.6" fill="${color}" opacity=".35"/>`; });
     if (pts.length < 2 || pts.length < n / 3) pts.forEach((o) => { svg += `<circle cx="${x(o.i)}" cy="${y(o.v)}" r="3" fill="${color}"/>`; });
     svg += `<circle id="dot" r="4.5" fill="${color}" stroke="var(--surface)" stroke-width="2" opacity="0"/>`;
   }
@@ -218,7 +220,7 @@ function drawChart(el, { points, color, type = "bar", unit = "", dec = 0, goal =
     hl.setAttribute("x", x(i) - step / 2);
     hl.setAttribute("width", step);
     hl.classList.add("on");
-    tip.innerHTML = `${esc(p.tip ?? shortDate(p.x))}<br><b>${v === null ? "geen data" : esc(f(v)) + (unit ? " " + esc(unit) : "")}</b>`;
+    tip.innerHTML = `${esc(p.tip ?? shortDate(p.x))}<br><b>${v === null ? "geen data" : esc(f(v)) + (unit ? " " + esc(unit) : "")}</b>${p.tip2 ? `<br><span>${esc(p.tip2)}</span>` : ""}`;
     tip.style.left = `${Math.max(50, Math.min(w - 50, x(i)))}px`;
     tip.style.top = `${v === null ? pad.t + 20 : y(v) - 6}px`;
     tip.style.opacity = "1";
@@ -344,7 +346,14 @@ async function toggleActivity(btn) {
           <td>${e.best_1rm ? `1RM ≈ ${fmt(e.best_1rm, 1)} kg` : ""}</td></tr>`;
       })
       .join("");
-    det.innerHTML = rows ? `<table>${rows}</table>` : `<p class="muted small">Geen sets gevonden.</p>`;
+    det.innerHTML = (rows ? `<table>${rows}</table>` : `<p class="muted small">Geen sets gevonden.</p>`)
+      + `<button class="linkbtn wdelw" style="color:var(--bad);margin-top:6px">Training verwijderen</button>`;
+    det.querySelector(".wdelw").onclick = async () => {
+      if (!confirm("Deze training verwijderen? (Een nieuwe Hevy-import kan ze terugzetten als ze daar nog staat.)")) return;
+      await rpc("remove_workout", { p_id: btn.dataset.id });
+      toast("Training verwijderd");
+      route();
+    };
   } catch (e) {
     det.innerHTML = `<p class="warn small">${esc(e.message)}</p>`;
   }
@@ -507,16 +516,18 @@ async function renderTraining() {
       <div class="seg" role="group" aria-label="Weergave">
         <button data-t="workouts" aria-pressed="${tab === "workouts"}">Trainingen</button>
         <button data-t="exercises" aria-pressed="${tab === "exercises"}">Oefeningen</button>
+        <button data-t="muscles" aria-pressed="${tab === "muscles"}">Spiergroepen</button>
       </div>
       <label class="btn ghost" style="margin-bottom:14px;cursor:pointer">Hevy importeren<input type="file" id="hevyCsv" accept=".csv,text/csv" hidden></label>
     </div>
     <div id="wstart"></div>
     <div id="tcontent"><div class="skeleton"></div></div>`;
-  renderWorkoutStart($("#wstart"));
+  if (tab === "workouts") renderWorkoutStart($("#wstart"));
   view.querySelectorAll(".seg button").forEach((b) => (b.onclick = () => { state.trainTab = b.dataset.t; renderTraining(); }));
   $("#hevyCsv").onchange = (e) => importHevyFile(e.target.files?.[0], renderTraining);
   const box = $("#tcontent");
 
+  if (tab === "muscles") return renderMuscles(box);
   if (tab === "workouts") {
     const list = await rpc("get_activities", { p_limit: 60, p_offset: 0 });
     box.innerHTML = list.length
@@ -524,7 +535,7 @@ async function renderTraining() {
       : `<div class="empty"><strong>Nog geen trainingen.</strong>Cardio komt binnen via Apple Health. Krachttraining: exporteer in Hevy (Profiel → Instellingen → Export &amp; Import Data → Export workouts) en tik op "Hevy importeren".</div>`;
     if (list.length) bindActivityList($("#acts"));
   } else {
-    const ex = await rpc("get_exercises");
+    const [ex, W] = await Promise.all([rpc("get_exercises"), workoutMod()]);
     if (!ex.length) {
       box.innerHTML = `<div class="empty"><strong>Nog geen oefeningen.</strong>Importeer je Hevy-export om je progressie per oefening te zien.</div>`;
       return;
@@ -532,7 +543,7 @@ async function renderTraining() {
     box.innerHTML = `<div class="list" id="exlist">${ex
       .map((e) => `<button class="item" style="--c:${DOMAIN.strength}" data-ex="${esc(e.exercise)}">
         <span class="swatch"></span>
-        <span><div class="t">${esc(e.exercise)}</div><div class="m">${fmt(e.sessions)}× · laatst ${esc(shortDate(e.last_day))}${e.muscle ? ` · ${esc(e.muscle)}` : ""}</div></span>
+        <span><div class="t">${esc(e.exercise)}</div><div class="m">${fmt(e.sessions)}× · laatst ${esc(shortDate(e.last_day))}${e.muscle ? ` · ${esc(W.MUSCLES[e.muscle] || e.muscle)}` : ""}</div></span>
         <span class="r">${e.best_1rm ? fmt(e.best_1rm, 1) : fmt(e.max_kg, 1)}<small>${e.best_1rm ? "beste 1RM kg" : "max kg"}</small></span>
       </button>`)
       .join("")}</div>`;
@@ -547,15 +558,43 @@ async function renderTraining() {
       b.after(det);
       const hist = await rpc("get_exercise_history", { p_exercise: b.dataset.ex });
       const hasRm = hist.some((h) => h.best_1rm);
-      det.innerHTML = `<p class="small muted" style="margin:8px 0 4px">${hasRm ? "Geschatte 1RM per training (kg)" : "Zwaarste set per training (kg)"}</p><div class="c"></div>
+      det.innerHTML = `<button class="linkbtn exset" style="margin-top:6px">⚙ Spiergroep, herhalingsbereik en stap</button>
+        <p class="small muted" style="margin:8px 0 4px">${hasRm ? "Geschatte 1RM per training (kg)" : "Zwaarste set per training (kg)"}</p><div class="c"></div>
         <table style="margin-top:8px">${hist.slice(-5).reverse()
           .map((h) => `<tr><td>${esc(shortDate(h.day))}</td><td>${h.top_kg != null ? `${fmt(h.top_kg, 1)} kg × ${h.top_reps ?? "–"}` : `${fmt(h.sets)} sets`}</td></tr>`).join("")}</table>`;
+      det.querySelector(".exset").onclick = async () => (await workoutMod()).editExercisePref(ctx, b.dataset.ex, renderTraining);
       mountChart(det.querySelector(".c"), {
         points: hist.map((h) => ({ x: h.day, y: hasRm ? h.best_1rm : h.top_kg })),
         color: DOMAIN.strength, type: "line", unit: "kg", dec: 1, zero: false, height: 140,
       });
     });
   }
+}
+
+// ---------- Werksets per spiergroep ----------
+async function renderMuscles(box) {
+  const [rows, W] = await Promise.all([rpc("get_muscle_volume", { p_weeks: 4 }), workoutMod()]);
+  const weekStart = (() => { const d = new Date(today() + "T12:00:00Z"); const wd = (d.getUTCDay() + 6) % 7; return addDays(today(), -wd); })();
+  const muscles = {};
+  for (const r of rows) {
+    const m = (muscles[r.muscle] ||= { cur: 0, prev: 0 });
+    if (r.week_start === weekStart) m.cur += Number(r.working_sets);
+    else m.prev += Number(r.working_sets) / 4;
+  }
+  const list = Object.entries(muscles).filter(([k]) => k !== "other").sort((a, b) => b[1].prev - a[1].prev || b[1].cur - a[1].cur);
+  if (!list.length) { box.innerHTML = `<div class="empty"><strong>Nog geen trainingen in de laatste weken.</strong></div>`; return; }
+  const scaleMax = Math.max(22, ...list.map(([, v]) => Math.max(v.cur, v.prev)));
+  const pct = (v) => (v / scaleMax) * 100;
+  const dayNo = (new Date(today() + "T12:00:00Z").getUTCDay() + 6) % 7 + 1;
+  box.innerHTML = `<section class="panel">
+      <h3>Werksets per spiergroep</h3>
+      <p class="hint">Balk = deze week (dag ${dayNo} van 7) · streep = gemiddelde van de 4 weken ervoor. Groene zone: 10–20 sets per week, vaak aangeraden voor spiergroei.</p>
+      ${list.map(([k, v]) => `<div class="mv">
+        <div class="mv-h"><span>${esc(W.MUSCLES[k] || k)}</span><span><b>${fmt(v.cur)}</b> <span class="muted">· gem. ${fmt(v.prev, 1)}</span></span></div>
+        <div class="mv-bar"><i class="zone" style="left:${pct(10)}%;width:${pct(20) - pct(10)}%"></i><i class="cur" style="width:${pct(v.cur)}%"></i><i class="avg" style="left:${pct(v.prev)}%"></i></div>
+      </div>`).join("")}
+      <p class="small muted" style="margin:10px 0 0">Spiergroep klopt niet? Tik in Oefeningen op de oefening → ⚙.</p>
+    </section>`;
 }
 
 // ---------- Training starten: leeg, schema of herhalen ----------
@@ -718,7 +757,8 @@ async function syncHevy(btn, full, after) {
 // Voeding
 // ======================================================================
 async function renderNutrition() {
-  const d = await rpc("get_nutrition_day", { p_day: state.nutDay });
+  const [d, energy] = await Promise.all([rpc("get_nutrition_day", { p_day: state.nutDay }), rpc("get_energy", { p_days: 28 }).catch(() => null)]);
+  const maint = energy?.estimate?.maintenance_kcal;
   const by = Object.fromEntries((d.nutrients || []).map((n) => [n.metric, n]));
   const g = d.goals || {};
   const kcal = num(by.dietary_energy?.value);
@@ -741,7 +781,7 @@ async function renderNutrition() {
       <h2>Calorieën</h2>
       <div class="hero-num">${fmt(kcal ?? 0)}<small>${g.kcal_in ? `/ ${fmt(g.kcal_in)} ` : ""}kcal</small></div>
       ${g.kcal_in ? `<div class="bar" style="--c:${DOMAIN.fuel}"><i style="width:${Math.min(100, ((kcal || 0) / g.kcal_in) * 100)}%"></i></div>
-      <div class="small muted" style="margin-top:6px">${kcal != null && kcal < g.kcal_in ? `Nog ${fmt(g.kcal_in - kcal)} kcal over` : kcal != null ? `${fmt(kcal - g.kcal_in)} kcal boven je doel` : "Nog niets gelogd"}</div>` : ""}
+      <div class="small muted" style="margin-top:6px">${kcal != null && kcal < g.kcal_in ? `Nog ${fmt(g.kcal_in - kcal)} kcal over` : kcal != null ? `${fmt(kcal - g.kcal_in)} kcal boven je doel` : "Nog niets gelogd"}${maint ? ` · je onderhoud ≈ ${fmt(maint)} kcal` : ""}</div>` : ""}
       <div class="macros" style="grid-template-columns:repeat(4,1fr)">
         ${macro("Eiwit", p, g.protein_g)}${macro("Koolh.", c, g.carbs_g)}${macro("Vet", f, g.fat_g)}${macro("Vezels", fib, g.fiber_g)}
       </div>
@@ -808,8 +848,11 @@ async function renderTrends() {
   const days = state.trendDays;
   const to = today();
   const from = addDays(to, -(days - 1));
-  const rows = fillDays(await rpc("get_range", { p_from: from, p_to: to }), from, to);
-  const g = (await rpc("get_dashboard", { p_day: to })).goals || {};
+  const [range, dash, energy] = await Promise.all([
+    rpc("get_range", { p_from: from, p_to: to }), rpc("get_dashboard", { p_day: to }), rpc("get_energy", { p_days: 28 }).catch(() => null)]);
+  const rows = fillDays(range, from, to);
+  const g = dash.goals || {};
+  const trendBy = Object.fromEntries((energy?.series || []).map((r) => [r.day, r.trend]));
   const byWeek = days > 90;
 
   const charts = [
@@ -818,7 +861,7 @@ async function renderTrends() {
     { key: "sleep_h", title: "Slaap", unit: "u", color: DOMAIN.sleep, type: "bar", dec: 1, goal: g.sleep_h },
     { key: "resting_hr", title: "Rusthartslag", unit: "bpm", color: DOMAIN.heart, type: "line", zero: false },
     { key: "hrv_ms", title: "HRV", unit: "ms", color: DOMAIN.heart, type: "line", zero: false },
-    { key: "weight_kg", title: "Gewicht", unit: "kg", color: DOMAIN.heart, type: "line", zero: false, dec: 1 },
+    { key: "weight_kg", title: "Gewicht (trend)", unit: "kg", color: DOMAIN.heart, type: "line", zero: false, dec: 1, trend: true },
     { key: "kcal_in", title: "Calorieën gegeten", unit: "kcal", color: DOMAIN.fuel, type: "bar", goal: g.kcal_in },
     { key: "protein_g", title: "Eiwit", unit: "g", color: DOMAIN.fuel, type: "bar", goal: g.protein_g },
     { key: "strength_volume_kg", title: "Krachtvolume per week", unit: "kg", color: DOMAIN.strength, type: "bar", forceWeek: true, how: "sum" },
@@ -828,6 +871,7 @@ async function renderTrends() {
     <div class="seg" role="group" aria-label="Periode">
       ${[30, 90, 365].map((n) => `<button data-d="${n}" aria-pressed="${n === days}">${n === 365 ? "1 jaar" : n + " dagen"}</button>`).join("")}
     </div>
+    ${energyPanel(energy)}
     ${charts.map((c, i) => `<section class="panel">
         <div class="chart-head"><h3>${esc(c.title)}</h3><span class="now" id="avg${i}"></span></div>
         <div id="ch${i}"></div>
@@ -837,7 +881,10 @@ async function renderTrends() {
 
   charts.forEach((c, i) => {
     const week = byWeek || c.forceWeek;
-    const pts = week ? weekly(rows, c.key, c.how || "avg") : rows.map((r) => ({ x: r.day, y: r[c.key] }));
+    const pts = c.trend && !byWeek
+      ? rows.map((r) => ({ x: r.day, y: trendBy[r.day] ?? null, dot: r.weight_kg,
+          tip2: r.weight_kg != null ? `gewogen ${fmt(r.weight_kg, 1)} kg` : "" }))
+      : week ? weekly(rows, c.key, c.how || "avg") : rows.map((r) => ({ x: r.day, y: r[c.key] }));
     const vals = rows.map((r) => num(r[c.key])).filter((v) => v !== null);
     if (vals.length) {
       const avg = c.how === "sum"
@@ -851,6 +898,32 @@ async function renderTrends() {
       zero: c.zero ?? true, fmtY: c.key === "sleep_h" ? (v) => nf1.format(v) : undefined,
     });
   });
+}
+
+// Energiebalans: echt onderhoud uit inname + gewichtstrend
+function energyPanel(e) {
+  const est = e?.estimate;
+  if (!est) return "";
+  const signed = (v, dec = 2) => (v > 0 ? "+" : v < 0 ? "−" : "") + fmt(Math.abs(v), dec);
+  if (est.maintenance_kcal == null) {
+    return `<section class="panel energy" style="--c:${DOMAIN.fuel}">
+      <h3>Energiebalans</h3>
+      <p class="hint" style="margin:4px 0 0">Nog niet te berekenen. ${esc(est.note)}</p>
+      <p class="small muted" style="margin:6px 0 0">Nodig over 28 dagen: voeding op minstens 14 dagen en een paar wegingen per week. Dan berekent de app je echte onderhoud uit wat je eet en hoe je gewicht evolueert.</p>
+    </section>`;
+  }
+  const conf = { hoog: "betrouwbaar", redelijk: "redelijk", laag: "ruwe schatting" }[est.confidence] || est.confidence;
+  return `<section class="panel energy" style="--c:${DOMAIN.fuel}">
+      <div class="chart-head"><h3>Je onderhoud</h3><span class="pill ${esc(est.confidence)}">${esc(conf)}</span></div>
+      <div class="hero-num" style="font-size:52px;margin-top:2px">${fmt(est.maintenance_kcal)}<small>kcal/dag</small></div>
+      <div class="egrid">
+        <div><b>${fmt(est.avg_intake_kcal)}</b><span>gem. gegeten</span></div>
+        <div><b>${signed(est.weekly_change_kg)}</b><span>kg/week (trend)</span></div>
+        ${est.device_estimate_kcal ? `<div><b>${fmt(est.device_estimate_kcal)}</b><span>schatting horloge</span></div>` : ""}
+      </div>
+      ${e.goal_kcal && e.expected_weekly_change_kg != null ? `<p class="small" style="margin:10px 0 0">Met je doel van ${fmt(e.goal_kcal)} kcal verwacht je <b>${signed(e.expected_weekly_change_kg)} kg per week</b>.</p>` : ""}
+      <p class="small muted" style="margin:6px 0 0">Laatste 28 volledige dagen (${esc(shortDate(est.window_start))} – ${esc(shortDate(est.window_end))}): ${est.logged_days} dagen gelogd, ${est.weigh_ins} wegingen. ${esc(est.note)}</p>
+    </section>`;
 }
 
 // ======================================================================

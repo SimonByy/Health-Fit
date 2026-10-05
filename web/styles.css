@@ -443,3 +443,28 @@ select.input.wrest { width: auto; flex: none; min-height: 36px; padding: 4px 8px
 @media (prefers-reduced-motion: reduce) { .rest-fill { transition: none; } }
 .wset .input::placeholder { color: var(--faint); font-weight: 500; opacity: .7; }
 .wex-head > div { min-width: 0; flex: 1; }
+.energy { border-left: 4px solid var(--c); }
+.egrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.egrid b { display: block; font-family: var(--font-num); font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.egrid span { font-size: 12px; color: var(--muted); }
+.pill { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 9px; background: var(--surface-2); color: var(--muted); }
+.pill.hoog { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
+.pill.laag { background: color-mix(in srgb, var(--fuel) 18%, transparent); color: var(--fuel); }
+.fmeal-h { align-items: center; gap: 8px; }
+.fmeal-act { display: flex; align-items: center; gap: 12px; }
+.fmeal-act .linkbtn { font-size: 13px; padding: 2px 0; }
+.shortcut { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 10px; text-align: left; margin-top: 10px;
+  background: var(--surface-2); border: 0; border-radius: 12px; padding: 10px 12px; cursor: pointer; color: var(--ink); }
+.shortcut .k { font-family: var(--font-num); font-size: 20px; font-weight: 600; white-space: nowrap; }
+.shortcut .k small { font-family: var(--font-text); font-size: 12px; color: var(--muted); }
+.wsug { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 4px 0 0; cursor: pointer; color: var(--ink); font-size: 14px; }
+.wsug span { color: var(--muted); }
+.wsug .wsug-r { display: block; font-size: 12px; color: var(--heart); margin-top: 1px; }
+.mv { padding: 8px 0; border-top: 1px solid var(--line); }
+.mv:first-of-type { border-top: 0; }
+.mv-h { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+.mv-bar { position: relative; height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.mv-bar i { position: absolute; top: 0; bottom: 0; display: block; }
+.mv-bar .zone { background: color-mix(in srgb, var(--good) 20%, transparent); }
+.mv-bar .cur { left: 0; background: var(--strength); border-radius: 999px; }
+.mv-bar .avg { width: 2px; background: var(--ink); margin-left: -1px; }

@@ -1,5 +1,5 @@
 // Service worker: app-shell offline, pushmeldingen. Data (Supabase) wordt nooit gecachet.
-const CACHE = "health-hub-v4";
+const CACHE = "health-hub-v5";
 const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/config.js", "/healthimport.js", "/workout.js", "/food.js", "/manifest.webmanifest", "/icons/icon-192.png"];
 
 self.addEventListener("install", (e) => {
