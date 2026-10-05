@@ -27,6 +27,8 @@ PWA (Vercel, map /web) ──── RPC-functies (alleen eigenaar) ────�
 | `supabase/functions/sync-hevy` | Supabase | Haalt Hevy-trainingen op (incrementeel, via events) |
 | `supabase/functions/ask` | Supabase | AI-chat met Claude (data bevragen, routines maken, metingen loggen) + weekoverzicht |
 | `supabase/functions/notify` | Supabase | Pushmeldingen voor routines (pg_cron elke 5 min) |
+| `supabase/functions/rest-timer` | Supabase | Pushmelding als je rust tussen sets voorbij is (ook met scherm uit) |
+| `supabase/functions/food` | Supabase | Zoeken en barcodes opzoeken in Open Food Facts |
 
 ### Beveiliging
 
@@ -56,7 +58,9 @@ PWA (Vercel, map /web) ──── RPC-functies (alleen eigenaar) ────�
 - **Vandaag:** beweging, training van vandaag, voeding, water (+500 ml-knop), cafeïne (+50 mg-knop), herstel, gewicht loggen, dagboek en het weekoverzicht van de AI.
 - **Dagboek:** inspreken (spraakherkenning in Safari) of typen; de AI kan het lezen.
 - **Routines:** terugkerende pushmeldingen; standaard staat "Weekoverzicht" op maandag 08:00.
-- **Doelen:** aanpasbaar in Instellingen (stappen, actieve kcal, slaap, kcal, eiwit, water, cafeïne-max).
+- **Krachttraining loggen (zoals Hevy):** Training → *Lege training starten*, een schema, of een recente training herhalen. Per set: type (opwarm/normaal/falen/dropset), "Vorige" waarden (tik om over te nemen), kg en reps; afvinken start de rusttimer (−15/+15/overslaan) met geluid in de app én een pushmelding als je telefoon vergrendeld is. 🏆 bij een nieuw record (geschatte 1RM), records-overzicht na afronden, training bewaren als schema. Een lopende training blijft bewaard als je de app sluit. Cardio blijft binnenkomen via Garmin → Apple Health.
+- **Voeding loggen:** Voeding → *+ Voeding toevoegen*: zoeken in je eigen producten en in **Open Food Facts** (gratis, open databank met miljoenen producten, sterk in België/Nederland), **barcode scannen** met de camera (of een foto/code typen), portie kiezen, per maaltijd. Niet gevonden → eigen product met etiketwaarden (wordt onthouden), of snel kcal/macro's invoeren. Telt mee in dashboard, trends en AI.
+- **Doelen:** aanpasbaar in Instellingen (stappen, actieve kcal, slaap, kcal, eiwit, koolhydraten, vet, vezels, water, cafeïne-max).
 
 ## Wearables (Garmin, Apple Watch, Fitbit)
 

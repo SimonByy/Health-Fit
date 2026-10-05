@@ -104,6 +104,11 @@ function showError(err) {
   view.innerHTML = `<div class="empty"><strong>Er ging iets mis</strong>${esc(err.message || err)}</div>`;
 }
 
+// Gedeelde helpers voor de modules training (workout.js) en voeding (food.js)
+const ctx = { rpc, invoke, toast, fmt, esc, view };
+const workoutMod = () => import("./workout.js");
+const foodMod = () => import("./food.js");
+
 const DOMAIN = {
   move: "var(--move)", sleep: "var(--sleep)", fuel: "var(--fuel)", strength: "var(--strength)", heart: "var(--heart)",
 };
@@ -233,8 +238,8 @@ function drawChart(el, { points, color, type = "bar", unit = "", dec = 0, goal =
 // Router
 // ======================================================================
 const state = { day: today(), nutDay: today(), trendDays: 30, trainTab: "workouts", conversation: null };
-const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek" };
-const ACCENT = { dagboek: "--sleep", vandaag: "--move", training: "--strength", voeding: "--fuel", trends: "--heart", vraag: "--sleep" };
+const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training" };
+const ACCENT = { workout: "--strength", dagboek: "--sleep", vandaag: "--move", training: "--strength", voeding: "--fuel", trends: "--heart", vraag: "--sleep" };
 
 async function route() {
   let [name, param] = (location.hash.replace(/^#\/?/, "") || "vandaag").split("/");
@@ -242,13 +247,14 @@ async function route() {
   const fn = ROUTES[name] || ROUTES.vandaag;
   $("#title").textContent = TITLES[name] || "Vandaag";
   document.querySelectorAll(".tabbar a").forEach((a) => {
-    if (a.dataset.tab === name) {
+    if (a.dataset.tab === (name === "workout" ? "training" : name)) {
       a.setAttribute("aria-current", "page");
       a.style.setProperty("--accent", `var(${ACCENT[name]})`);
     } else a.removeAttribute("aria-current");
   });
   document.body.dataset.route = name;
   $(".composer")?.remove();
+  document.querySelectorAll(".sheet").forEach((el) => (el._close ? el._close() : el.remove()));
   view.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
   window.scrollTo(0, 0);
   try {
@@ -362,6 +368,8 @@ async function renderToday() {
   const caff = num(t.caffeine_mg) || 0;
   const acts = d.day_activities || [];
   const ins = d.insight;
+  let activeWorkout = null;
+  try { activeWorkout = JSON.parse(localStorage.getItem("hh_active_workout") || "null"); } catch { /* */ }
 
   view.innerHTML = `
     <div class="daynav">
@@ -385,13 +393,16 @@ async function renderToday() {
         <h2>Training ${isToday ? "vandaag" : "deze dag"}</h2>
         ${acts.length ? `<div class="list flat" id="dayActs">${acts.map(activityItem).join("")}</div>`
           : `<p class="muted small" style="margin:6px 0 12px">Rustdag, nog geen training ${isToday ? "vandaag" : ""} geregistreerd.</p>`}
+        ${isToday ? `<a class="btn secondary" href="#/training" style="display:inline-block;text-decoration:none;margin-bottom:12px">${activeWorkout ? "Training hervatten" : "Training starten"}</a>` : ""}
       </section>
 
       <section class="domain" style="--c:${DOMAIN.fuel}">
         <h2>Voeding</h2>
         ${statRow({ name: "Calorieën", value: t.kcal_in, unit: "kcal", goal: g.kcal_in, avg: a.kcal_in, color: DOMAIN.fuel })}
         ${statRow({ name: "Eiwit", value: t.protein_g, unit: "g", goal: g.protein_g, avg: a.protein_g, color: DOMAIN.fuel })}
-        ${t.kcal_in != null ? `<div class="sub muted small" style="margin:-4px 0 10px">Koolhydraten ${fmt(t.carbs_g)} g · Vet ${fmt(t.fat_g)} g</div>` : ""}
+        ${statRow({ name: "Koolhydraten", value: t.carbs_g, unit: "g", goal: g.carbs_g, avg: a.carbs_g, color: DOMAIN.fuel })}
+        ${statRow({ name: "Vet", value: t.fat_g, unit: "g", goal: g.fat_g, avg: a.fat_g, color: DOMAIN.fuel })}
+        <button class="btn secondary" id="addFood" style="margin:4px 0 12px">+ Voeding toevoegen</button>
       </section>
 
       <section class="domain" style="--c:${DOMAIN.heart}">
@@ -451,6 +462,7 @@ async function renderToday() {
   $("#addWater")?.addEventListener("click", () => quickLog("dietary_water", 500, "500 ml water gelogd", reload));
   $("#addCaff")?.addEventListener("click", () => quickLog("dietary_caffeine", 50, "50 mg cafeïne gelogd", reload));
   $("#logWeight")?.addEventListener("click", () => openWeightForm(d.last_weight?.kg));
+  $("#addFood").onclick = async () => (await foodMod()).openAddFood(ctx, { day: state.day, after: reload });
   $("#insDet")?.addEventListener("toggle", (e) => { if (e.target.open && !ins.read_at) rpc("mark_insight_read", { p_id: ins.id }).catch(() => {}); });
   if (ins && !ins.read_at && isToday) rpc("mark_insight_read", { p_id: ins.id }).catch(() => {});
   if (state.openWeight) { state.openWeight = false; openWeightForm(d.last_weight?.kg); }
@@ -498,7 +510,9 @@ async function renderTraining() {
       </div>
       <label class="btn ghost" style="margin-bottom:14px;cursor:pointer">Hevy importeren<input type="file" id="hevyCsv" accept=".csv,text/csv" hidden></label>
     </div>
+    <div id="wstart"></div>
     <div id="tcontent"><div class="skeleton"></div></div>`;
+  renderWorkoutStart($("#wstart"));
   view.querySelectorAll(".seg button").forEach((b) => (b.onclick = () => { state.trainTab = b.dataset.t; renderTraining(); }));
   $("#hevyCsv").onchange = (e) => importHevyFile(e.target.files?.[0], renderTraining);
   const box = $("#tcontent");
@@ -542,6 +556,39 @@ async function renderTraining() {
       });
     });
   }
+}
+
+// ---------- Training starten: leeg, schema of herhalen ----------
+async function renderWorkoutStart(box) {
+  const W = await workoutMod();
+  const active = W.activeWorkout();
+  if (active) {
+    box.innerHTML = `<section class="panel wstart" style="--c:${DOMAIN.strength}">
+      <h3>${esc(active.title)} loopt</h3>
+      <p class="hint">Gestart om ${new Date(active.start).toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" })} · ${active.exercises.length} oefeningen</p>
+      <a class="btn" href="#/workout" style="display:inline-block;text-decoration:none">Training hervatten</a></section>`;
+    return;
+  }
+  const [tpls, last] = await Promise.all([rpc("get_templates").catch(() => []), rpc("get_activities", { p_limit: 15, p_offset: 0 }).catch(() => [])]);
+  const lastStrength = last.filter((a) => a.kind === "strength").slice(0, 3);
+  box.innerHTML = `<section class="panel wstart" style="--c:${DOMAIN.strength}">
+      <button class="btn" id="wEmpty" style="width:100%">Lege training starten</button>
+      <div class="sub-h" style="display:flex;justify-content:space-between;align-items:center">Schema's <button class="linkbtn" id="tplNew">+ Nieuw schema</button></div>
+      ${tpls.length ? tpls.map((t, i) => `<div class="tpl" data-i="${i}">
+          <button class="tpl-main" data-act="start"><b>${esc(t.name)}</b><span class="small muted">${esc((t.exercises || []).map((e) => e.title).slice(0, 4).join(", "))}${t.exercises?.length > 4 ? "…" : ""}</span></button>
+          <button class="icon-btn" data-act="edit" aria-label="${esc(t.name)} bewerken">✎</button></div>`).join("")
+        : `<p class="muted small" style="margin:4px 0">Nog geen schema's. Maak er een, of bewaar een training als schema na het afronden.</p>`}
+      ${lastStrength.length ? `<div class="sub-h">Herhaal een recente training</div><div class="chips">${lastStrength.map((a) =>
+        `<button class="chip" data-repeat="${esc(a.id)}">${esc(a.title || "Training")} · ${esc(shortDate(a.day))}</button>`).join("")}</div>` : ""}
+    </section>`;
+  $("#wEmpty").onclick = () => W.startWorkout(ctx);
+  $("#tplNew").onclick = () => W.editTemplate(ctx, null, renderTraining);
+  box.querySelectorAll(".tpl").forEach((row) => {
+    const t = tpls[Number(row.dataset.i)];
+    row.querySelector('[data-act="start"]').onclick = () => W.startWorkout(ctx, { template: t });
+    row.querySelector('[data-act="edit"]').onclick = () => W.editTemplate(ctx, t, renderTraining);
+  });
+  box.querySelectorAll("[data-repeat]").forEach((b) => (b.onclick = () => W.startWorkout(ctx, { repeatOf: b.dataset.repeat })));
 }
 
 // ---------- Hevy CSV-import (werkt zonder Hevy Pro) ----------
@@ -675,11 +722,14 @@ async function renderNutrition() {
   const by = Object.fromEntries((d.nutrients || []).map((n) => [n.metric, n]));
   const g = d.goals || {};
   const kcal = num(by.dietary_energy?.value);
-  const p = num(by.protein?.value), c = num(by.carbohydrates?.value), f = num(by.total_fat?.value);
-  const macroK = (p || 0) * 4 + (c || 0) * 4 + (f || 0) * 9;
-  const pct = (v, k) => (macroK > 0 && v != null ? `${Math.round((v * k / macroK) * 100)}% van kcal` : "");
+  const p = num(by.protein?.value), c = num(by.carbohydrates?.value), f = num(by.total_fat?.value), fib = num(by.fiber?.value);
   const isToday = state.nutDay === today();
   const micros = (d.nutrients || []).filter((n) => !["dietary_energy", "protein", "carbohydrates", "total_fat"].includes(n.metric));
+  const macro = (label, v, goal) => `<div class="macro">
+      <div class="v">${fmt(v)}<small> g</small></div>
+      <div class="l">${label}${goal ? ` / ${fmt(goal)}` : ""}</div>
+      ${goal ? `<div class="bar" style="--c:${DOMAIN.fuel}"><i style="width:${Math.min(100, ((v || 0) / goal) * 100)}%"></i></div>` : ""}
+    </div>`;
 
   view.innerHTML = `
     <div class="daynav">
@@ -687,27 +737,28 @@ async function renderNutrition() {
       <span class="label">${esc(isToday ? "Vandaag, " + dayLabel(state.nutDay, { day: "numeric", month: "long" }) : dayLabel(state.nutDay))}</span>
       <button id="next" aria-label="Volgende dag" ${isToday ? "disabled" : ""}>›</button>
     </div>
-    ${kcal === null ? `<div class="empty"><strong>Niets gelogd op deze dag.</strong>Voeding komt binnen via Apple Health (uit je voedings-app) bij de volgende export.</div>` : `
     <section class="domain" style="--c:${DOMAIN.fuel};padding-bottom:16px">
       <h2>Calorieën</h2>
-      <div class="hero-num">${fmt(kcal)}<small>kcal</small></div>
-      ${g.kcal_in ? `<div class="bar" style="--c:${DOMAIN.fuel}"><i style="width:${Math.min(100, (kcal / g.kcal_in) * 100)}%"></i></div>
-      <div class="small muted" style="margin-top:6px">${Math.round((kcal / g.kcal_in) * 100)}% van je doel van ${fmt(g.kcal_in)} kcal</div>` : ""}
-      <div class="macros">
-        <div class="macro"><div class="v">${fmt(p)}<small> g</small></div><div class="l">Eiwit${g.protein_g ? ` / ${fmt(g.protein_g)}` : ""}<br>${pct(p, 4)}</div></div>
-        <div class="macro"><div class="v">${fmt(c)}<small> g</small></div><div class="l">Koolhydraten<br>${pct(c, 4)}</div></div>
-        <div class="macro"><div class="v">${fmt(f)}<small> g</small></div><div class="l">Vet<br>${pct(f, 9)}</div></div>
+      <div class="hero-num">${fmt(kcal ?? 0)}<small>${g.kcal_in ? `/ ${fmt(g.kcal_in)} ` : ""}kcal</small></div>
+      ${g.kcal_in ? `<div class="bar" style="--c:${DOMAIN.fuel}"><i style="width:${Math.min(100, ((kcal || 0) / g.kcal_in) * 100)}%"></i></div>
+      <div class="small muted" style="margin-top:6px">${kcal != null && kcal < g.kcal_in ? `Nog ${fmt(g.kcal_in - kcal)} kcal over` : kcal != null ? `${fmt(kcal - g.kcal_in)} kcal boven je doel` : "Nog niets gelogd"}</div>` : ""}
+      <div class="macros" style="grid-template-columns:repeat(4,1fr)">
+        ${macro("Eiwit", p, g.protein_g)}${macro("Koolh.", c, g.carbs_g)}${macro("Vet", f, g.fat_g)}${macro("Vezels", fib, g.fiber_g)}
       </div>
     </section>
+    <button class="btn" id="addFood" style="width:100%;margin:2px 0 12px">+ Voeding toevoegen</button>
 
-    <h2 class="section-title">Per moment</h2>
+    <h2 class="section-title">Gelogd in Health Hub</h2>
+    <div class="panel" id="foodLog"><div class="skeleton" style="height:40px"></div></div>
+
+    ${kcal !== null ? `<h2 class="section-title">Per moment (alle bronnen)</h2>
     <div class="panel">
       ${(d.meals || []).map((m) => `<div class="meal">
           <span><b>${esc(m.meal)}</b> <span class="muted small">vanaf ${String(m.first_hour).padStart(2, "0")}u</span></span>
           <span class="k">${fmt(m.kcal)} <span class="muted small">kcal</span></span>
           <span class="p">Eiwit ${fmt(m.protein_g)} g · Koolh. ${fmt(m.carbs_g)} g · Vet ${fmt(m.fat_g)} g</span>
         </div>`).join("") || `<p class="muted small">Geen tijdsinfo beschikbaar.</p>`}
-      <p class="muted small" style="margin:8px 0 0">Moment afgeleid uit het uur van loggen (Apple Health bewaart geen maaltijdnamen).</p>
+      <p class="muted small" style="margin:8px 0 0">Bevat ook voeding uit Apple Health; moment afgeleid uit het uur van loggen.</p>
     </div>
 
     <h2 class="section-title">Alle voedingsstoffen</h2>
@@ -716,10 +767,13 @@ async function renderNutrition() {
         <summary>${micros.length} gelogde waarden</summary>
         <table class="nutrients">${micros.map((n) => `<tr><td>${esc(n.label)}</td><td>${fmt(n.value, n.value < 10 ? 1 : 0)} ${esc(n.unit || "")}</td></tr>`).join("")}</table>
       </details>
-    </div>`}
+    </div>` : ""}
   `;
   $("#prev").onclick = () => { state.nutDay = addDays(state.nutDay, -1); renderNutrition(); };
   $("#next").onclick = () => { if (!isToday) { state.nutDay = addDays(state.nutDay, 1); renderNutrition(); } };
+  const F = await foodMod();
+  $("#addFood").onclick = () => F.openAddFood(ctx, { day: state.nutDay, after: renderNutrition });
+  await F.renderFoodLog(ctx, state.nutDay, $("#foodLog"), renderNutrition);
 }
 
 // ======================================================================
@@ -1117,7 +1171,7 @@ async function renderSettings() {
     <section class="panel">
       <h3>Doelen</h3>
       <div class="goals">
-        ${[["steps", "Stappen per dag"], ["active_kcal", "Actieve kcal"], ["sleep_h", "Slaap (uren)"], ["kcal_in", "Calorieën (kcal)"], ["protein_g", "Eiwit (g)"], ["water_ml", "Water (ml)"], ["caffeine_mg", "Cafeïne max (mg)"]]
+        ${[["steps", "Stappen per dag"], ["active_kcal", "Actieve kcal"], ["sleep_h", "Slaap (uren)"], ["kcal_in", "Calorieën (kcal)"], ["protein_g", "Eiwit (g)"], ["carbs_g", "Koolhydraten (g)"], ["fat_g", "Vet (g)"], ["fiber_g", "Vezels (g)"], ["water_ml", "Water (ml)"], ["caffeine_mg", "Cafeïne max (mg)"]]
           .map(([k, l]) => `<div class="field"><label for="g_${k}">${l}</label><input class="input" inputmode="decimal" id="g_${k}" value="${esc(goals[k] ?? "")}"></div>`).join("")}
       </div>
       <button class="btn" id="saveGoals">Doelen opslaan</button>
@@ -1288,7 +1342,7 @@ async function renderSettings() {
   $("#model").onchange = async (e) => { await rpc("set_setting", { p_key: "ai_model", p_value: e.target.value }); toast("Model opgeslagen"); };
   $("#saveGoals").onclick = async () => {
     const out = {};
-    for (const k of ["steps", "active_kcal", "sleep_h", "kcal_in", "protein_g", "water_ml", "caffeine_mg"]) {
+    for (const k of ["steps", "active_kcal", "sleep_h", "kcal_in", "protein_g", "carbs_g", "fat_g", "fiber_g", "water_ml", "caffeine_mg"]) {
       const v = num(String($("#g_" + k).value).replace(",", "."));
       if (v !== null) out[k] = v;
     }
@@ -1357,6 +1411,7 @@ const ROUTES = {
   vraag: renderAsk,
   instellingen: renderSettings,
   dagboek: renderJournal,
+  workout: async () => (await workoutMod()).renderWorkout(ctx),
 };
 
 async function boot() {
