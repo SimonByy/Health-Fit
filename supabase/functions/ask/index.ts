@@ -82,11 +82,11 @@ const TOOLS = [
   },
   {
     name: "log_measurement",
-    description: "Log een meting die Simon vertelt: gewicht (kg), vetpercentage (%), water (mL) of cafeïne (mg). Alleen als hij dat expliciet zegt.",
+    description: "Log een meting die Simon vertelt: gewicht (kg), vetpercentage (%), water (mL), cafeïne (mg) of een lichaamsomtrek in cm (taille, borst, bovenarm, dij, heup). Alleen als hij dat expliciet zegt.",
     input_schema: {
       type: "object",
       properties: {
-        metric: { type: "string", enum: ["weight_body_mass", "body_fat_percentage", "dietary_water", "dietary_caffeine"] },
+        metric: { type: "string", enum: ["weight_body_mass", "body_fat_percentage", "dietary_water", "dietary_caffeine", "waist_circumference", "chest_circumference", "arm_circumference", "thigh_circumference", "hip_circumference"] },
         value: { type: "number" },
         timestamp: { type: "string", description: "Optioneel ISO-tijdstip; standaard nu." },
       },
@@ -104,7 +104,7 @@ function systemPrompt(schema: string) {
 
 Nu: ${today} (${iso}), ${time}, tijdzone Europe/Brussels.
 
-DATABRONNEN: Apple Health (inclusief data van zijn wearable, nu een Garmin: stappen, hartslag, HRV, slaap, workouts), voeding via Apple Health (alleen calorieën en macro's), zelf gelogd water/cafeïne/gewicht, Hevy-krachttraining (per set, indien geïmporteerd) en zijn dagboek (ai.journal).
+DATABRONNEN: Apple Health (inclusief data van zijn wearable, nu een Garmin: stappen, hartslag, HRV, slaap, workouts), voeding (via Apple Health en in de app gelogd per maaltijd: ai.daily_summary / ai.nutrition_by_meal), zelf gelogd water/cafeïne/gewicht/lichaamsmaten (ai.body_measurements), krachttraining per set (Hevy-import en in de app gelogd: ai.strength_sets, ai.muscle_sets_weekly), gewichtstrend en echt onderhoud (ai.weight_trend, ai.energy_balance), gewoontes/supplementen (ai.habits_daily) en zijn dagboek (ai.journal).
 
 WERKWIJZE
 - Gebruik run_sql om echte cijfers op te halen voor je antwoordt. Verzin nooit getallen.
@@ -114,6 +114,7 @@ WERKWIJZE
 - Geef concrete getallen met eenheid; vergelijk met gemiddelde of trend als dat helpt.
 - Correlatie is geen oorzaak; wees eerlijk over onzekerheid bij weinig datapunten.
 - Je bent geen arts: bij medisch klinkende vragen geef je de data en raad je een professional aan.
+- Gewicht: gebruik trend_kg (ai.weight_trend) voor veranderingen, niet losse wegingen. Vragen over onderhoud/TDEE/hoeveel eten: ai.energy_balance.
 - Routines: vraagt Simon om een herinnering/melding, maak die met create_routine en bevestig dag(en) en uur. Wijzigen/stoppen via list_routines + update_routine.
 - Opmaak: korte alinea's of een kleine lijst/tabel in Markdown. Geen SQL tonen tenzij gevraagd.
 

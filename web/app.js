@@ -105,9 +105,15 @@ function showError(err) {
 }
 
 // Gedeelde helpers voor de modules training (workout.js) en voeding (food.js)
-const ctx = { rpc, invoke, toast, fmt, esc, view };
+const ctx = { rpc, invoke, toast, fmt, esc, view, today, addDays, shortDate, mountChart };
 const workoutMod = () => import("./workout.js");
 const foodMod = () => import("./food.js");
+const moreMod = () => import("./more.js");
+// Datumknop in de dagnavigatie: opent de agenda
+const calBtn = (label) => `<button class="label calbtn" id="calBtn" aria-label="Kies een dag in de agenda"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 7h16v13H4zM4 11h16M8 3v4M16 3v4"/></svg>${esc(label)}</button>`;
+async function bindCal(current, onPick) {
+  $("#calBtn")?.addEventListener("click", async () => (await moreMod()).openCalendar(ctx, { current, onPick }));
+}
 
 const DOMAIN = {
   move: "var(--move)", sleep: "var(--sleep)", fuel: "var(--fuel)", strength: "var(--strength)", heart: "var(--heart)",
@@ -367,7 +373,7 @@ function bindActivityList(root) {
 }
 
 async function renderToday() {
-  const d = await rpc("get_dashboard", { p_day: state.day });
+  const [d, meas] = await Promise.all([rpc("get_dashboard", { p_day: state.day }), rpc("get_measurements").catch(() => ({}))]);
   const t = d.today || {};
   const a = d.avg7 || {};
   const g = d.goals || {};
@@ -383,7 +389,7 @@ async function renderToday() {
   view.innerHTML = `
     <div class="daynav">
       <button id="prev" aria-label="Vorige dag">‹</button>
-      <span class="label">${esc(dayLabel(state.day))}</span>
+      ${calBtn(dayLabel(state.day))}
       <button id="next" aria-label="Volgende dag" ${isToday ? "disabled" : ""}>›</button>
     </div>
     ${nothing ? onboardingCard() : ""}
@@ -434,6 +440,11 @@ async function renderToday() {
         </div>
       </section>
 
+      <section class="domain" style="--c:${DOMAIN.move}">
+        <h2>Gewoontes</h2>
+        <div id="habitBox"></div>
+      </section>
+
       <section class="domain" style="--c:${DOMAIN.sleep}">
         <h2>Herstel</h2>
         ${statRow({ name: "Slaap", value: t.sleep_h, display: t.sleep_h == null ? null : hours(t.sleep_h), goal: g.sleep_h, avg: a.sleep_h, color: DOMAIN.sleep })}
@@ -448,7 +459,8 @@ async function renderToday() {
           name: t.weight_kg != null ? "Gewicht" : `Gewicht${d.last_weight ? ` (${shortDate(d.last_weight.day)})` : ""}`,
           value: t.weight_kg ?? d.last_weight?.kg, unit: "kg", dec: 1, color: DOMAIN.move,
         })}
-        <div id="weightBox">${isToday ? `<button class="btn secondary" id="logWeight" style="margin:4px 0 12px">Gewicht loggen</button>` : ""}</div>
+        ${meas.waist_circumference ? `<div class="sub muted small" style="margin:-4px 0 8px">Taille ${fmt(meas.waist_circumference.points.at(-1).value, 1)} cm (${esc(shortDate(meas.waist_circumference.points.at(-1).day))})${meas.body_fat_percentage ? ` · vet ${fmt(meas.body_fat_percentage.points.at(-1).value, 1)}%` : ""}</div>` : ""}
+        <div id="weightBox">${isToday ? `<div class="row" style="margin:4px 0 12px"><button class="btn secondary" id="logWeight">Gewicht loggen</button><button class="btn ghost" id="logMeas">Alle maten</button></div>` : ""}</div>
       </section>
 
       <section class="domain" style="--c:${DOMAIN.sleep}">
@@ -465,6 +477,10 @@ async function renderToday() {
     </p>`;
 
   const reload = () => renderToday();
+  bindCal(state.day, (d) => { state.day = d; renderToday(); });
+  moreMod().then((M) => M.renderHabits(ctx, state.day, $("#habitBox"))).catch(() => {});
+  $("#logMeas")?.addEventListener("click", async () => (await moreMod()).openMeasurements(ctx, {
+    last: { weight_body_mass: d.last_weight?.kg, ...Object.fromEntries(Object.entries(meas).map(([k, v]) => [k, v.points.at(-1)?.value])) }, after: reload }));
   $("#prev").onclick = () => { state.day = addDays(state.day, -1); renderToday(); };
   $("#next").onclick = () => { if (!isToday) { state.day = addDays(state.day, 1); renderToday(); } };
   if ($("#dayActs")) bindActivityList($("#dayActs"));
@@ -774,7 +790,7 @@ async function renderNutrition() {
   view.innerHTML = `
     <div class="daynav">
       <button id="prev" aria-label="Vorige dag">‹</button>
-      <span class="label">${esc(isToday ? "Vandaag, " + dayLabel(state.nutDay, { day: "numeric", month: "long" }) : dayLabel(state.nutDay))}</span>
+      ${calBtn(isToday ? "Vandaag, " + dayLabel(state.nutDay, { day: "numeric", month: "long" }) : dayLabel(state.nutDay))}
       <button id="next" aria-label="Volgende dag" ${isToday ? "disabled" : ""}>›</button>
     </div>
     <section class="domain" style="--c:${DOMAIN.fuel};padding-bottom:16px">
@@ -790,6 +806,9 @@ async function renderNutrition() {
 
     <h2 class="section-title">Gelogd in Health Hub</h2>
     <div class="panel" id="foodLog"><div class="skeleton" style="height:40px"></div></div>
+
+    <div class="row" style="justify-content:space-between;align-items:baseline"><h2 class="section-title">Mijn recepten</h2><button class="linkbtn" id="newRecipe">+ Nieuw recept</button></div>
+    <div class="panel" id="recipes"><div class="skeleton" style="height:30px"></div></div>
 
     ${kcal !== null ? `<h2 class="section-title">Per moment (alle bronnen)</h2>
     <div class="panel">
@@ -811,9 +830,11 @@ async function renderNutrition() {
   `;
   $("#prev").onclick = () => { state.nutDay = addDays(state.nutDay, -1); renderNutrition(); };
   $("#next").onclick = () => { if (!isToday) { state.nutDay = addDays(state.nutDay, 1); renderNutrition(); } };
+  bindCal(state.nutDay, (dd) => { state.nutDay = dd; renderNutrition(); });
   const F = await foodMod();
   $("#addFood").onclick = () => F.openAddFood(ctx, { day: state.nutDay, after: renderNutrition });
-  await F.renderFoodLog(ctx, state.nutDay, $("#foodLog"), renderNutrition);
+  $("#newRecipe").onclick = () => F.openAddFood(ctx, { day: state.nutDay, after: renderNutrition, start: "recipe" });
+  await Promise.all([F.renderFoodLog(ctx, state.nutDay, $("#foodLog"), renderNutrition), F.renderRecipes(ctx, state.nutDay, $("#recipes"), renderNutrition)]);
 }
 
 // ======================================================================
@@ -848,8 +869,9 @@ async function renderTrends() {
   const days = state.trendDays;
   const to = today();
   const from = addDays(to, -(days - 1));
-  const [range, dash, energy] = await Promise.all([
-    rpc("get_range", { p_from: from, p_to: to }), rpc("get_dashboard", { p_day: to }), rpc("get_energy", { p_days: 28 }).catch(() => null)]);
+  const [range, dash, energy, meas] = await Promise.all([
+    rpc("get_range", { p_from: from, p_to: to }), rpc("get_dashboard", { p_day: to }), rpc("get_energy", { p_days: 28 }).catch(() => null),
+    rpc("get_measurements").catch(() => ({}))]);
   const rows = fillDays(range, from, to);
   const g = dash.goals || {};
   const trendBy = Object.fromEntries((energy?.series || []).map((r) => [r.day, r.trend]));
@@ -876,6 +898,7 @@ async function renderTrends() {
         <div class="chart-head"><h3>${esc(c.title)}</h3><span class="now" id="avg${i}"></span></div>
         <div id="ch${i}"></div>
       </section>`).join("")}
+    <div id="measCharts"></div>
     <p class="muted small">${byWeek ? "Bij 1 jaar tonen de grafieken weekgemiddelden." : "Tik of beweeg over een grafiek voor de exacte waarde."}</p>`;
   view.querySelectorAll(".seg button").forEach((b) => (b.onclick = () => { state.trendDays = Number(b.dataset.d); renderTrends(); }));
 
@@ -898,6 +921,18 @@ async function renderTrends() {
       zero: c.zero ?? true, fmtY: c.key === "sleep_h" ? (v) => nf1.format(v) : undefined,
     });
   });
+
+  // lichaamsmaten (alle metingen, niet beperkt tot de gekozen periode)
+  const mlist = Object.entries(meas).filter(([, v]) => v.points?.length);
+  $("#measCharts").innerHTML = mlist.map(([k, v], i) => {
+    const pts = v.points, last = pts.at(-1), first = pts[0];
+    const diff = pts.length > 1 ? last.value - first.value : null;
+    return `<section class="panel"><div class="chart-head"><h3>${esc(v.label)}</h3>
+      <span class="now">${fmt(last.value, 1)}<small>${esc(v.unit)}${diff != null ? ` · ${diff > 0 ? "+" : diff < 0 ? "−" : ""}${fmt(Math.abs(diff), 1)} sinds ${esc(shortDate(first.day))}` : ""}</small></span></div>
+      <div id="mc${i}"></div></section>`;
+  }).join("");
+  mlist.forEach(([, v], i) => mountChart($(`#mc${i}`), {
+    points: v.points.map((p) => ({ x: p.day, y: p.value })), color: DOMAIN.move, type: "line", unit: v.unit, dec: 1, zero: false, height: 120 }));
 }
 
 // Energiebalans: echt onderhoud uit inname + gewichtstrend
@@ -1062,7 +1097,7 @@ async function renderJournal(param) {
   view.innerHTML = `
     <div class="daynav">
       <a class="navbtn" href="#/dagboek/${addDays(day, -1)}" aria-label="Vorige dag">‹</a>
-      <span class="label">${esc(dayLabel(day))}</span>
+      ${calBtn(dayLabel(day))}
       ${isToday ? `<span class="navbtn disabled" aria-hidden="true">›</span>` : `<a class="navbtn" href="#/dagboek/${addDays(day, 1)}" aria-label="Volgende dag">›</a>`}
     </div>
     <section class="panel">
@@ -1081,6 +1116,7 @@ async function renderJournal(param) {
         <span><div class="t">${esc(dayLabel(j.day))}</div><div class="m">${esc(j.content.length > 110 ? j.content.slice(0, 110) + "…" : j.content)}</div></span><span></span>
       </a>`).join("") || `<div class="empty">Nog geen eerdere dagboekmomenten.</div>`}</div>`;
 
+  bindCal(day, (d) => (location.hash = `#/dagboek/${d}`));
   const ta = $("#jt");
   let dirty = false;
   ta.addEventListener("input", () => { dirty = true; $("#jStatus").textContent = "Niet bewaard"; });
@@ -1242,6 +1278,12 @@ async function renderSettings() {
     </section>
 
     <section class="panel">
+      <h3>Gewoontes en supplementen</h3>
+      <p class="hint">Verschijnen op Vandaag om af te vinken, met je reeks. De AI kan ze ook zien.</p>
+      <div id="habitSet"><div class="skeleton" style="height:30px"></div></div>
+    </section>
+
+    <section class="panel">
       <h3>Doelen</h3>
       <div class="goals">
         ${[["steps", "Stappen per dag"], ["active_kcal", "Actieve kcal"], ["sleep_h", "Slaap (uren)"], ["kcal_in", "Calorieën (kcal)"], ["protein_g", "Eiwit (g)"], ["carbs_g", "Koolhydraten (g)"], ["fat_g", "Vet (g)"], ["fiber_g", "Vezels (g)"], ["water_ml", "Water (ml)"], ["caffeine_mg", "Cafeïne max (mg)"]]
@@ -1253,6 +1295,11 @@ async function renderSettings() {
     <section class="panel">
       <h3>Apple Health</h3>
       <p class="hint">Status: ${sync.apple_health?.last_success ? `<span class="ok">laatst ontvangen ${esc(timeAgo(sync.apple_health.last_success))}</span>` : `<span class="warn">nog niets ontvangen</span>`}</p>
+
+      <details class="why"><summary>Waarom kan ik Health Hub niet aanvinken in Gezondheid → Apps?</summary>
+        <p class="small">Dat lijstje bevat alleen <b>echte iPhone-apps</b> (uit de App Store of zelf gebouwd met Xcode op een Mac). Health Hub is een web-app: Apple geeft websites geen toegang tot Gezondheid. Daarom gaat het via de twee gratis routes hieronder: de export (historiek) en een automatisering in Opdrachten (dagelijks). Opdrachten is wél een Apple-app met toegang: die leest je gegevens en stuurt ze door.</p>
+        <p class="small">Alternatieven: een betalende export-app (Health Auto Export), of een eigen mini-iPhone-app. Die laatste vraagt een Mac met Xcode; met een gratis Apple-account moet je ze elke 7 dagen opnieuw installeren, met een ontwikkelaarsaccount (€99/jaar) niet.</p>
+      </details>
 
       <h4 class="sub-h">1. Historiek en workouts: export importeren</h4>
       <p class="small">Gezondheid-app → je profielfoto → <b>Exporteer alle gezondheidsgegevens</b> → bewaar <i>export.zip</i> in Bestanden. Kies het hier. Tip: op een computer gaat het sneller (log daar in op dezelfde site).</p>
@@ -1266,10 +1313,10 @@ async function renderSettings() {
       <div id="ahProg" class="small muted" style="margin-top:8px"></div>
 
       <h4 class="sub-h">2. Elke dag automatisch: iOS Opdrachten (gratis)</h4>
-      <p class="small">Een automatisering in de app <b>Opdrachten</b> stuurt elke avond je dagtotalen. Workouts en slaapfasen komen via de export hierboven.</p>
+      <p class="small">Een automatisering in de app <b>Opdrachten</b> stuurt je dagtotalen van vandaag door, telkens als je een gekozen app opent. Workouts en slaapfasen komen via de export hierboven.</p>
       <details><summary>Stap voor stap instellen</summary>
         <ol class="steps-list">
-          <li>Opdrachten → <b>Automatisering</b> → <b>+</b> → <b>Tijdstip</b>: 23:45, dagelijks, <b>Voer direct uit</b>.</li>
+          <li>Opdrachten → <b>Automatisering</b> → <b>+</b> → <b>App</b> → kies een app die je elke avond opent (bv. WhatsApp) → <b>Is geopend</b> → <b>Voer direct uit</b>. <i>Waarom geen vast tijdstip? Als je iPhone vergrendeld is, kan Opdrachten je gezondheidsgegevens niet lezen. Bij het openen van een app is hij ontgrendeld. Vaker versturen is geen probleem: de dagtotalen worden gewoon bijgewerkt.</i></li>
           <li>Voeg <b>Opmaakdatum</b> toe (Format Date): datum = Huidige datum, notatie <b>Aangepast</b> → <span class="mono">yyyy-MM-dd</span>.</li>
           <li>Per meting in de tabel: actie <b>Zoek gezondheidsstalen</b> (Find Health Samples): type zoals hieronder, <b>Begindatum is vandaag</b>, <b>Groepeer op: Dag</b>. Daarna actie <b>Bereken statistieken</b> (Calculate Statistics) met <b>Som</b> of <b>Gemiddelde</b>.</li>
           <li>Voeg <b>Haal inhoud op van URL</b> (Get Contents of URL) toe: URL hieronder, methode <b>POST</b>, header <span class="mono">Authorization</span> = <span class="mono">Bearer</span> + spatie + token, verzoekbody <b>JSON</b>.</li>
@@ -1338,6 +1385,10 @@ async function renderSettings() {
         <dt>Hevy-trainingen</dt><dd>${fmt(c.hevy_workouts)}</dd>
         <dt>Eerste dag</dt><dd>${c.first_day ? esc(dayLabel(c.first_day, { day: "numeric", month: "short", year: "numeric" })) : "–"}</dd>
       </dl>
+      <div class="row" style="margin-top:12px">
+        <button class="btn secondary" id="exportAll">Back-up downloaden (JSON)</button>
+      </div>
+      <p class="small muted" style="margin:6px 0 0">Alles wat je in de app logde plus je dagtotalen, trainingen en slaap. Bewaar het bv. maandelijks in iCloud Drive: het gratis Supabase-plan maakt geen back-ups die jij kan downloaden.</p>
       <details style="margin-top:12px"><summary>Synclogboek</summary>
         <table class="nutrients">${(s.log || []).map((l) => `<tr><td>${esc(l.source)} <span class="muted small">${esc(timeAgo(l.received_at))}</span></td>
           <td class="small">${l.error ? `<span class="warn">${esc(l.error)}</span>` : esc(Object.entries(l.stats || {}).map(([k, v]) => `${k}: ${v}`).join(", "))}</td></tr>`).join("")}</table>
@@ -1413,6 +1464,10 @@ async function renderSettings() {
   $("#syncNow").onclick = () => syncHevy($("#syncNow"), false, renderSettings);
   $("#syncFull").onclick = () => syncHevy($("#syncFull"), true, renderSettings);
   $("#model").onchange = async (e) => { await rpc("set_setting", { p_key: "ai_model", p_value: e.target.value }); toast("Model opgeslagen"); };
+  moreMod().then((M) => {
+    M.renderHabitSettings(ctx, $("#habitSet"));
+    $("#exportAll").onclick = (e) => M.exportAll(ctx, e.currentTarget);
+  });
   $("#saveGoals").onclick = async () => {
     const out = {};
     for (const k of ["steps", "active_kcal", "sleep_h", "kcal_in", "protein_g", "carbs_g", "fat_g", "fiber_g", "water_ml", "caffeine_mg"]) {

@@ -49,7 +49,8 @@ PWA (Vercel, map /web) ──── RPC-functies (alleen eigenaar) ────�
 5. **Claude (AI):** maak een API-key op <https://console.anthropic.com> (met wat tegoed). In de app: Instellingen → AI → plakken → Opslaan.
 6. **Apple Health (gratis):**
    - **Historiek + workouts:** Gezondheid-app → profielfoto → *Exporteer alle gezondheidsgegevens* → `export.zip`. In de app: Instellingen → Apple Health → periode kiezen → *Export kiezen*. De app leest het bestand in je browser, telt alles per uur op en ontdubbelt bronnen (iPhone + Garmin). Herhaal dit gerust; niets telt dubbel.
-   - **Dagelijks automatisch:** een automatisering in de iOS-app *Opdrachten* stuurt elke avond je dagtotalen naar dezelfde URL (stappen in Instellingen → Apple Health). Komt een dag later via de export binnen, dan vervangt die gedetailleerde data de dagtotalen.
+   - **Dagelijks automatisch:** een automatisering in de iOS-app *Opdrachten* stuurt je dagtotalen naar dezelfde URL telkens je een gekozen app opent (stappen in Instellingen → Apple Health). Geen vast tijdstip gebruiken: met een vergrendelde iPhone kan Opdrachten geen gezondheidsgegevens lezen.
+   - **Waarom niet aanvinken in Gezondheid → Apps?** Dat kan alleen voor echte iPhone-apps (App Store of zelf gebouwd met Xcode op een Mac), niet voor web-apps. Komt een dag later via de export binnen, dan vervangt die gedetailleerde data de dagtotalen.
    - (Betalend alternatief: Health Auto Export Premium met REST API-automatisatie, zelfde URL en header.)
 7. Controleer in Instellingen → Data → Synclogboek of alles binnenkomt.
 
@@ -63,6 +64,11 @@ PWA (Vercel, map /web) ──── RPC-functies (alleen eigenaar) ────�
 - **Energiebalans (Trends):** je *echte* onderhoud, berekend uit wat je at en hoe je gewichtstrend evolueert (laatste 28 volledige dagen, 7700 kcal per kg), met betrouwbaarheid en de verwachte verandering bij je kcal-doel. Gewicht wordt getoond als afgevlakte trendlijn met je losse wegingen als puntjes. Nodig: voeding op minstens 14 van de 28 dagen en een paar wegingen per week.
 - **Sneller voeding loggen:** maaltijd van gisteren in één tik, ★ een maaltijd bewaren als vaste maaltijd ("Mijn ontbijt"), een vorige dag of maaltijd naar vandaag kopiëren, en recepten uit ingrediënten (met porties en gewicht na bereiden).
 - **Progressie:** per oefening een voorstel (🎯) volgens dubbele progressie: herhalingen opbouwen binnen je bereik, daarna zwaarder. Bereik, stap en spiergroep pas je aan per oefening (standaard afgeleid uit je laatste trainingen). Tab *Spiergroepen* toont werksets per spiergroep deze week tegenover je gemiddelde, met de vaak aangeraden zone van 10–20 sets.
+- **Agenda:** tik op de datum (Vandaag, Voeding, Dagboek) voor een maandkalender met stippen per dag (kracht, cardio, voeding, dagboek) en spring naar elke dag.
+- **Gewoontes en supplementen:** dagelijks afvinken op Vandaag met reeks (🔥), beheren in Instellingen.
+- **Lichaamsmaten:** gewicht, vetpercentage, taille, borst, bovenarm, dij, heup (Vandaag → Alle maten), met grafieken in Trends.
+- **Recepten:** Voeding → Mijn recepten (+ Nieuw recept, bewerken, een portie loggen).
+- **Back-up:** Instellingen → Data → Back-up downloaden (JSON).
 - **Doelen:** aanpasbaar in Instellingen (stappen, actieve kcal, slaap, kcal, eiwit, koolhydraten, vet, vezels, water, cafeïne-max).
 
 ## Wearables (Garmin, Apple Watch, Fitbit)

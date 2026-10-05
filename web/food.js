@@ -88,7 +88,32 @@ export async function renderFoodLog(ctx, day, box, after) {
 }
 
 // ---------------- toevoegen ----------------
-export function openAddFood(ctx, { day, meal = mealForNow(), after } = {}) {
+// ---------------- recepten-overzicht ----------------
+export async function renderRecipes(ctx, day, box, after) {
+  C = ctx;
+  const list = (await C.rpc("get_foods", { p_query: null, p_limit: 500 })).filter((f) => f.source === "recipe");
+  if (!list.length) {
+    box.innerHTML = `<p class="muted small" style="margin:0">Nog geen recepten. Maak er een uit ingrediënten (zoeken of scannen), met het aantal porties: daarna log je een portie in één tik.</p>`;
+    return;
+  }
+  box.innerHTML = list.map((r, i) => `<div class="fitem" data-i="${i}">
+      <button class="rlog" style="all:unset;cursor:pointer"><span class="t">${C.esc(r.name)}</span>
+        <span class="m">${C.fmt(r.recipe?.servings)} porties · ${C.fmt((r.per100?.kcal || 0) * (r.serving_g || 100) / 100)} kcal en ${C.fmt((r.per100?.protein || 0) * (r.serving_g || 100) / 100)} g eiwit per portie</span></button>
+      <button class="linkbtn redit">Bewerk</button>
+      <button class="icon-btn rarch" aria-label="${C.esc(r.name)} verwijderen">✕</button></div>`).join("");
+  box.querySelectorAll(".fitem").forEach((row) => {
+    const r = list[Number(row.dataset.i)];
+    row.querySelector(".rlog").onclick = () => openAddFood(ctx, { day, after, product: r });
+    row.querySelector(".redit").onclick = () => openAddFood(ctx, { day, after, editRecipe: r });
+    row.querySelector(".rarch").onclick = async () => {
+      if (!confirm(`Recept "${r.name}" verwijderen? Al gelogde porties blijven staan.`)) return;
+      await C.rpc("save_food", { p: { id: r.id, archived: true } });
+      after?.();
+    };
+  });
+}
+
+export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null, product = null, editRecipe: toEdit = null } = {}) {
   C = ctx;
   const sheet = document.createElement("div");
   sheet.className = "sheet";
@@ -401,6 +426,7 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after } = {}) {
           ingredients: r.ingredients.map((i) => ({ food_id: i.food.id, grams: i.grams })) } });
         recipe = null;
         C.toast("Recept opgeslagen");
+        after?.();
         amount(saved);
       } catch (err) { e.target.disabled = false; C.toast(err.message, 5000); }
     };
@@ -456,5 +482,8 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after } = {}) {
     };
   }
 
-  search();
+  if (start === "recipe") { recipe = { name: "", servings: 1, total_g: "", ingredients: [] }; recipeEditor(); }
+  else if (toEdit) editRecipe(toEdit);
+  else if (product) amount(product);
+  else search();
 }

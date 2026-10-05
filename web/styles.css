@@ -468,3 +468,29 @@ select.input.wrest { width: auto; flex: none; min-height: 36px; padding: 4px 8px
 .mv-bar .zone { background: color-mix(in srgb, var(--good) 20%, transparent); }
 .mv-bar .cur { left: 0; background: var(--strength); border-radius: 999px; }
 .mv-bar .avg { width: 2px; background: var(--ink); margin-left: -1px; }
+
+/* ---------- v4: agenda, gewoontes ---------- */
+.daynav .calbtn { width: auto; height: auto; min-height: 36px; display: inline-flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; cursor: pointer; font-weight: 600; font-size: 15px; color: var(--ink); }
+.daynav .calbtn svg { color: var(--muted); }
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 12px; }
+.cal-wd { text-align: center; font-size: 12px; color: var(--muted); font-weight: 600; padding-bottom: 4px; }
+.cal-d { aspect-ratio: 1 / 1; border: 0; border-radius: 10px; background: var(--surface-2); display: grid; grid-template-rows: 1fr auto; place-items: center; padding: 4px 0; cursor: pointer; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 15px; }
+.cal-d.out { background: transparent; color: var(--faint); }
+.cal-d:disabled { opacity: .35; cursor: default; }
+.cal-d.today span { font-weight: 800; color: var(--heart); }
+.cal-d.sel { outline: 2px solid var(--ink); outline-offset: -2px; }
+.cal-d .dots { display: flex; gap: 2px; height: 6px; }
+.cal-d .dots i, .cal-legend i { display: block; width: 5px; height: 5px; border-radius: 50%; }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+.cal-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.cal-legend i { width: 7px; height: 7px; }
+.habits { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-top: 8px; }
+.habit { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 8px; text-align: left; align-items: center;
+  border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 9px 10px; cursor: pointer; color: var(--ink); }
+.habit .he { grid-row: 1 / 3; font-size: 22px; filter: grayscale(1); opacity: .55; }
+.habit .hn { font-weight: 600; font-size: 14px; line-height: 1.2; }
+.habit .hs { font-size: 12px; color: var(--muted); }
+.habit.on { background: color-mix(in srgb, var(--move) 14%, var(--surface)); border-color: var(--move); }
+.habit.on .he { filter: none; opacity: 1; }
+details.why { background: var(--surface-2); border-radius: 12px; padding: 8px 12px; margin: 8px 0 4px; }
+details.why summary { font-size: 14px; font-weight: 600; cursor: pointer; }
