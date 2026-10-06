@@ -189,7 +189,8 @@ export async function renderWorkout(ctx) {
       <div class="wex-head">
         <div><h3>${C.esc(e.title)}</h3>
           <div class="m small muted">${C.esc(MUSCLES[c.muscle || e.muscle] || c.muscle || e.muscle || "")}${c.best_1rm ? ` · record 1RM ≈ ${C.fmt(c.best_1rm, 1)} kg` : ""}</div>
-          ${sugLine(e.title)}</div>
+          ${sugLine(e.title)}
+          ${/barbell|smith|ez bar|t bar|landmine/i.test(e.title) ? `<button class="linkbtn wplates" type="button" data-t="${C.esc(e.title)}">🏋 Schijven berekenen</button>` : ""}</div>
         <select class="input wrest" aria-label="Rusttijd" title="Rusttijd">${REST_OPTIONS.map((r) => `<option value="${r}" ${r === e.rest_s ? "selected" : ""}>⏱ ${restLabel(r)}</option>`).join("")}</select>
       </div>
       <input class="input wnotes" placeholder="Notitie" value="${C.esc(e.notes)}" aria-label="Notitie">
@@ -271,6 +272,8 @@ export async function renderWorkout(ctx) {
       persist();
     });
     list.addEventListener("click", (ev) => {
+      const pl = ev.target.closest(".wplates");
+      if (pl) { const sg = suggestion(pl.dataset.t); openPlates(C, sg?.kg || "", /smith/i.test(pl.dataset.t) ? 0 : 20); return; }
       const sp = ev.target.closest(".wsug");
       if (sp) { editExercisePref(C, sp.dataset.pref, () => { draw(); }); return; }
       const e = findEx(ev.target); if (!e) return;
@@ -553,4 +556,43 @@ export async function editExercisePref(ctx, title, after) {
       close(); C.toast("Opgeslagen"); after?.();
     } catch (e) { C.toast(e.message, 5000); }
   };
+}
+
+// ---------------- schijvencalculator ----------------
+const PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
+export function platesFor(total, bar) {
+  let side = (total - bar) / 2;
+  if (!(side > 0)) return { plates: [], rest: 0 };
+  const out = [];
+  for (const p of PLATES) while (side >= p - 1e-9) { out.push(p); side = Math.round((side - p) * 100) / 100; }
+  return { plates: out, rest: side };
+}
+export function openPlates(ctx, kg, bar = 20) {
+  C = ctx;
+  const sheet = document.createElement("div");
+  sheet.className = "sheet";
+  sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Schijvencalculator">
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h3 style="margin:0">Schijven per kant</h3><button class="icon-btn" id="pClose" aria-label="Sluiten">✕</button></div>
+    <div class="grid2" style="margin-top:6px">
+      <div class="field"><label for="pKg">Totaal (kg)</label><input class="input" id="pKg" inputmode="decimal" value="${kg}"></div>
+      <div class="field"><label for="pBar">Stang</label><select class="input" id="pBar">${[[20, "Olympisch 20 kg"], [15, "15 kg"], [10, "EZ / 10 kg"], [0, "Smith / geen"]].map(([v, l]) => `<option value="${v}" ${v === bar ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+    </div>
+    <div id="pOut" class="plates-out"></div></div>`;
+  document.body.appendChild(sheet);
+  const close = () => sheet.remove();
+  sheet._close = close;
+  sheet.addEventListener("click", (e) => { if (e.target === sheet) close(); });
+  sheet.querySelector("#pClose").onclick = close;
+  const draw = () => {
+    const total = Number(String(sheet.querySelector("#pKg").value).replace(",", ".")) || 0;
+    const b = Number(sheet.querySelector("#pBar").value);
+    const { plates, rest } = platesFor(total, b);
+    sheet.querySelector("#pOut").innerHTML = !total ? `<p class="muted small">Vul een gewicht in.</p>`
+      : total < b ? `<p class="small warn">Lichter dan de stang (${b} kg).</p>`
+      : `<div class="plates">${plates.map((p) => `<span class="plate p${String(p).replace(".", "_")}">${C.fmt(p, 2)}</span>`).join("") || `<span class="muted">alleen de stang</span>`}</div>
+         ${rest > 0 ? `<p class="small warn">Niet exact te laden: ${C.fmt(rest, 2)} kg per kant blijft over.</p>` : `<p class="small muted">${C.fmt(b, 1)} kg stang + 2 × ${C.fmt(plates.reduce((a, x) => a + x, 0), 2)} kg</p>`}`;
+  };
+  sheet.querySelector("#pKg").oninput = draw;
+  sheet.querySelector("#pBar").onchange = draw;
+  draw();
 }

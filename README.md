@@ -47,7 +47,7 @@ PWA (Vercel, map /web) ──── RPC-functies (alleen eigenaar) ────�
 3. **Hevy (zonder Pro):** Hevy → Profiel → Instellingen → Export & Import Data → *Export workouts* → CSV bewaren. In de app: Training → "Hevy importeren" (of Instellingen → Hevy). Herhaal dit wanneer je wil; opnieuw importeren maakt geen dubbels. Met Hevy Pro kan je in plaats daarvan een API-key invullen voor automatische sync.
 4. **Meldingen:** open de app vanaf je beginscherm → Instellingen → "Meldingen aanzetten" → Testmelding. Routines maak je in Instellingen of via de Vraag-tab ("Stuur me elke maandag om 8u een melding om mijn gewicht te loggen").
 5. **Claude (AI):** maak een API-key op <https://console.anthropic.com> (met wat tegoed). In de app: Instellingen → AI → plakken → Opslaan.
-6. **Apple Health (gratis):**
+6. **Apple Health (gratis):** open in de app **Koppelen** (Vandaag → "Koppel Apple Gezondheid", of Instellingen → Apple Health → Koppel-assistent). Die toont stap voor stap Garmin → Gezondheid, de export-import (met wekelijkse herinnering) en de Opdrachten-automatisering, en laat live zien welke waarden binnenkomen.
    - **Historiek + workouts:** Gezondheid-app → profielfoto → *Exporteer alle gezondheidsgegevens* → `export.zip`. In de app: Instellingen → Apple Health → periode kiezen → *Export kiezen*. De app leest het bestand in je browser, telt alles per uur op en ontdubbelt bronnen (iPhone + Garmin). Herhaal dit gerust; niets telt dubbel.
    - **Dagelijks automatisch:** een automatisering in de iOS-app *Opdrachten* stuurt je dagtotalen naar dezelfde URL telkens je een gekozen app opent (stappen in Instellingen → Apple Health). Geen vast tijdstip gebruiken: met een vergrendelde iPhone kan Opdrachten geen gezondheidsgegevens lezen.
    - **Waarom niet aanvinken in Gezondheid → Apps?** Dat kan alleen voor echte iPhone-apps (App Store of zelf gebouwd met Xcode op een Mac), niet voor web-apps. Komt een dag later via de export binnen, dan vervangt die gedetailleerde data de dagtotalen.
@@ -68,6 +68,7 @@ PWA (Vercel, map /web) ──── RPC-functies (alleen eigenaar) ────�
 - **Gewoontes en supplementen:** dagelijks afvinken op Vandaag met reeks (🔥), beheren in Instellingen.
 - **Lichaamsmaten:** gewicht, vetpercentage, taille, borst, bovenarm, dij, heup (Vandaag → Alle maten), met grafieken in Trends.
 - **Recepten:** Voeding → Mijn recepten (+ Nieuw recept, bewerken, een portie loggen).
+- **Schijvencalculator:** bij oefeningen met een stang (🏋 Schijven berekenen): welke schijven per kant.
 - **Back-up:** Instellingen → Data → Back-up downloaden (JSON).
 - **Doelen:** aanpasbaar in Instellingen (stappen, actieve kcal, slaap, kcal, eiwit, koolhydraten, vet, vezels, water, cafeïne-max).
 

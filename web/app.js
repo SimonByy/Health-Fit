@@ -105,7 +105,8 @@ function showError(err) {
 }
 
 // Gedeelde helpers voor de modules training (workout.js) en voeding (food.js)
-const ctx = { rpc, invoke, toast, fmt, esc, view, today, addDays, shortDate, mountChart };
+const ctx = { rpc, invoke, toast, fmt, esc, view, today, addDays, shortDate, mountChart, SUPABASE_URL,
+  importAppleHealth: (...a) => importAppleHealth(...a) };
 const workoutMod = () => import("./workout.js");
 const foodMod = () => import("./food.js");
 const moreMod = () => import("./more.js");
@@ -246,7 +247,7 @@ function drawChart(el, { points, color, type = "bar", unit = "", dec = 0, goal =
 // Router
 // ======================================================================
 const state = { day: today(), nutDay: today(), trendDays: 30, trainTab: "workouts", conversation: null };
-const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training" };
+const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training", koppelen: "Koppelen" };
 const ACCENT = { workout: "--strength", dagboek: "--sleep", vandaag: "--move", training: "--strength", voeding: "--fuel", trends: "--heart", vraag: "--sleep" };
 
 async function route() {
@@ -392,7 +393,8 @@ async function renderToday() {
       ${calBtn(dayLabel(state.day))}
       <button id="next" aria-label="Volgende dag" ${isToday ? "disabled" : ""}>›</button>
     </div>
-    ${nothing ? onboardingCard() : ""}
+    ${nothing ? onboardingCard() : !d.sync?.apple_health?.last_success && isToday ? `<a class="panel lk-cta" href="#/koppelen">
+        <span><b>Koppel Apple Gezondheid</b><br><span class="small muted">Stappen, slaap, hartslag en je Garmin-workouts binnenhalen. Stap voor stap, gratis.</span></span><span aria-hidden="true">›</span></a>` : ""}
     ${ins && isToday ? `<section class="panel insight ${ins.read_at ? "" : "unread"}">
         <details ${ins.read_at ? "" : "open"} id="insDet"><summary>${esc(ins.title)} <span class="muted small">${esc(shortDate(ins.created_at.slice(0, 10)))}</span></summary>
         <div class="md">${md(ins.content)}</div></details>
@@ -472,7 +474,7 @@ async function renderToday() {
     </div>
 
     <p class="muted small" style="margin-top:18px">
-      Apple Health: ${esc(timeAgo(d.sync?.apple_health?.last_success))}
+      <a href="#/koppelen">Apple Health: ${esc(timeAgo(d.sync?.apple_health?.last_success))}</a>
       ${d.sync?.hevy_csv ? ` · Hevy-import: ${esc(timeAgo(d.sync.hevy_csv.last_success))}` : ""}
     </p>`;
 
@@ -518,7 +520,7 @@ function onboardingCard() {
   return `<div class="panel" style="margin-bottom:12px">
     <h3>Welkom! Nog geen data binnen.</h3>
     <p class="hint">Koppel Apple Health in Instellingen (gratis: export importeren en de Opdrachten-automatisering) en importeer je Hevy-trainingen.</p>
-    <a class="btn" href="#/instellingen" style="display:inline-block;text-decoration:none">Naar instellingen</a>
+    <a class="btn" href="#/koppelen" style="display:inline-block;text-decoration:none">Koppel-assistent openen</a>
   </div>`;
 }
 
@@ -1295,6 +1297,7 @@ async function renderSettings() {
     <section class="panel">
       <h3>Apple Health</h3>
       <p class="hint">Status: ${sync.apple_health?.last_success ? `<span class="ok">laatst ontvangen ${esc(timeAgo(sync.apple_health.last_success))}</span>` : `<span class="warn">nog niets ontvangen</span>`}</p>
+      <a class="btn" href="#/koppelen" style="display:inline-block;text-decoration:none;margin-bottom:8px">Koppel-assistent openen (stap voor stap)</a>
 
       <details class="why"><summary>Waarom kan ik Health Hub niet aanvinken in Gezondheid → Apps?</summary>
         <p class="small">Dat lijstje bevat alleen <b>echte iPhone-apps</b> (uit de App Store of zelf gebouwd met Xcode op een Mac). Health Hub is een web-app: Apple geeft websites geen toegang tot Gezondheid. Daarom gaat het via de twee gratis routes hieronder: de export (historiek) en een automatisering in Opdrachten (dagelijks). Opdrachten is wél een Apple-app met toegang: die leest je gegevens en stuurt ze door.</p>
@@ -1540,6 +1543,7 @@ const ROUTES = {
   instellingen: renderSettings,
   dagboek: renderJournal,
   workout: async () => (await workoutMod()).renderWorkout(ctx),
+  koppelen: async () => (await import("./link.js")).renderLink(ctx),
 };
 
 async function boot() {
