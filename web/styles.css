@@ -522,3 +522,13 @@ details.why summary { font-size: 14px; font-weight: 600; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .lk-wait i { animation: none; } }
 .lk-tbl .mono { word-break: normal; white-space: nowrap; font-size: 12px; }
 .lk-tbl td:last-child { text-align: right; }
+
+/* ---------- v6: Garmin herstel ---------- */
+.rtiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 4px 0 8px; }
+.rtile { background: var(--surface-2); border-radius: 12px; padding: 8px 6px; display: grid; gap: 1px; text-align: center; }
+.rtile .rl { font-size: 11px; color: var(--muted); line-height: 1.2; }
+.rtile b { font-family: var(--font-num); font-size: 24px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.rtile b small { font-size: 12px; color: var(--muted); font-weight: 500; }
+.rtile .ra { font-size: 11px; color: var(--muted); }
+.rtile .ra.up { color: var(--good); } .rtile .ra.down { color: var(--bad); }
+.lk-garmin { border-left: 4px solid var(--good); }

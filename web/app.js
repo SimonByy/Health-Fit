@@ -374,7 +374,14 @@ function bindActivityList(root) {
 }
 
 async function renderToday() {
-  const [d, meas] = await Promise.all([rpc("get_dashboard", { p_day: state.day }), rpc("get_measurements").catch(() => ({}))]);
+  const [d, meas, rec] = await Promise.all([rpc("get_dashboard", { p_day: state.day }), rpc("get_measurements").catch(() => ({})),
+    rpc("get_recovery", { p_day: state.day }).catch(() => ({}))]);
+  const r = rec.today || {}, ra = rec.avg7 || {};
+  const tile = (label, v, avg, unit = "", lowGood = false) => v == null ? "" : `<div class="rtile">
+      <span class="rl">${label}</span><b>${fmt(v)}${unit ? `<small>${unit}</small>` : ""}</b>
+      ${avg != null ? `<span class="ra ${Math.abs(v - avg) < avg * 0.05 ? "" : (v > avg) !== lowGood ? "up" : "down"}">gem. ${fmt(avg)}</span>` : ""}</div>`;
+  const recoveryTiles = [tile("Slaapscore", r.sleep_score, ra.sleep_score), tile("Body Battery", r.body_battery_wake ?? r.body_battery_high, ra.body_battery_wake),
+    tile("Stress", r.stress_avg, ra.stress_avg, "", true), tile("Intensiteit", r.intensity_minutes, null, " min")].join("");
   const t = d.today || {};
   const a = d.avg7 || {};
   const g = d.goals || {};
@@ -393,7 +400,7 @@ async function renderToday() {
       ${calBtn(dayLabel(state.day))}
       <button id="next" aria-label="Volgende dag" ${isToday ? "disabled" : ""}>›</button>
     </div>
-    ${nothing ? onboardingCard() : !d.sync?.apple_health?.last_success && isToday ? `<a class="panel lk-cta" href="#/koppelen">
+    ${nothing ? onboardingCard() : !d.sync?.apple_health?.last_success && !rec.garmin_sync && isToday ? `<a class="panel lk-cta" href="#/koppelen">
         <span><b>Koppel Apple Gezondheid</b><br><span class="small muted">Stappen, slaap, hartslag en je Garmin-workouts binnenhalen. Stap voor stap, gratis.</span></span><span aria-hidden="true">›</span></a>` : ""}
     ${ins && isToday ? `<section class="panel insight ${ins.read_at ? "" : "unread"}">
         <details ${ins.read_at ? "" : "open"} id="insDet"><summary>${esc(ins.title)} <span class="muted small">${esc(shortDate(ins.created_at.slice(0, 10)))}</span></summary>
@@ -451,6 +458,7 @@ async function renderToday() {
         <h2>Herstel</h2>
         ${statRow({ name: "Slaap", value: t.sleep_h, display: t.sleep_h == null ? null : hours(t.sleep_h), goal: g.sleep_h, avg: a.sleep_h, color: DOMAIN.sleep })}
         ${t.deep_sleep_h != null ? `<div class="sub muted small" style="margin:-6px 0 8px">Diep ${hours(t.deep_sleep_h)} · REM ${hours(t.rem_sleep_h)}</div>` : ""}
+        ${recoveryTiles ? `<div class="rtiles">${recoveryTiles}</div>` : ""}
         ${statRow({ name: "Rusthartslag", value: t.resting_hr, unit: "bpm", avg: a.resting_hr, color: DOMAIN.heart, higherIsBetter: false })}
         ${statRow({ name: "HRV", value: t.hrv_ms, unit: "ms", avg: a.hrv_ms, color: DOMAIN.heart })}
       </section>
@@ -474,7 +482,7 @@ async function renderToday() {
     </div>
 
     <p class="muted small" style="margin-top:18px">
-      <a href="#/koppelen">Apple Health: ${esc(timeAgo(d.sync?.apple_health?.last_success))}</a>
+      ${rec.garmin_sync ? `Garmin: ${esc(timeAgo(rec.garmin_sync))} · ` : ""}<a href="#/koppelen">Apple Health: ${esc(timeAgo(d.sync?.apple_health?.last_success))}</a>
       ${d.sync?.hevy_csv ? ` · Hevy-import: ${esc(timeAgo(d.sync.hevy_csv.last_success))}` : ""}
     </p>`;
 

@@ -14,7 +14,7 @@ let poll = null;
 
 export async function renderLink(C) {
   clearInterval(poll);
-  const [st, s] = await Promise.all([C.rpc("get_link_status"), C.rpc("get_settings")]);
+  const [st, s, rec] = await Promise.all([C.rpc("get_link_status"), C.rpc("get_settings"), C.rpc("get_recovery", { p_day: C.today() }).catch(() => ({}))]);
   const url = `${C.SUPABASE_URL}/functions/v1/ingest-health`;
   const bearer = `Bearer ${s.ingest_token}`;
   const ok = (b) => `<span class="lk-badge ${b ? "on" : ""}">${b ? "✓" : "–"}</span>`;
@@ -32,6 +32,12 @@ export async function renderLink(C) {
         <div>${ok(hasShortcut)}<b>Elke dag</b><span>${hasShortcut ? `${st.shortcut_runs_7d}× deze week` : "nog niet"}</span></div>
       </div>
     </section>
+
+    ${rec.garmin_sync ? `<section class="panel lk-garmin">
+      <h3>✓ Garmin rechtstreeks gekoppeld</h3>
+      <p class="small" style="margin:4px 0 0">Claude haalt elke ochtend en avond je Garmin-gegevens op (stappen, slaap met fasen en slaapscore, rusthartslag, HRV, Body Battery, stress, intensiteitsminuten en activiteiten). Laatst bijgewerkt: <b>${C.esc(timeAgo(rec.garmin_sync))}</b>.</p>
+      <p class="small muted" style="margin:6px 0 0">Daardoor heb je stap 1–3 hieronder niet meer nodig. De Apple Gezondheid-export is nog handig als je oudere historiek van vóór je Garmin wil binnenhalen.</p>
+    </section>` : ""}
 
     <section class="panel lk-step">
       <div class="lk-num">1</div>

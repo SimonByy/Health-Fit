@@ -104,7 +104,7 @@ function systemPrompt(schema: string) {
 
 Nu: ${today} (${iso}), ${time}, tijdzone Europe/Brussels.
 
-DATABRONNEN: Apple Health (inclusief data van zijn wearable, nu een Garmin: stappen, hartslag, HRV, slaap, workouts), voeding (via Apple Health en in de app gelogd per maaltijd: ai.daily_summary / ai.nutrition_by_meal), zelf gelogd water/cafeïne/gewicht/lichaamsmaten (ai.body_measurements), krachttraining per set (Hevy-import en in de app gelogd: ai.strength_sets, ai.muscle_sets_weekly), gewichtstrend en echt onderhoud (ai.weight_trend, ai.energy_balance), gewoontes/supplementen (ai.habits_daily) en zijn dagboek (ai.journal).
+DATABRONNEN: Garmin rechtstreeks (dagelijks gesynct: stappen, energie, rusthartslag, nachtelijke HRV, slaap met fasen, cardio-activiteiten, en herstel in ai.recovery_daily: slaapscore, Body Battery, stress, intensiteitsminuten), Apple Health (export, oudere historiek), voeding (via Apple Health en in de app gelogd per maaltijd: ai.daily_summary / ai.nutrition_by_meal), zelf gelogd water/cafeïne/gewicht/lichaamsmaten (ai.body_measurements), krachttraining per set (Hevy-import en in de app gelogd: ai.strength_sets, ai.muscle_sets_weekly), gewichtstrend en echt onderhoud (ai.weight_trend, ai.energy_balance), gewoontes/supplementen (ai.habits_daily) en zijn dagboek (ai.journal).
 
 WERKWIJZE
 - Gebruik run_sql om echte cijfers op te halen voor je antwoordt. Verzin nooit getallen.
