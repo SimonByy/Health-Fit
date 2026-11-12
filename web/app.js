@@ -106,7 +106,8 @@ function showError(err) {
 
 // Gedeelde helpers voor de modules training (workout.js) en voeding (food.js)
 const ctx = { sb, rpc, invoke, toast, fmt, esc, view, today, addDays, shortDate, mountChart, SUPABASE_URL, md: (s) => md(s),
-  importAppleHealth: (...a) => importAppleHealth(...a) };
+  importAppleHealth: (...a) => importAppleHealth(...a),
+  importHevy: (...a) => importHevyFile(...a), renderMuscles: (...a) => renderMuscles(...a) };
 const workoutMod = () => import("./workout.js");
 const foodMod = () => import("./food.js");
 const moreMod = () => import("./more.js");
@@ -415,6 +416,7 @@ async function renderToday() {
     ${mpToday.length ? `<a class="panel lk-cta" href="#/menu/week"><span><b>Vandaag op je menu</b><br><span class="small muted">${mpToday.map((i) => esc(i.r.name)).join(" · ")}</span></span><span aria-hidden="true">›</span></a>` : ""}
     ${isToday ? `<div id="coachToday"></div>` : ""}
     <div class="board">
+      <a class="todayfuel" href="#/voeding" id="todayFuel"></a>
       <section class="domain" style="--c:${DOMAIN.move}">
         <h2>Beweging</h2>
         ${statRow({ name: "Stappen", value: t.steps, goal: g.steps, avg: a.steps, color: DOMAIN.move })}
@@ -425,18 +427,8 @@ async function renderToday() {
         <h2>Training ${isToday ? "vandaag" : "deze dag"}</h2>
         ${acts.length ? `<div class="list flat" id="dayActs">${acts.map(activityItem).join("")}</div>`
           : `<p class="muted small" style="margin:6px 0 12px">Rustdag, nog geen training ${isToday ? "vandaag" : ""} geregistreerd.</p>`}
-        ${isToday ? `<a class="btn secondary" href="#/training" style="display:inline-block;text-decoration:none;margin-bottom:12px">${activeWorkout ? "Training hervatten" : "Training starten"}</a>` : ""}
       </section>
 
-      <section class="domain" style="--c:${DOMAIN.fuel}">
-        <h2>Voeding</h2>
-        ${statRow({ name: "Calorieën", value: t.kcal_in, unit: "kcal", goal: g.kcal_in, avg: a.kcal_in, color: DOMAIN.fuel })}
-        ${statRow({ name: "Eiwit", value: t.protein_g, unit: "g", goal: g.protein_g, avg: a.protein_g, color: DOMAIN.fuel })}
-        ${statRow({ name: "Koolhydraten", value: t.carbs_g, unit: "g", goal: g.carbs_g, avg: a.carbs_g, color: DOMAIN.fuel })}
-        ${statRow({ name: "Vet", value: t.fat_g, unit: "g", goal: g.fat_g, avg: a.fat_g, color: DOMAIN.fuel })}
-        <button class="btn secondary" id="addFood" style="margin:4px 0 12px">+ Voeding toevoegen</button>
-        <button class="btn" id="quickFood" style="margin:4px 0 12px">⚡ Snel</button>
-      </section>
 
       <section class="domain" style="--c:${DOMAIN.heart}">
         <h2>Drinken</h2>
@@ -506,8 +498,13 @@ async function renderToday() {
   $("#addWater")?.addEventListener("click", () => quickLog("dietary_water", 500, "500 ml water gelogd", reload));
   $("#addCaff")?.addEventListener("click", () => quickLog("dietary_caffeine", 50, "50 mg cafeïne gelogd", reload));
   $("#logWeight")?.addEventListener("click", () => openWeightForm(d.last_weight?.kg));
-  $("#addFood").onclick = async () => (await foodMod()).openAddFood(ctx, { day: state.day, after: reload });
-  $("#quickFood")?.addEventListener("click", async () => (await foodMod()).openQuickAdd(ctx, { day: state.day, after: reload }));
+  import("./nutrition.js").then((N) => { const el = $("#todayFuel"); if (el) el.innerHTML = N.gauge(ctx, { kcal: t.kcal_in, p: t.protein_g, c: t.carbs_g, f: t.fat_g, goals: g }, { compact: true }); });
+  if (isToday) {
+    const fab = document.createElement("button");
+    fab.className = "fab"; fab.setAttribute("aria-label", "Eten toevoegen"); fab.textContent = "+";
+    fab.onclick = async () => { const F = await foodMod(); F.openQuickAdd(ctx, { day: state.day, meal: F.mealForNow(), after: reload }); };
+    view.appendChild(fab);
+  }
   if ($("#coachToday")) import("./coach.js").then((m) => m.renderCoachToday(ctx, $("#coachToday"))).catch(() => {});
   $("#insDet")?.addEventListener("toggle", (e) => { if (e.target.open && !ins.read_at) rpc("mark_insight_read", { p_id: ins.id }).catch(() => {}); });
   if (ins && !ins.read_at && isToday) rpc("mark_insight_read", { p_id: ins.id }).catch(() => {});
@@ -546,70 +543,6 @@ function onboardingCard() {
 // ======================================================================
 // Training
 // ======================================================================
-async function renderTraining() {
-  const tab = state.trainTab;
-  view.innerHTML = `
-    <div class="row" style="justify-content:space-between">
-      <div class="seg" role="group" aria-label="Weergave">
-        <button data-t="workouts" aria-pressed="${tab === "workouts"}">Trainingen</button>
-        <button data-t="exercises" aria-pressed="${tab === "exercises"}">Oefeningen</button>
-        <button data-t="muscles" aria-pressed="${tab === "muscles"}">Spiergroepen</button>
-      </div>
-      <label class="btn ghost" style="margin-bottom:14px;cursor:pointer">Hevy importeren<input type="file" id="hevyCsv" accept=".csv,text/csv" hidden></label>
-    </div>
-    <div id="coachWeek"></div>
-    <div id="wstart"></div>
-    <div id="tcontent"><div class="skeleton"></div></div>`;
-  import("./coach.js").then((m) => m.renderCoachWeek(ctx, $("#coachWeek"))).catch(() => {});
-  if (tab === "workouts") renderWorkoutStart($("#wstart"));
-  view.querySelectorAll(".seg button").forEach((b) => (b.onclick = () => { state.trainTab = b.dataset.t; renderTraining(); }));
-  $("#hevyCsv").onchange = (e) => importHevyFile(e.target.files?.[0], renderTraining);
-  const box = $("#tcontent");
-
-  if (tab === "muscles") return renderMuscles(box);
-  if (tab === "workouts") {
-    const list = await rpc("get_activities", { p_limit: 60, p_offset: 0 });
-    box.innerHTML = list.length
-      ? `<div class="list" id="acts">${list.map(activityItem).join("")}</div>`
-      : `<div class="empty"><strong>Nog geen trainingen.</strong>Cardio komt binnen via Apple Health. Krachttraining: exporteer in Hevy (Profiel → Instellingen → Export &amp; Import Data → Export workouts) en tik op "Hevy importeren".</div>`;
-    if (list.length) bindActivityList($("#acts"));
-  } else {
-    const [ex, W] = await Promise.all([rpc("get_exercises"), workoutMod()]);
-    if (!ex.length) {
-      box.innerHTML = `<div class="empty"><strong>Nog geen oefeningen.</strong>Importeer je Hevy-export om je progressie per oefening te zien.</div>`;
-      return;
-    }
-    box.innerHTML = `<div class="list" id="exlist">${ex
-      .map((e) => `<button class="item" style="--c:${DOMAIN.strength}" data-ex="${esc(e.exercise)}">
-        <span class="swatch"></span>
-        <span><div class="t">${esc(e.exercise)}</div><div class="m">${fmt(e.sessions)}× · laatst ${esc(shortDate(e.last_day))}${e.muscle ? ` · ${esc(W.MUSCLES[e.muscle] || e.muscle)}` : ""}</div></span>
-        <span class="r">${e.best_1rm ? fmt(e.best_1rm, 1) : fmt(e.max_kg, 1)}<small>${e.best_1rm ? "beste 1RM kg" : "max kg"}</small></span>
-      </button>`)
-      .join("")}</div>`;
-    $("#exlist").addEventListener("click", async (ev) => {
-      const b = ev.target.closest("[data-ex]");
-      if (!b) return;
-      if (b.nextElementSibling?.classList.contains("detail")) { b.nextElementSibling.remove(); return; }
-      const det = document.createElement("div");
-      det.className = "detail";
-      det.style.paddingLeft = "16px";
-      det.innerHTML = `<p class="muted small">Laden…</p>`;
-      b.after(det);
-      const hist = await rpc("get_exercise_history", { p_exercise: b.dataset.ex });
-      const hasRm = hist.some((h) => h.best_1rm);
-      det.innerHTML = `<button class="linkbtn exset" style="margin-top:6px">⚙ Spiergroep, herhalingsbereik en stap</button>
-        <p class="small muted" style="margin:8px 0 4px">${hasRm ? "Geschatte 1RM per training (kg)" : "Zwaarste set per training (kg)"}</p><div class="c"></div>
-        <table style="margin-top:8px">${hist.slice(-5).reverse()
-          .map((h) => `<tr><td>${esc(shortDate(h.day))}</td><td>${h.top_kg != null ? `${fmt(h.top_kg, 1)} kg × ${h.top_reps ?? "–"}` : `${fmt(h.sets)} sets`}</td></tr>`).join("")}</table>`;
-      det.querySelector(".exset").onclick = async () => (await workoutMod()).editExercisePref(ctx, b.dataset.ex, renderTraining);
-      mountChart(det.querySelector(".c"), {
-        points: hist.map((h) => ({ x: h.day, y: hasRm ? h.best_1rm : h.top_kg })),
-        color: DOMAIN.strength, type: "line", unit: "kg", dec: 1, zero: false, height: 140,
-      });
-    });
-  }
-}
-
 // ---------- Werksets per spiergroep ----------
 async function renderMuscles(box) {
   const [rows, W] = await Promise.all([rpc("get_muscle_volume", { p_weeks: 4 }), workoutMod()]);
@@ -634,39 +567,6 @@ async function renderMuscles(box) {
       </div>`).join("")}
       <p class="small muted" style="margin:10px 0 0">Spiergroep klopt niet? Tik in Oefeningen op de oefening → ⚙.</p>
     </section>`;
-}
-
-// ---------- Training starten: leeg, schema of herhalen ----------
-async function renderWorkoutStart(box) {
-  const W = await workoutMod();
-  const active = W.activeWorkout();
-  if (active) {
-    box.innerHTML = `<section class="panel wstart" style="--c:${DOMAIN.strength}">
-      <h3>${esc(active.title)} loopt</h3>
-      <p class="hint">Gestart om ${new Date(active.start).toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" })} · ${active.exercises.length} oefeningen</p>
-      <a class="btn" href="#/workout" style="display:inline-block;text-decoration:none">Training hervatten</a></section>`;
-    return;
-  }
-  const [tpls, last] = await Promise.all([rpc("get_templates").catch(() => []), rpc("get_activities", { p_limit: 15, p_offset: 0 }).catch(() => [])]);
-  const lastStrength = last.filter((a) => a.kind === "strength").slice(0, 3);
-  box.innerHTML = `<section class="panel wstart" style="--c:${DOMAIN.strength}">
-      <button class="btn" id="wEmpty" style="width:100%">Lege training starten</button>
-      <div class="sub-h" style="display:flex;justify-content:space-between;align-items:center">Schema's <button class="linkbtn" id="tplNew">+ Nieuw schema</button></div>
-      ${tpls.length ? tpls.map((t, i) => `<div class="tpl" data-i="${i}">
-          <button class="tpl-main" data-act="start"><b>${esc(t.name)}</b><span class="small muted">${esc((t.exercises || []).map((e) => e.title).slice(0, 4).join(", "))}${t.exercises?.length > 4 ? "…" : ""}</span></button>
-          <button class="icon-btn" data-act="edit" aria-label="${esc(t.name)} bewerken">✎</button></div>`).join("")
-        : `<p class="muted small" style="margin:4px 0">Nog geen schema's. Maak er een, of bewaar een training als schema na het afronden.</p>`}
-      ${lastStrength.length ? `<div class="sub-h">Herhaal een recente training</div><div class="chips">${lastStrength.map((a) =>
-        `<button class="chip" data-repeat="${esc(a.id)}">${esc(a.title || "Training")} · ${esc(shortDate(a.day))}</button>`).join("")}</div>` : ""}
-    </section>`;
-  $("#wEmpty").onclick = () => W.startWorkout(ctx);
-  $("#tplNew").onclick = () => W.editTemplate(ctx, null, renderTraining);
-  box.querySelectorAll(".tpl").forEach((row) => {
-    const t = tpls[Number(row.dataset.i)];
-    row.querySelector('[data-act="start"]').onclick = () => W.startWorkout(ctx, { template: t });
-    row.querySelector('[data-act="edit"]').onclick = () => W.editTemplate(ctx, t, renderTraining);
-  });
-  box.querySelectorAll("[data-repeat]").forEach((b) => (b.onclick = () => W.startWorkout(ctx, { repeatOf: b.dataset.repeat })));
 }
 
 // ---------- Hevy CSV-import (werkt zonder Hevy Pro) ----------
@@ -795,75 +695,6 @@ async function syncHevy(btn, full, after) {
 // ======================================================================
 // Voeding
 // ======================================================================
-async function renderNutrition() {
-  const [d, energy] = await Promise.all([rpc("get_nutrition_day", { p_day: state.nutDay }), rpc("get_energy", { p_days: 28 }).catch(() => null)]);
-  const maint = energy?.estimate?.maintenance_kcal;
-  const by = Object.fromEntries((d.nutrients || []).map((n) => [n.metric, n]));
-  const g = d.goals || {};
-  const kcal = num(by.dietary_energy?.value);
-  const p = num(by.protein?.value), c = num(by.carbohydrates?.value), f = num(by.total_fat?.value), fib = num(by.fiber?.value);
-  const isToday = state.nutDay === today();
-  const micros = (d.nutrients || []).filter((n) => !["dietary_energy", "protein", "carbohydrates", "total_fat"].includes(n.metric));
-  const macro = (label, v, goal) => `<div class="macro">
-      <div class="v">${fmt(v)}<small> g</small></div>
-      <div class="l">${label}${goal ? ` / ${fmt(goal)}` : ""}</div>
-      ${goal ? `<div class="bar" style="--c:${DOMAIN.fuel}"><i style="width:${Math.min(100, ((v || 0) / goal) * 100)}%"></i></div>` : ""}
-    </div>`;
-
-  view.innerHTML = `
-    <div class="daynav">
-      <button id="prev" aria-label="Vorige dag">‹</button>
-      ${calBtn(isToday ? "Vandaag, " + dayLabel(state.nutDay, { day: "numeric", month: "long" }) : dayLabel(state.nutDay))}
-      <button id="next" aria-label="Volgende dag" ${isToday ? "disabled" : ""}>›</button>
-    </div>
-    <section class="domain" style="--c:${DOMAIN.fuel};padding-bottom:16px">
-      <h2>Calorieën</h2>
-      <div class="hero-num">${fmt(kcal ?? 0)}<small>${g.kcal_in ? `/ ${fmt(g.kcal_in)} ` : ""}kcal</small></div>
-      ${g.kcal_in ? `<div class="bar" style="--c:${DOMAIN.fuel}"><i style="width:${Math.min(100, ((kcal || 0) / g.kcal_in) * 100)}%"></i></div>
-      <div class="small muted" style="margin-top:6px">${kcal != null && kcal < g.kcal_in ? `Nog ${fmt(g.kcal_in - kcal)} kcal over` : kcal != null ? `${fmt(kcal - g.kcal_in)} kcal boven je doel` : "Nog niets gelogd"}${maint ? ` · je onderhoud ≈ ${fmt(maint)} kcal` : ""}</div>` : ""}
-      <div class="macros" style="grid-template-columns:repeat(4,1fr)">
-        ${macro("Eiwit", p, g.protein_g)}${macro("Koolh.", c, g.carbs_g)}${macro("Vet", f, g.fat_g)}${macro("Vezels", fib, g.fiber_g)}
-      </div>
-    </section>
-    <div class="row" style="margin:2px 0 12px;flex-wrap:nowrap">
-      <button class="btn" id="quickFood" style="flex:1">⚡ Snel toevoegen</button>
-      <button class="btn secondary" id="addFood" style="flex:1">+ Zoeken of scannen</button>
-    </div>
-
-    <h2 class="section-title">Gelogd in Health Hub</h2>
-    <div class="panel" id="foodLog"><div class="skeleton" style="height:40px"></div></div>
-
-    <div class="row" style="justify-content:space-between;align-items:baseline"><h2 class="section-title">Mijn recepten</h2><button class="linkbtn" id="newRecipe">+ Nieuw recept</button></div>
-    <div class="panel" id="recipes"><div class="skeleton" style="height:30px"></div></div>
-
-    ${kcal !== null ? `<h2 class="section-title">Per moment (alle bronnen)</h2>
-    <div class="panel">
-      ${(d.meals || []).map((m) => `<div class="meal">
-          <span><b>${esc(m.meal)}</b> <span class="muted small">vanaf ${String(m.first_hour).padStart(2, "0")}u</span></span>
-          <span class="k">${fmt(m.kcal)} <span class="muted small">kcal</span></span>
-          <span class="p">Eiwit ${fmt(m.protein_g)} g · Koolh. ${fmt(m.carbs_g)} g · Vet ${fmt(m.fat_g)} g</span>
-        </div>`).join("") || `<p class="muted small">Geen tijdsinfo beschikbaar.</p>`}
-      <p class="muted small" style="margin:8px 0 0">Bevat ook voeding uit Apple Health; moment afgeleid uit het uur van loggen.</p>
-    </div>
-
-    <h2 class="section-title">Alle voedingsstoffen</h2>
-    <div class="panel">
-      <details ${micros.length <= 8 ? "open" : ""}>
-        <summary>${micros.length} gelogde waarden</summary>
-        <table class="nutrients">${micros.map((n) => `<tr><td>${esc(n.label)}</td><td>${fmt(n.value, n.value < 10 ? 1 : 0)} ${esc(n.unit || "")}</td></tr>`).join("")}</table>
-      </details>
-    </div>` : ""}
-  `;
-  $("#prev").onclick = () => { state.nutDay = addDays(state.nutDay, -1); renderNutrition(); };
-  $("#next").onclick = () => { if (!isToday) { state.nutDay = addDays(state.nutDay, 1); renderNutrition(); } };
-  bindCal(state.nutDay, (dd) => { state.nutDay = dd; renderNutrition(); });
-  const F = await foodMod();
-  $("#addFood").onclick = () => F.openAddFood(ctx, { day: state.nutDay, after: renderNutrition });
-  $("#quickFood").onclick = () => F.openQuickAdd(ctx, { day: state.nutDay, after: renderNutrition });
-  $("#newRecipe").onclick = () => F.openAddFood(ctx, { day: state.nutDay, after: renderNutrition, start: "recipe" });
-  await Promise.all([F.renderFoodLog(ctx, state.nutDay, $("#foodLog"), renderNutrition), F.renderRecipes(ctx, state.nutDay, $("#recipes"), renderNutrition)]);
-}
-
 // ======================================================================
 // Trends
 // ======================================================================
@@ -1561,13 +1392,12 @@ function renderLogin(msg = "") {
 // ======================================================================
 const ROUTES = {
   vandaag: renderToday,
-  training: renderTraining,
-  voeding: renderNutrition,
+  training: async () => (await import("./strength.js")).renderStrength(ctx),
+  voeding: async () => (await import("./nutrition.js")).renderNutrition(ctx, state),
   trends: renderTrends,
   vraag: renderAsk,
   instellingen: renderSettings,
   dagboek: renderJournal,
-  workout: async () => (await workoutMod()).renderWorkout(ctx),
   koppelen: async () => (await import("./link.js")).renderLink(ctx),
   menu: async (p) => (await import("./menu.js")).renderMenu(ctx, p),
   briefing: async () => (await import("./briefing.js")).renderBriefing(ctx),

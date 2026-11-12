@@ -522,9 +522,10 @@ export async function openQuickAdd(ctx, { day = todayIso(), meal = mealForNow(),
     const onMenu = menu.filter((i) => i.slot === slot);
     const row = (attrs, title, sub) => `<button class="pk-item" ${attrs}><span><b>${C.esc(title)}</b><br><span class="small muted">${sub}</span></span><span>+</span></button>`;
     sheet.querySelector(".sheet-card").innerHTML = `
-      <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h3 style="margin:0">⚡ Snel toevoegen</h3>
+      <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h3 style="margin:0">Toevoegen aan ${meal.toLowerCase()}</h3>
         <button class="icon-btn" data-close aria-label="Sluiten">✕</button></div>
       <div class="chips" id="qMeal" style="margin:10px 0">${MEALS.map((m) => `<button class="chip ${m === meal ? "on" : ""}" data-m="${m}">${m}</button>`).join("")}</div>
+      <button class="searchbar" id="qSearch"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Zoek een product of scan een barcode</button>
       ${onMenu.length ? `<div class="sub-h">Op je menu vandaag</div>${onMenu.map((i, n) => row(`data-menu="${n}"`, i.r.name,
         `${C.fmt(i.portions, 2)} portie · ${k(i.r.kcal * i.portions)}${pP(i.r.protein * i.portions)}`)).join("")}` : ""}
       <div class="sub-h">Vaste producten</div>
@@ -541,6 +542,7 @@ export async function openQuickAdd(ctx, { day = todayIso(), meal = mealForNow(),
     card.querySelector("[data-close]").onclick = close;
     card.querySelector("#qMeal").onclick = (e) => { const b = e.target.closest(".chip"); if (b) { meal = b.dataset.m; render(); } };
     card.querySelector("#qManage").onclick = manage;
+    card.querySelector("#qSearch").onclick = () => { close(); openAddFood(ctx, { day, meal, after }); };
     card.onclick = async (e) => {
       const b = e.target.closest(".pk-item"); if (!b || b.disabled) return;
       b.disabled = true;
