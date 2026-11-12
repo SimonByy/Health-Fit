@@ -809,8 +809,25 @@ body { background: radial-gradient(900px 420px at 50% -160px, #1C3470 0%, rgba(2
 .searchrow input::placeholder { color: var(--faint); }
 
 /* Recept aanpassen */
-.mp-erow { display: grid; grid-template-columns: 76px 64px 1fr auto; gap: 6px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.mp-erow { display: grid; grid-template-columns: 76px 64px 1fr auto; gap: 6px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .mp-erow .input { min-width: 0; padding: 8px; }
+.mp-erow .e-link-row { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.mp-erow .e-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-erow .e-link.warn { border-color: var(--bad); color: var(--bad); }
+.mp-erow .e-gpu-in { width: 64px; display: inline-block; padding: 4px 6px; }
 .mp-erow .e-dept { grid-column: 1 / 4; font-size: 13px; padding: 6px 8px; }
 .mp-erow .e-pan { white-space: nowrap; display: inline-flex; gap: 4px; align-items: center; }
 .mp-days { display: grid; gap: 2px; margin-bottom: 10px; }
+/* Weekmenu: gegeten afvinken en lege plekken vullen */
+.mp-irow { display: flex; align-items: center; gap: 8px; }
+.mp-irow .mp-item { flex: 1; min-width: 0; }
+.mp-eat { display: inline-flex; padding: 4px; }
+.mp-eat input { width: 22px; height: 22px; accent-color: var(--fuel); }
+.mp-irow.eaten .nm { text-decoration: line-through; opacity: .7; }
+.mp-addslot { margin-top: 8px; }
+.mp-addslot .chip { font-size: 13px; }
+/* Voeding: geplande maaltijden uit het weekmenu */
+.mplan { display: grid; grid-template-columns: 26px 1fr auto 30px; gap: 8px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); cursor: pointer; }
+.mplan input { width: 22px; height: 22px; accent-color: var(--fuel); }
+.mplan:not(.eaten) .mi-t, .mplan:not(.eaten) .mi-k { opacity: .65; }
+.mplan:not(.eaten) .mi-t small { font-style: italic; }

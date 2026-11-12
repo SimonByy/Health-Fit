@@ -114,7 +114,12 @@ export async function renderRecipes(ctx, day, box, after) {
   });
 }
 
-export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null, product = null, editRecipe: toEdit = null } = {}) {
+// Alleen een product kiezen (bv. als ingrediënt van een menu-recept): onPick(food, gram).
+export function pickFood(ctx, onPick, { initial = "" } = {}) {
+  return openAddFood(ctx, { day: todayIso(), onPick, initial });
+}
+
+export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null, product = null, editRecipe: toEdit = null, onPick = null, initial = "" } = {}) {
   C = ctx;
   const sheet = document.createElement("div");
   sheet.className = "sheet";
@@ -126,12 +131,20 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
 
   // recept in opbouw (null = gewone modus); in "pick"-modus kies je ingrediënten
   let recipe = null;
-  let picking = false;
+  let picking = !!onPick;
+  // product gekozen in pick-modus: eerst bewaren (een id is nodig), dan teruggeven
+  const picked = async (food, g) => {
+    try {
+      const f = food.id ? food : await C.rpc("save_food", { p: { barcode: food.barcode, name: food.name, brand: food.brand, per100: food.per100,
+        serving_g: food.serving_g, serving_label: food.serving_label, source: food.source || "off" } });
+      close(); onPick(f, g);
+    } catch (err) { C.toast(err.message, 5000); }
+  };
 
   const head = (title, back) => `<div class="row" style="justify-content:space-between;flex-wrap:nowrap">
       ${back ? `<button class="icon-btn" data-back aria-label="Terug">‹</button>` : ""}
       <h3 style="margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">${title}</h3><button class="icon-btn" data-close aria-label="Sluiten">✕</button></div>`;
-  const home = () => (picking ? recipeEditor() : search());
+  const home = () => (onPick ? close() : picking ? recipeEditor() : search());
   const wire = (onBack) => {
     sheet.querySelector("[data-close]").onclick = close;
     sheet.querySelector("[data-back]")?.addEventListener("click", () => (onBack || home)());
@@ -285,6 +298,7 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
     if (en.kind === "food") {
       if (!add) return amount(en.food);
       const g = en.food.serving_g || 100;
+      if (onPick) return picked(en.food, g);
       if (picking) { recipe.ingredients.push({ food: en.food, grams: g }); picking = false; return recipeEditor(); }
       return quickLog(rowEl, { day, meal, grams: g, food: foodRef(en.food) }, en.food.name);
     }
@@ -447,6 +461,7 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
     enterSubmits(sheet.querySelector(".sheet-card"), "#fAdd");
     sheet.querySelector("#fAdd").onclick = async (e) => {
       if (!check(sheet, [{ el: "#fG", ok: g > 0, msg: "Vul een hoeveelheid in grammen in." }])) return;
+      if (onPick) return picked(p, g);
       if (picking) { recipe.ingredients.push({ food: p, grams: g }); picking = false; return recipeEditor(); }
       e.target.disabled = true;
       try {
@@ -618,7 +633,8 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
     };
   }
 
-  if (start === "recipe") { recipe = { name: "", servings: 1, total_g: "", ingredients: [] }; recipeEditor(); }
+  if (onPick) search(initial);
+  else if (start === "recipe") { recipe = { name: "", servings: 1, total_g: "", ingredients: [] }; recipeEditor(); }
   else if (toEdit) editRecipe(toEdit);
   else if (product) amount(product);
   else search();

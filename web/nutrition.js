@@ -50,10 +50,9 @@ export async function renderNutrition(ctx, state) {
     C.rpc("get_nutrition_day", { p_day: day }),
     C.rpc("get_food_log", { p_day: day }),
     C.rpc("get_quick_add").catch(() => ({})),
-    isToday ? C.rpc("mp_get").then((m) => {
-      const w = m.weeks?.find((x) => x.id === m.current_week_id);
-      return (w?.items || []).filter((i) => i.day === day).map((i) => ({ ...i, r: m.recipes.find((r) => r.id === i.recipe_id) })).filter((i) => i.r);
-    }).catch(() => []) : Promise.resolve([]),
+    // geplande maaltijden uit het weekmenu voor deze dag (uit welke week ook)
+    C.rpc("mp_get").then((m) => (m.weeks || []).flatMap((w) => w.items || []).filter((i) => i.day === day)
+      .map((i) => ({ ...i, r: m.recipes.find((r) => r.id === i.recipe_id) })).filter((i) => i.r)).catch(() => []),
     C.rpc("get_food_week", { p_days: 7 }).catch(() => null),
   ]);
   const by = Object.fromEntries((d.nutrients || []).map((x) => [x.metric, x]));
@@ -66,7 +65,6 @@ export async function renderNutrition(ctx, state) {
   const suggest = (meal) => {
     const out = [], seen = new Set(items.filter((i) => i.meal === meal).map((i) => i.name));
     const push = (s) => { if (out.length < 4 && !seen.has(s.name)) { seen.add(s.name); out.push(s); } };
-    menu.filter((i) => i.slot === SLOT_OF[meal]).forEach((i) => push({ kind: "menu", name: i.r.name, kcal: i.r.kcal * i.portions, x: i }));
     (quick.frequent?.[meal] || []).forEach((f) => push({ kind: "freq", name: f.name, kcal: f.kcal, x: f }));
     if (meal === "Snack" || meal === "Laat") (quick.products || []).forEach((p) => push({ kind: "prod", name: p.name, kcal: (p.per100?.kcal || 0) * (p.serving_g || 100) / 100, x: p }));
     (quick.recipes || []).filter((r) => r.meal_type === SLOT_OF[meal]).forEach((r) => push({ kind: "rec", name: r.name, kcal: r.kcal, x: r }));
@@ -75,18 +73,26 @@ export async function renderNutrition(ctx, state) {
   const sugg = Object.fromEntries(meals.map((m) => [m, suggest(m)]));
   const short = (s) => s.replace(/^(AH|Upfront|Albert Heijn)\s+/i, "").replace(/\s*\(.*?\)\s*/g, " ").replace(/Proteïnereep/i, "Eiwitreep").trim();
 
+  const planFor = (m) => menu.filter((i) => i.slot === SLOT_OF[m]);
+  const planLogIds = new Set(menu.filter((i) => i.eaten && i.food_log_id).map((i) => i.food_log_id));
   const mealCard = (m) => {
-    const list = items.filter((i) => i.meal === m);
-    const kc = list.reduce((s, i) => s + (Number(i.kcal) || 0), 0);
+    const all = items.filter((i) => i.meal === m);
+    const list = all.filter((i) => !planLogIds.has(i.id));   // gelogd via het menu: staat al als afgevinkte planning
+    const kc = all.reduce((s, i) => s + (Number(i.kcal) || 0), 0);
+    const plan = planFor(m);
     return `<section class="mcard ${m === now && isToday ? "now" : ""}" data-meal="${m}">
       <header><h2>${LABEL[m] || m}</h2><span class="mk">${list.length ? `${C.fmt(kc)} kcal` : ""}</span>
         <button class="madd" data-add="${m}" aria-label="Iets toevoegen aan ${(LABEL[m] || m).toLowerCase()}">+</button></header>
+      ${plan.map((p) => { const q = Number(p.portions) || 1; return `<label class="mplan ${p.eaten ? "eaten" : ""}">
+          <input type="checkbox" data-plan="${p.id}" ${p.eaten ? "checked" : ""}>
+          <span class="mi-t">${C.esc(p.r.name)}<small>${p.eaten ? "gegeten · " : "gepland · "}${q !== 1 ? `${C.fmt(q, 2)} porties · ` : ""}${C.fmt((Number(p.r.protein) || 0) * q)} g eiwit</small></span>
+          <span class="mi-k">${C.fmt((Number(p.r.kcal) || 0) * q)}</span></label>`; }).join("")}
       ${list.map((i) => `<div class="mi" data-id="${i.id}">
           <button class="mi-t" type="button" aria-label="${C.esc(i.name)} aanpassen">${C.esc(i.name)}<small>${i.grams != null ? `${C.fmt(i.grams)} g · ` : ""}${C.fmt(i.protein)} g eiwit</small></button>
           <span class="mi-k">${C.fmt(i.kcal)}</span>
           <button class="mi-x" aria-label="${C.esc(i.name)} verwijderen">×</button></div>`).join("")}
       ${sugg[m].length && (!list.length || (isToday && m === now)) ? `<div class="sugg">${sugg[m].map((s, k) => `<button class="sg" data-sg="${k}"><span>${C.esc(short(s.name))}</span><small>${C.fmt(s.kcal)}</small></button>`).join("")}</div>`
-        : !list.length ? `<p class="mempty">Nog niets. Tik op + om iets toe te voegen.</p>` : ""}
+        : !list.length && !plan.length ? `<p class="mempty">Nog niets. Tik op + om iets toe te voegen.</p>` : ""}
     </section>`;
   };
 
@@ -145,7 +151,13 @@ export async function renderNutrition(ctx, state) {
         reload();
       } catch (e) { b.disabled = false; b.classList.remove("busy"); C.toast(e.message, 4000); }
     }));
-    card.querySelectorAll(".mi-t").forEach((b) => (b.onclick = () => openEditFood(C, items.find((i) => i.id === b.closest(".mi").dataset.id), reload)));
+    card.querySelectorAll("[data-plan]").forEach((cb) => (cb.onchange = async () => {
+      const p = menu.find((i) => i.id === Number(cb.dataset.plan));
+      cb.disabled = true;
+      try { await C.rpc("mp_item_eaten", { p_item_id: p.id, p_eaten: cb.checked }); reload(); }
+      catch (e) { cb.checked = !cb.checked; cb.disabled = false; C.toast(e.message, 5000); }
+    }));
+    card.querySelectorAll(".mi .mi-t").forEach((b) => (b.onclick = () => openEditFood(C, items.find((i) => i.id === b.closest(".mi").dataset.id), reload)));
     card.querySelectorAll(".mi-x").forEach((b) => (b.onclick = async () => {
       const it = items.find((i) => i.id === b.closest(".mi").dataset.id);
       await C.rpc("void_food", { p_id: it.id });
