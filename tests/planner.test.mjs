@@ -13,6 +13,7 @@ const recipes = [
   R(19, "Teriyaki", "avond", [I("Kip", 150, "g", P(111, 25, 0, 1.2))], { kcal: 166.5, protein: 37.5, carbs: 0, fat: 1.8, macros_checked: true }),
   R(10, "Fitpudding", "avondsnack", [I("Fitpudding", 1, "stuk", P(86, 10, 8.5, 0.9), { g_per_unit: 200, winkel: "AH" })], { kcal: 172, protein: 20, carbs: 17, fat: 1.8, macros_checked: true }),
   R(17, "Kwark", "snack", [I("Kwark", 250, "g", P(52, 9, 4, 0))], { kcal: 130, protein: 22.5, carbs: 10, fat: 0, macros_checked: true }),
+  R(31, "Bevel concept", "lunch", [I("Iets", 100, "g", null)], { kcal: null, protein: null, carbs: null, fat: null, macros_checked: false, status: "concept" }),
   R(30, "Oud recept", "avond", [I("Iets", 100, "g", null)], { kcal: 500, protein: 30, carbs: 50, fat: 10, macros_checked: false }),
 ];
 let id = 100; const items = [];
@@ -116,7 +117,7 @@ $$(".sheet").forEach((s) => s.remove());
 
 console.log("— Ontbrekende koppeling waarschuwt");
 await m.renderMenu(ctx, "recepten"); await wait();
-ok($$(".warn-badge").length === 1 && $$(".ok-badge").length >= 5, "recepten: 1 geschat, rest ✓");
+ok($$(".warn-badge").length === 2 && $$(".ok-badge").length >= 5, "recepten: 2 geschat (oud + concept), rest ✓");
 $('.mp-ritem[data-id="30"]').click(); await wait();
 $("#fixMac").click(); await wait(80);
 ok($("#eMac").textContent.includes("geschat"), "oud recept: melding geschat");
@@ -224,5 +225,13 @@ await nm2.renderNutrition(ctx, { nutDay: "2026-11-16" }); await wait();
 ok(txt($(".mp-planbar")).includes("1 van 3 gegeten") && $("#eatAll"), "Voeding: hoeveel van je menu gegeten + knop");
 const pr = $('.mcard[data-meal="Avondeten"] .sg.pair');
 ok(pr && txt(pr).includes("Appelmoes") && txt($('.mcard[data-meal="Avondeten"] .sugg-h')).startsWith("Vaak samen"), "vaak samen: appelmoes bij avondeten");
+
+console.log("— Bevel-concept afmaken");
+await m.renderMenu(ctx, "recepten"); await wait();
+$('.mp-ritem[data-id="31"]').click(); await wait();
+ok($("#finish") && !$("#aiFill"), "concept: knop 'Afmaken met producten', geen AI-schatting");
+$("#finish").click(); await wait(80);
+ok($("#eName")?.value === "Bevel concept", "opent de editor");
+$$(".sheet").forEach((x) => x.remove());
 
 console.log(fails ? `\n${fails} FOUT(EN)` : "\nAlles OK");

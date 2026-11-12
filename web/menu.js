@@ -438,7 +438,7 @@ function openRecipe(r, { item = null } = {}) {
           </div>
           <button class="linkbtn" id="unplan" style="margin-top:8px;color:var(--bad)">Uit het menu van deze dag halen</button></section>` : ""}
       ${r.status === "concept" ? `<section class="mp-box"><p class="small" style="margin:0 0 8px">${C.esc(r.description || "Nog geen details.")}</p>
-          <button class="btn" id="aiFill" style="width:100%">✨ Laat Claude het uitwerken</button></section>` : ""}
+          <button class="btn" id="finish" style="width:100%">✏️ Afmaken: koppel de ingrediënten aan producten</button></section>` : ""}
       ${m("kcal") != null ? `<div class="macros" style="grid-template-columns:repeat(4,1fr)">
           ${[["kcal", "kcal", ""], ["protein", "eiwit", "g"], ["carbs", "koolh.", "g"], ["fat", "vet", "g"]].map(([k, l, u]) =>
             `<div class="macro"><div class="v">${C.fmt(m(k))}${u ? `<small> ${u}</small>` : ""}</div><div class="l">${l} / portie</div></div>`).join("")}</div>` : ""}
@@ -506,6 +506,7 @@ function openRecipe(r, { item = null } = {}) {
     });
     card.querySelector("#cook")?.addEventListener("click", () => { close(); openCook(r, portions); });
     card.querySelector("#edit")?.addEventListener("click", () => { close(); openEdit(r); });
+    card.querySelector("#finish")?.addEventListener("click", () => { close(); openEdit(r); });
     card.querySelector("#edit2")?.addEventListener("click", () => { close(); openEdit(r); });
     card.querySelector("#cook2")?.addEventListener("click", () => { close(); openCook(r, itemPortions || 1); });
     card.querySelector("#eat")?.addEventListener("click", async (e) => {
