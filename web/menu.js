@@ -78,15 +78,17 @@ function dayTotals(items) {
 }
 
 // Kookplan: per gerecht (geen ontbijt/snack) hoeveel porties en voor welke dagen
+// Kookdag: avondeten op de eerste dag zelf, lunch de avond ervoor (zondag voor maandag).
 function cookPlan(w) {
   const by = new Map();
-  for (const it of w.items) {
-    if (it.slot === "ontbijt" || it.slot === "snack") continue;
+  for (const it of [...w.items].sort((a, b) => a.day.localeCompare(b.day))) {
+    if (!["lunch", "avond"].includes(it.slot)) continue;
     const e = by.get(it.recipe_id) || { recipe_id: it.recipe_id, portions: 0, days: [], slot: it.slot };
     e.portions += n(it.portions) || 1; e.days.push(it.day);
     by.set(it.recipe_id, e);
   }
-  return [...by.values()].sort((a, b) => a.days[0].localeCompare(b.days[0]));
+  return [...by.values()].map((e) => ({ ...e, cook: e.slot === "lunch" ? addDaysIso(e.days[0], -1) < w.week_start ? w.week_start : addDaysIso(e.days[0], -1) : e.days[0] }))
+    .sort((a, b) => a.cook.localeCompare(b.cook) || a.days[0].localeCompare(b.days[0]));
 }
 
 function drawWeek(box) {
@@ -112,7 +114,7 @@ function drawWeek(box) {
           <button class="btn" id="review">✓ Menu is goed</button></section>`}
     ${plan.length ? `<section class="panel"><h3>Koken deze week</h3>
         ${plan.map((p) => { const r = recById(p.recipe_id); return r ? `<div class="mp-row">
-          <span><b>${C.esc(r.name)}</b><br><span class="small muted">${C.fmt(p.portions, 2)} porties · ${p.days.map((d) => wd(d).slice(0, 2)).join(", ")}</span></span>
+          <span><span class="small mp-cookday">${C.esc(wd(p.cook))}</span><br><b>${C.esc(r.name)}</b><br><span class="small muted">${C.fmt(p.portions, 2)} porties voor ${p.days.map((d) => wd(d).slice(0, 2)).join(", ")}</span></span>
           <span class="row" style="gap:6px;flex-wrap:nowrap"><button class="icon-btn mp-edit" data-r="${r.id}" aria-label="${C.esc(r.name)} aanpassen">✏️</button>
           <button class="btn secondary mp-cook" data-r="${r.id}" data-p="${p.portions}">Koken</button></span></div>` : ""; }).join("")}
         ${w.prep?.length ? `<details class="mp-prep"><summary>Prepschema</summary><ol>${w.prep.map((s) => `<li>${C.esc(s)}</li>`).join("")}</ol></details>` : ""}
@@ -262,18 +264,20 @@ function drawRecipes(box) {
     return !r.disliked;
   });
   box.innerHTML = `
-    <button class="btn mp-add" id="addRec">📷 + Recept toevoegen</button>
-    <p class="small muted" style="margin:6px 0 10px">Via een foto, een link naar een receptensite of zelf typen. ★ betekent: vaker in je weekmenu. 👎: nooit meer.</p>
+    <button class="btn mp-add" id="newRec">+ Nieuw recept met producten</button>
+    <button class="btn ghost" id="addRec" style="width:100%;margin-top:6px">📷 Foto of link door Claude laten uitwerken</button>
+    <p class="small muted" style="margin:6px 0 10px">Een recept rekent met echte etiketwaarden zodra elk ingrediënt aan een product gekoppeld is (✓). ★ = vaker in je weekmenu, 👎 = nooit meer.</p>
     <input class="input" id="rq" placeholder="Zoek een recept…" value="${C.esc(query)}" autocomplete="off" style="margin-bottom:10px">
     <div class="chips" id="rf" style="margin-bottom:12px">${F.map(([k, l]) => `<button class="chip ${filter === k ? "on" : ""}" data-f="${k}">${l}</button>`).join("")}</div>
     <div class="list">${list.map((r) => `<div class="item mp-ritem" data-id="${r.id}" style="--c:var(--fuel);grid-template-columns:6px 1fr auto">
         <span class="swatch"></span>
         <span><div class="t">${C.esc(r.name)}${r.status === "concept" ? ` <span class="badge">concept</span>` : ""}</div>
-          <div class="m">${SLOTS[r.meal_type]}${n(r.kcal) != null ? ` · ${C.fmt(r.kcal)} kcal · ${C.fmt(r.protein)} g eiwit per portie` : ""}${r.note ? " · 📝" : ""}</div></span>
+          <div class="m">${SLOTS[r.meal_type]}${n(r.kcal) != null ? ` · ${C.fmt(r.kcal)} kcal · ${C.fmt(r.protein)} g eiwit per portie` : ""} · ${r.macros_checked ? `<span class="ok-badge">✓ echte waarden</span>` : `<span class="warn-badge">geschat</span>`}${r.note ? " · 📝" : ""}</div></span>
         <button class="mp-star ${r.favorite ? "on" : ""}" data-star="${r.id}" aria-label="${r.favorite ? "Niet meer als favoriet" : "Lekker: vaker voorstellen"}">${r.favorite ? "★" : "☆"}</button>
       </div>`).join("") || `<div class="empty">${filter === "fav" ? "Nog geen favorieten. Tik op ☆ bij een recept." : "Geen recepten in deze lijst."}</div>`}</div>`;
 
   $("#addRec").onclick = () => openAdd();
+  $("#newRec").onclick = () => openEdit({ id: null, name: "", meal_type: "avond", servings: 2, ingredients: [], steps: [] }, () => { tab = "recepten"; });
   const rq = $("#rq");
   rq.oninput = () => { query = rq.value; const pos = rq.selectionStart; drawRecipes(box); const n2 = $("#rq"); n2.focus(); n2.setSelectionRange(pos, pos); };
   $("#rf").onclick = (e) => { const b = e.target.closest(".chip"); if (!b) return; filter = b.dataset.f; drawRecipes(box); };
@@ -325,7 +329,7 @@ function openRecipe(r, { item = null } = {}) {
   const render = () => {
     const m = (k) => n(r[k]);
     card.innerHTML = `${head(C.esc(r.name))}
-      <p class="small muted" style="margin:2px 0 8px">${SLOTS[r.meal_type]}${r.status === "concept" ? " · concept" : ""}${r.macros_checked ? " · macro's gecheckt" : n(r.kcal) != null ? " · macro's zijn een schatting" : ""}</p>
+      <p class="small muted" style="margin:2px 0 8px">${SLOTS[r.meal_type]}${r.status === "concept" ? " · concept" : ""} · ${r.macros_checked ? `<span class="ok-badge">✓ uitgerekend uit je producten</span>` : `<span class="warn-badge">geschat</span> <button class="linkbtn" id="fixMac">koppel de ingrediënten</button>`}</p>
       <div class="row mp-op">
         <button class="btn ${r.favorite ? "" : "secondary"}" data-op="lekker">${r.favorite ? "★ Lekker" : "☆ Lekker"}</button>
         <button class="btn ${r.disliked ? "" : "secondary"}" data-op="niet" ${r.disliked ? 'style="background:var(--bad)"' : ""}>👎 Niet lekker</button>
@@ -396,6 +400,7 @@ function openRecipe(r, { item = null } = {}) {
     });
     card.querySelector("#cook")?.addEventListener("click", () => { close(); openCook(r, portions); });
     card.querySelector("#edit")?.addEventListener("click", () => { close(); openEdit(r); });
+    card.querySelector("#fixMac")?.addEventListener("click", () => { close(); openEdit(r); });
     card.querySelector("#toList")?.addEventListener("click", async () => {
       try { await C.rpc("mp_list_add_recipe", { p_week_id: D.current_week_id ?? null, p_recipe_id: r.id, p_portions: portions });
         C.toast(`${r.name} op je lijst gezet`); reload(); }
@@ -552,6 +557,7 @@ async function openEdit(r0, onSaved) {
       <div class="e-link-row">${linkInfo(i)}</div>
       <select class="input e-dept" aria-label="Afdeling in de winkel">${DEPTS.map((d) => `<option ${d === (i.dept || "Overig") ? "selected" : ""}>${C.esc(d)}</option>`).join("")}</select>
       <label class="small e-pan"><input type="checkbox" class="e-pantry" ${i.pantry ? "checked" : ""}> altijd in huis <span class="muted">(niet op lijst)</span></label>
+      <select class="input e-shop" aria-label="Winkel"><option value="">Winkel: automatisch</option><option value="AH" ${i.winkel === "AH" ? "selected" : ""}>Altijd AH (zondag)</option><option value="Okay" ${i.winkel === "Okay" ? "selected" : ""}>Altijd Okay (woensdag)</option></select>
     </div>`;
   const collect = () => {
     card.querySelectorAll(".mp-erow").forEach((row) => {
@@ -562,6 +568,7 @@ async function openEdit(r0, onSaved) {
       i.name = row.querySelector(".e-name").value.trim();
       i.dept = row.querySelector(".e-dept").value;
       i.pantry = row.querySelector(".e-pantry").checked;
+      i.winkel = row.querySelector(".e-shop").value || null;
       const gp = row.querySelector(".e-gpu-in");
       if (gp) { const x = gp.value.trim().replace(",", "."); i.g_per_unit = x === "" || Number.isNaN(Number(x)) ? null : Number(x); }
     });
@@ -617,10 +624,10 @@ async function openEdit(r0, onSaved) {
       i.food_id = food.id; i.food_name = food.name;
       i.per100 = { kcal: n(per.kcal), protein: n(per.protein), carbs: n(per.carbs), fat: n(per.fat) };
       if (!i.name) i.name = food.name;
-      if (!i.unit || i.unit === "g" || i.unit === "ml") { if (n(i.amount) === null) i.amount = g; if (!i.unit) i.unit = "g"; }
+      if (!i.unit || i.unit === "g" || i.unit === "ml") { i.amount = g; if (!i.unit) i.unit = "g"; }
       else i.g_per_unit = Math.round((g / (n(i.amount) || 1)) * 10) / 10;
       render();
-    }, { initial: i.name || "" });
+    }, { initial: i.name || "", grams: !i.unit || i.unit === "g" || i.unit === "ml" ? n(i.amount) : null });
   };
   const bind = () => {
     card.querySelector("[data-close]").onclick = close;
@@ -654,8 +661,12 @@ async function openEdit(r0, onSaved) {
       try {
         const saved = await C.rpc("mp_save_recipe", { p: { id: r.id ?? null, name: r.name, meal_type: r.meal_type, servings: r.servings, ...mac,
           macros_checked: linked > 0 && !missing.length,
-          ingredients: list.map((i) => ({ name: i.name, amount: n(i.amount), unit: i.unit || null, dept: i.dept || "Overig", pantry: !!i.pantry,
-            ...(i.per100 ? { food_id: i.food_id, food_name: i.food_name, per100: i.per100, g_per_unit: n(i.g_per_unit) } : {}) })),
+          ingredients: list.map((i) => {
+            const o = { ...i, name: i.name, amount: n(i.amount), unit: i.unit || null, dept: i.dept || "Overig", pantry: !!i.pantry };
+            if (!o.winkel) delete o.winkel;
+            if (o.per100) o.g_per_unit = n(o.g_per_unit); else { delete o.food_id; delete o.food_name; delete o.per100; delete o.g_per_unit; }
+            return o;
+          }),
           steps: r.steps, storage: r.storage || null, source_url: r.source_url || null, description: r.description || null,
           status: "klaar", favorite: r.favorite ?? true } });
         Object.assign(r0, saved || {});

@@ -115,11 +115,11 @@ export async function renderRecipes(ctx, day, box, after) {
 }
 
 // Alleen een product kiezen (bv. als ingrediënt van een menu-recept): onPick(food, gram).
-export function pickFood(ctx, onPick, { initial = "" } = {}) {
-  return openAddFood(ctx, { day: todayIso(), onPick, initial });
+export function pickFood(ctx, onPick, { initial = "", grams = null } = {}) {
+  return openAddFood(ctx, { day: todayIso(), onPick, initial, pickGrams: grams });
 }
 
-export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null, product = null, editRecipe: toEdit = null, onPick = null, initial = "" } = {}) {
+export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null, product = null, editRecipe: toEdit = null, onPick = null, initial = "", pickGrams = null } = {}) {
   C = ctx;
   const sheet = document.createElement("div");
   sheet.className = "sheet";
@@ -298,7 +298,7 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
     if (en.kind === "food") {
       if (!add) return amount(en.food);
       const g = en.food.serving_g || 100;
-      if (onPick) return picked(en.food, g);
+      if (onPick) return picked(en.food, pickGrams ? Number(pickGrams) : g);
       if (picking) { recipe.ingredients.push({ food: en.food, grams: g }); picking = false; return recipeEditor(); }
       return quickLog(rowEl, { day, meal, grams: g, food: foodRef(en.food) }, en.food.name);
     }
@@ -430,7 +430,7 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
   // ---- hoeveelheid ----
   function amount(p) {
     const per = p.per100 || {};
-    let g = p.serving_g ? Number(p.serving_g) : 100;
+    let g = onPick && pickGrams ? Number(pickGrams) : p.serving_g ? Number(p.serving_g) : 100;
     sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Hoeveelheid">
       ${head(C.esc(p.name), true)}
       <p class="muted small" style="margin:2px 0 0">${p.brand ? C.esc(p.brand) + " · " : ""}per 100 g: ${C.fmt(per.kcal)} kcal · E ${C.fmt(per.protein, 1)} · K ${C.fmt(per.carbs, 1)} · V ${C.fmt(per.fat, 1)}</p>

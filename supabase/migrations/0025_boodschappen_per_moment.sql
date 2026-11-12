@@ -42,7 +42,7 @@ returns jsonb language sql stable security definer set search_path = '' as $$
            case
              when coalesce(nullif(e->>'dept', ''), 'Overig') not in ('Groenten & fruit', 'Vlees & vis', 'Zuivel & eieren') then 'zondag'
              when coalesce((e->>'pantry')::boolean, false) then 'zondag'
-             when s.slot in ('ontbijt', 'snack') and s.day >= c.week_start + c.tus_off then 'tussendag'
+             when s.slot in ('ontbijt', 'snack', 'avondsnack') and s.day >= c.week_start + c.tus_off then 'tussendag'
              when s.slot in ('lunch', 'avond') and s.first_d >= c.week_start + c.tus_off then 'tussendag'
              else 'zondag'
            end as moment

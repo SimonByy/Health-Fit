@@ -81,7 +81,7 @@ export async function renderNutrition(ctx, state) {
     const kc = all.reduce((s, i) => s + (Number(i.kcal) || 0), 0);
     const plan = planFor(m);
     return `<section class="mcard ${m === now && isToday ? "now" : ""}" data-meal="${m}">
-      <header><h2>${LABEL[m] || m}</h2><span class="mk">${list.length ? `${C.fmt(kc)} kcal` : ""}</span>
+      <header><h2>${LABEL[m] || m}</h2><span class="mk">${all.length ? `${C.fmt(kc)} kcal` : ""}</span>
         <button class="madd" data-add="${m}" aria-label="Iets toevoegen aan ${(LABEL[m] || m).toLowerCase()}">+</button></header>
       ${plan.map((p) => { const q = Number(p.portions) || 1; return `<label class="mplan ${p.eaten ? "eaten" : ""}">
           <input type="checkbox" data-plan="${p.id}" ${p.eaten ? "checked" : ""}>

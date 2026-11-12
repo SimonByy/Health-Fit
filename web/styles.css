@@ -852,3 +852,7 @@ body { background: radial-gradient(900px 420px at 50% -160px, #1C3470 0%, rgba(2
 .mp-mm { text-transform: none; letter-spacing: 0; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mp-mm b { color: var(--ink); font-weight: 600; }
 .mp-swipe .mp-item { grid-template-columns: 1fr auto; }
+.ok-badge { color: var(--good); font-weight: 600; }
+.warn-badge { color: var(--fuel); font-weight: 600; }
+.mp-cookday { text-transform: uppercase; letter-spacing: .04em; color: var(--fuel); font-weight: 700; font-size: 11px; }
+.mp-erow .e-shop { grid-column: 1 / -1; font-size: 13px; padding: 6px 8px; }
