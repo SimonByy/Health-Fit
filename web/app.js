@@ -105,7 +105,7 @@ function showError(err) {
 }
 
 // Gedeelde helpers voor de modules training (workout.js) en voeding (food.js)
-const ctx = { rpc, invoke, toast, fmt, esc, view, today, addDays, shortDate, mountChart, SUPABASE_URL,
+const ctx = { rpc, invoke, toast, fmt, esc, view, today, addDays, shortDate, mountChart, SUPABASE_URL, md: (s) => md(s),
   importAppleHealth: (...a) => importAppleHealth(...a) };
 const workoutMod = () => import("./workout.js");
 const foodMod = () => import("./food.js");
@@ -247,8 +247,8 @@ function drawChart(el, { points, color, type = "bar", unit = "", dec = 0, goal =
 // Router
 // ======================================================================
 const state = { day: today(), nutDay: today(), trendDays: 30, trainTab: "workouts", conversation: null };
-const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training", koppelen: "Koppelen" };
-const ACCENT = { workout: "--strength", dagboek: "--sleep", vandaag: "--move", training: "--strength", voeding: "--fuel", trends: "--heart", vraag: "--sleep" };
+const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training", koppelen: "Koppelen", menu: "Menu", briefing: "Briefing" };
+const ACCENT = { workout: "--strength", dagboek: "--sleep", vandaag: "--move", training: "--strength", voeding: "--fuel", trends: "--heart", vraag: "--sleep", menu: "--fuel", briefing: "--sleep" };
 
 async function route() {
   let [name, param] = (location.hash.replace(/^#\/?/, "") || "vandaag").split("/");
@@ -376,6 +376,11 @@ function bindActivityList(root) {
 async function renderToday() {
   const [d, meas, rec] = await Promise.all([rpc("get_dashboard", { p_day: state.day }), rpc("get_measurements").catch(() => ({})),
     rpc("get_recovery", { p_day: state.day }).catch(() => ({}))]);
+  const [brief, mp] = state.day === today() ? await Promise.all([rpc("get_briefing", {}).catch(() => null), rpc("mp_get").catch(() => null)]) : [null, null];
+  const mpWeek = mp?.weeks?.find((w) => w.id === mp.current_week_id);
+  const mpToday = (mpWeek?.items || []).filter((i) => i.day === state.day)
+    .sort((x, y) => ["ontbijt", "lunch", "snack", "avond"].indexOf(x.slot) - ["ontbijt", "lunch", "snack", "avond"].indexOf(y.slot))
+    .map((i) => ({ ...i, r: mp.recipes.find((r) => r.id === i.recipe_id) })).filter((i) => i.r);
   const r = rec.today || {}, ra = rec.avg7 || {};
   const tile = (label, v, avg, unit = "", lowGood = false) => v == null ? "" : `<div class="rtile">
       <span class="rl">${label}</span><b>${fmt(v)}${unit ? `<small>${unit}</small>` : ""}</b>
@@ -406,6 +411,8 @@ async function renderToday() {
         <details ${ins.read_at ? "" : "open"} id="insDet"><summary>${esc(ins.title)} <span class="muted small">${esc(shortDate(ins.created_at.slice(0, 10)))}</span></summary>
         <div class="md">${md(ins.content)}</div></details>
       </section>` : ""}
+    ${brief?.text ? `<a class="panel lk-cta" href="#/briefing"><span><b>▶ Ochtendbriefing</b><br><span class="small muted">Laten voorlezen en antwoorden</span></span><span aria-hidden="true">›</span></a>` : ""}
+    ${mpToday.length ? `<a class="panel lk-cta" href="#/menu/week"><span><b>Vandaag op je menu</b><br><span class="small muted">${mpToday.map((i) => esc(i.r.name)).join(" · ")}</span></span><span aria-hidden="true">›</span></a>` : ""}
     <div class="board">
       <section class="domain" style="--c:${DOMAIN.move}">
         <h2>Beweging</h2>
@@ -1552,6 +1559,8 @@ const ROUTES = {
   dagboek: renderJournal,
   workout: async () => (await workoutMod()).renderWorkout(ctx),
   koppelen: async () => (await import("./link.js")).renderLink(ctx),
+  menu: async (p) => (await import("./menu.js")).renderMenu(ctx, p),
+  briefing: async () => (await import("./briefing.js")).renderBriefing(ctx),
 };
 
 async function boot() {

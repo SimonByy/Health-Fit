@@ -58,6 +58,8 @@ PWA (Vercel, map /web) ──── RPC-functies (alleen eigenaar) ────�
 ## Functies
 
 - **Vandaag:** beweging, training van vandaag, voeding, water (+500 ml-knop), cafeïne (+50 mg-knop), herstel, gewicht loggen, dagboek en het weekoverzicht van de AI.
+- **Menu (mealprep):** weekmenu van zondagavond tot vrijdagmiddag (Claude stelt het elke vrijdag voor, met de AH-bonus), gerechten wisselen en porties aanpassen, menu goedkeuren, kookplan voor zondag, boodschappenlijst per afdeling met afvinken en eigen extra's, recepten met ★ lekker / 👎 niet lekker en opmerkingen voor de planner, kookmodus (scherm blijft aan), recept toevoegen via foto, link of tekst (edge function `recipe-ai`), kopiëren voor Bevel en een portie loggen.
+- **Ochtendbriefing:** elke ochtend een briefing van Claude (`app.briefings`); om 09:00 een melding die `#/briefing/autoplay` opent. De briefing wordt voorgelezen, daarna start de microfoon; je antwoord gaat naar je dagboek en naar de chat.
 - **Dagboek:** inspreken (spraakherkenning in Safari) of typen; de AI kan het lezen.
 - **Routines:** terugkerende pushmeldingen; standaard staat "Weekoverzicht" op maandag 08:00.
 - **Krachttraining loggen (zoals Hevy):** Training → *Lege training starten*, een schema, of een recente training herhalen. Per set: type (opwarm/normaal/falen/dropset), "Vorige" waarden (tik om over te nemen), kg en reps; afvinken start de rusttimer (−15/+15/overslaan) met geluid in de app én een pushmelding als je telefoon vergrendeld is. 🏆 bij een nieuw record (geschatte 1RM), records-overzicht na afronden, training bewaren als schema. Een lopende training blijft bewaard als je de app sluit. Cardio blijft binnenkomen via Garmin → Apple Health.
