@@ -185,4 +185,14 @@ await m.renderMenu(ctx, "lijst"); await wait();
 $('.mp-copy[data-moment="zondag"]').click(); await wait();
 ok(copied === "Zondag (AH)\n\nVlees & vis\n- 400 g Gehakt", "kopie: alleen niet-afgevinkt, zonder voorraad: " + JSON.stringify(copied));
 
+
+console.log("— Recept verwijderen dat in het menu staat");
+let lastConfirm = ""; globalThis.confirm = (msg) => { lastConfirm = msg; return true; };
+await m.renderMenu(ctx, "recepten"); await wait();
+$('.mp-ritem[data-id="19"]').click(); await wait();
+$(".mp-more").open = true; $("#hide").click(); await wait(60);
+ok(lastConfirm.includes("dinsdag 17/11") && lastConfirm.includes("donderdag 19/11") && lastConfirm.includes("boodschappenlijst"), "vraag noemt de dagen in het menu");
+ok(JSON.stringify(calls.filter((c) => c[0] === "mp_hide_recipe").at(-1)?.[1]) === '{"p_id":19}', "mp_hide_recipe wordt aangeroepen");
+globalThis.confirm = () => confirmAns;
+
 console.log(fails ? `\n${fails} FOUT(EN)` : "\nAlles OK");

@@ -488,8 +488,18 @@ function openRecipe(r, { item = null } = {}) {
       catch (e) { C.toast(e.message, 4000); }
     };
     card.querySelector("#hide").onclick = async () => {
-      if (!confirm(`"${r.name}" verwijderen uit je recepten?`)) return;
-      try { await C.rpc("mp_hide_recipe", { p_id: r.id }); close(); C.toast("Recept verwijderd"); reload(); }
+      // In het menu? Dan zeggen op welke komende dagen het verdwijnt.
+      const planned = D.weeks.flatMap((w) => w.items || []).filter((i) => i.recipe_id === r.id && i.day >= D.today)
+        .sort((a, b) => a.day.localeCompare(b.day));
+      const where = planned.length ? `\n\nHet staat nog in je menu op ${planned.map((i) => dshort(i.day)).join(", ")}. Daar wordt het weggehaald (ook van je boodschappenlijst).` : "";
+      if (!confirm(`"${r.name}" verwijderen uit je recepten?${where}`)) return;
+      try {
+        const res = await C.rpc("mp_hide_recipe", { p_id: r.id });
+        close();
+        const k = res?.removed_items || 0;
+        C.toast(k ? `Recept verwijderd en uit ${k} ${k === 1 ? "maaltijd" : "maaltijden"} in je menu gehaald` : "Recept verwijderd", 5000);
+        reload();
+      }
       catch (e) { C.toast(e.message, 5000); }
     };
   };
