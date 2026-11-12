@@ -551,7 +551,7 @@ async function openEdit(r0, onSaved) {
       <button class="icon-btn e-del" type="button" aria-label="Verwijderen">✕</button>
       <div class="e-link-row">${linkInfo(i)}</div>
       <select class="input e-dept" aria-label="Afdeling in de winkel">${DEPTS.map((d) => `<option ${d === (i.dept || "Overig") ? "selected" : ""}>${C.esc(d)}</option>`).join("")}</select>
-      <label class="small e-pan"><input type="checkbox" class="e-pantry" ${i.pantry ? "checked" : ""}> voorraad</label>
+      <label class="small e-pan"><input type="checkbox" class="e-pantry" ${i.pantry ? "checked" : ""}> altijd in huis <span class="muted">(niet op lijst)</span></label>
     </div>`;
   const collect = () => {
     card.querySelectorAll(".mp-erow").forEach((row) => {
