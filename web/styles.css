@@ -807,3 +807,10 @@ body { background: radial-gradient(900px 420px at 50% -160px, #1C3470 0%, rgba(2
 .fi-main { grid-template-columns: minmax(0, 1fr); }
 .add-sheet { overflow-x: hidden; }
 .searchrow input::placeholder { color: var(--faint); }
+
+/* Recept aanpassen */
+.mp-erow { display: grid; grid-template-columns: 76px 64px 1fr auto; gap: 6px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.mp-erow .input { min-width: 0; padding: 8px; }
+.mp-erow .e-dept { grid-column: 1 / 4; font-size: 13px; padding: 6px 8px; }
+.mp-erow .e-pan { white-space: nowrap; display: inline-flex; gap: 4px; align-items: center; }
+.mp-days { display: grid; gap: 2px; margin-bottom: 10px; }

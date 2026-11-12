@@ -108,10 +108,11 @@ function drawWeek(box) {
       : `<section class="panel mp-review"><h3>Kijk je menu na</h3>
           <p class="hint">Tik op een gerecht om het te wisselen, de porties aan te passen of je mening te geven. Je boodschappenlijst past zich meteen aan.</p>
           <button class="btn" id="review">✓ Menu is goed</button></section>`}
-    ${plan.length ? `<section class="panel"><h3>Zondag koken</h3>
+    ${plan.length ? `<section class="panel"><h3>Koken deze week</h3>
         ${plan.map((p) => { const r = recById(p.recipe_id); return r ? `<div class="mp-row">
           <span><b>${C.esc(r.name)}</b><br><span class="small muted">${C.fmt(p.portions, 2)} porties · ${p.days.map((d) => wd(d).slice(0, 2)).join(", ")}</span></span>
-          <button class="btn secondary mp-cook" data-r="${r.id}" data-p="${p.portions}">Koken</button></div>` : ""; }).join("")}
+          <span class="row" style="gap:6px;flex-wrap:nowrap"><button class="icon-btn mp-edit" data-r="${r.id}" aria-label="${C.esc(r.name)} aanpassen">✏️</button>
+          <button class="btn secondary mp-cook" data-r="${r.id}" data-p="${p.portions}">Koken</button></span></div>` : ""; }).join("")}
         ${w.prep?.length ? `<details class="mp-prep"><summary>Prepschema</summary><ol>${w.prep.map((s) => `<li>${C.esc(s)}</li>`).join("")}</ol></details>` : ""}
       </section>` : ""}
     ${days.map((d) => {
@@ -137,6 +138,7 @@ function drawWeek(box) {
   $("#review")?.addEventListener("click", async () => { await C.rpc("mp_week_review", { p_week_id: w.id, p_reviewed: true }); C.toast("Menu goedgekeurd"); reload(); });
   $("#unreview")?.addEventListener("click", async () => { await C.rpc("mp_week_review", { p_week_id: w.id, p_reviewed: false }); reload(); });
   box.querySelectorAll(".mp-cook").forEach((b) => (b.onclick = () => openCook(recById(Number(b.dataset.r)), Number(b.dataset.p))));
+  box.querySelectorAll(".mp-edit").forEach((b) => (b.onclick = () => openEdit(recById(Number(b.dataset.r)))));
   box.querySelectorAll(".mp-item").forEach((b) => (b.onclick = () => {
     const it = w.items.find((i) => i.id === Number(b.dataset.item));
     openRecipe(recById(it.recipe_id), { item: it });
@@ -309,6 +311,7 @@ function openRecipe(r, { item = null } = {}) {
       ${r.source_url && /^https?:\/\//.test(r.source_url) ? `<p class="small" style="margin:6px 0 0"><a href="${C.esc(r.source_url)}" target="_blank" rel="noopener noreferrer">Bron van het recept</a></p>` : ""}
       ${r.ingredients?.length ? `<div class="mp-actions">
           <button class="btn" id="cook">👨‍🍳 Kookmodus</button>
+          <button class="btn secondary" id="edit">✏️ Recept aanpassen</button>
           <button class="btn secondary" id="toList">+ ${C.fmt(portions, 2)} porties op mijn lijst</button>
           <button class="btn secondary" id="bevel">Kopieer voor Bevel</button>
           ${m("kcal") != null ? `<button class="btn secondary" id="logIt">1 portie loggen in Health Hub</button>` : ""}
@@ -350,6 +353,7 @@ function openRecipe(r, { item = null } = {}) {
       } catch (err) { e.target.disabled = false; C.toast(err.message, 5000); }
     });
     card.querySelector("#cook")?.addEventListener("click", () => { close(); openCook(r, portions); });
+    card.querySelector("#edit")?.addEventListener("click", () => { close(); openEdit(r); });
     card.querySelector("#toList")?.addEventListener("click", async () => {
       try { await C.rpc("mp_list_add_recipe", { p_week_id: D.current_week_id ?? null, p_recipe_id: r.id, p_portions: portions });
         C.toast(`${r.name} op je lijst gezet`); reload(); }
@@ -393,10 +397,17 @@ function openSwap(item) {
   const cur = recById(item.recipe_id);
   const opts = D.recipes.filter((r) => r.meal_type === item.slot && r.status === "klaar" && !r.disliked && r.id !== item.recipe_id)
     .sort((a, b) => (b.favorite - a.favorite) || a.name.localeCompare(b.name));
+  const dayItems = (currentWeek()?.items || []).filter((i) => i.slot === item.slot).sort((a, b) => a.day.localeCompare(b.day));
+  const picked = () => {
+    const ids = [...card.querySelectorAll("[data-day]:checked")].map((c) => Number(c.dataset.day));
+    return dayItems.filter((i) => ids.includes(i.id));
+  };
   const { card, close } = sheetShell("Ander gerecht");
   card.innerHTML = `${head("Ander gerecht kiezen")}
     <p class="small muted" style="margin:4px 0 8px">${C.esc(dshort(item.day))}, ${SLOTS[item.slot].toLowerCase()}. Nu: ${C.esc(cur?.name || "")} (${C.fmt(cur?.kcal)} kcal).</p>
-    <label class="small row" style="margin-bottom:6px"><input type="checkbox" id="allDays" checked> Ook op de andere dagen met dit gerecht</label>
+    <div class="sub-h" style="margin-top:4px">Op welke dagen?</div>
+    <div class="mp-days">${dayItems.map((i) => { const r = recById(i.recipe_id); return `<label class="mp-check"><input type="checkbox" data-day="${i.id}" ${i.id === item.id ? "checked" : ""}>
+      <span class="t"><b style="text-transform:capitalize">${C.esc(dshort(i.day))}</b> <span class="small muted">· ${C.esc(r?.name || "")}</span></span></label>`; }).join("")}</div>
     <button class="newidea" id="newIdea"><span>✨</span><span><b>Nieuw recept laten voorstellen</b><br><span class="small">Claude bedenkt iets nieuws dat in je macro's past en zet het op je menu. Binnen het uur, met een melding.</span></span></button>
     <input class="input" id="ideaHint" placeholder="Wens? Bv. iets met zalm, of snel klaar (optioneel)" style="margin:8px 0 10px">
     <div class="sub-h" style="margin-top:4px">Of kies een bestaand recept</div>
@@ -405,23 +416,135 @@ function openSwap(item) {
       || `<p class="muted">Geen andere ${SLOTS[item.slot].toLowerCase()}recepten. Voeg er een toe bij Recepten.</p>`}`;
   card.querySelector("[data-close]").onclick = close;
   card.querySelector("#newIdea").onclick = async () => {
-    const w = currentWeek();
-    const targets = card.querySelector("#allDays").checked
-      ? w.items.filter((i) => i.slot === item.slot && i.recipe_id === item.recipe_id) : [item];
+    const targets = picked();
+    if (!targets.length) return C.toast("Kies minstens één dag.");
     const hint = card.querySelector("#ideaHint").value.trim();
     const text = `Nieuw voorstel voor menu: vervang "${cur?.name || "?"}" (${SLOTS[item.slot].toLowerCase()}) op ${targets.map((t) => t.day).join(", ")}.\nItems: ${targets.map((t) => t.id).join(",")}\nMaaltijd: ${item.slot}${hint ? `\nWens: ${hint}` : ""}`;
     try { await C.rpc("recipe_inbox_add", { p_text: text, p_image_path: null }); close(); C.toast("Gevraagd. Je krijgt een melding zodra het nieuwe recept op je menu staat.", 5000); }
     catch (e) { C.toast(e.message, 5000); }
   };
   card.querySelectorAll("[data-r]").forEach((b) => (b.onclick = async () => {
-    const w = currentWeek();
-    const targets = card.querySelector("#allDays").checked
-      ? w.items.filter((i) => i.slot === item.slot && i.recipe_id === item.recipe_id) : [item];
+    const targets = picked();
+    if (!targets.length) return C.toast("Kies minstens één dag.");
     try {
       for (const t of targets) await C.rpc("mp_item_set", { p_item_id: t.id, p_recipe_id: Number(b.dataset.r), p_portions: n(t.portions) || 1 });
       close(); C.toast(`Gewisseld op ${targets.length} ${targets.length === 1 ? "dag" : "dagen"}`); reload();
     } catch (e) { C.toast(e.message, 5000); }
   }));
+}
+
+// ---------------------------------------------------------------- recept aanpassen
+// Alles aanpasbaar: ingrediënten (per portie), stappen, bewaren, porties en macro's.
+// Wijzigingen gelden voor het recept, dus ook voor je weekmenu en boodschappenlijst.
+const UNITS = ["g", "ml", "stuk", "teen", "el", "tl"];
+function openEdit(r, onSaved) {
+  if (!r) return;
+  const { card, close } = sheetShell(`${r.name} aanpassen`);
+  let ings = (r.ingredients || []).map((i) => ({ ...i }));
+  let dirtyIngs = false;
+  const f = (id, label, val, mode = "decimal") => `<div class="field"><label for="${id}">${label}</label><input class="input" id="${id}" inputmode="${mode}" value="${C.esc(val ?? "")}"></div>`;
+  const ingRow = (i, k) => `<div class="mp-erow" data-k="${k}">
+      <input class="input e-amt" inputmode="decimal" aria-label="Hoeveelheid" placeholder="naar smaak" value="${C.esc(n(i.amount) ?? "")}">
+      <select class="input e-unit" aria-label="Eenheid"><option value="">–</option>${UNITS.map((u) => `<option ${u === i.unit ? "selected" : ""}>${u}</option>`).join("")}</select>
+      <input class="input e-name" aria-label="Ingrediënt" value="${C.esc(i.name || "")}" placeholder="Ingrediënt">
+      <button class="icon-btn e-del" aria-label="Verwijderen">✕</button>
+      <select class="input e-dept small" aria-label="Afdeling">${DEPTS.map((d) => `<option ${d === (i.dept || "Overig") ? "selected" : ""}>${C.esc(d)}</option>`).join("")}</select>
+      <label class="small e-pan"><input type="checkbox" class="e-pantry" ${i.pantry ? "checked" : ""}> voorraad</label>
+    </div>`;
+  const collect = () => {
+    card.querySelectorAll(".mp-erow").forEach((row) => {
+      const i = ings[Number(row.dataset.k)]; if (!i) return;
+      const a = row.querySelector(".e-amt").value.trim().replace(",", ".");
+      i.amount = a === "" || Number.isNaN(Number(a)) ? null : Number(a);
+      i.unit = row.querySelector(".e-unit").value || null;
+      i.name = row.querySelector(".e-name").value.trim();
+      i.dept = row.querySelector(".e-dept").value;
+      i.pantry = row.querySelector(".e-pantry").checked;
+    });
+  };
+  const render = () => {
+    card.innerHTML = `${head(`✏️ ${C.esc(r.name)}`)}
+      <p class="small muted" style="margin:4px 0 0">Geldt voor het recept: ook je weekmenu en boodschappenlijst passen zich aan.</p>
+      ${f("eName", "Naam", r.name, "text")}
+      <div class="grid2">
+        <div class="field"><label for="eType">Maaltijd</label><select class="input" id="eType">${Object.entries(SLOTS).map(([k, l]) => `<option value="${k}" ${k === r.meal_type ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        ${f("eServ", "Koken voor (porties)", r.servings, "numeric")}
+      </div>
+      <h4 style="margin:12px 0 4px">Ingrediënten <span class="small muted">per portie</span></h4>
+      <div id="eIngs">${ings.map(ingRow).join("")}</div>
+      <button class="btn ghost" id="eAdd" style="margin-top:4px">+ Ingrediënt</button>
+      <h4 style="margin:14px 0 4px">Macro's per portie</h4>
+      <div class="grid2">
+        <div class="fk-kcal">${f("eK", "kcal", n(r.kcal) != null ? Math.round(r.kcal) : "")}</div><div class="fk-prot">${f("eP", "Eiwit (g)", n(r.protein) != null ? Math.round(r.protein) : "")}</div>
+        <div class="fk-carb">${f("eC", "Koolhydraten (g)", n(r.carbs) != null ? Math.round(r.carbs) : "")}</div><div class="fk-fat">${f("eF", "Vet (g)", n(r.fat) != null ? Math.round(r.fat) : "")}</div>
+      </div>
+      <button class="btn secondary" id="eCalc" style="width:100%">✨ Macro's herberekenen met deze ingrediënten</button>
+      <p class="small muted" id="eCalcMsg" style="margin:4px 0 0">${dirtyIngs ? "Je paste ingrediënten aan: herbereken de macro's of vul ze zelf in." : ""}</p>
+      <div class="field" style="margin-top:12px"><label for="eSteps">Bereiding (één stap per regel)</label>
+        <textarea class="input" id="eSteps" rows="6">${C.esc((r.steps || []).join("\n"))}</textarea></div>
+      <div class="field"><label for="eStore">Bewaren</label><textarea class="input" id="eStore" rows="2">${C.esc(r.storage || "")}</textarea></div>
+      <button class="btn" id="eSave" style="width:100%">Bewaren</button>`;
+    bind();
+  };
+  const v = (id) => card.querySelector("#" + id).value.trim();
+  const num = (id) => { const x = v(id).replace(",", "."); return x === "" || Number.isNaN(Number(x)) ? null : Number(x); };
+  // Wat je in de velden typte, bewaren bij opnieuw tekenen
+  const keep = () => {
+    collect();
+    r = { ...r, name: v("eName"), meal_type: card.querySelector("#eType").value, servings: num("eServ") || r.servings,
+      kcal: num("eK"), protein: num("eP"), carbs: num("eC"), fat: num("eF"),
+      steps: v("eSteps").split("\n").map((x) => x.trim()).filter(Boolean), storage: v("eStore") };
+  };
+  const orig = r;
+  const bind = () => {
+    card.querySelector("[data-close]").onclick = close;
+    card.querySelectorAll(".mp-erow input, .mp-erow select").forEach((el) => el.addEventListener("change", () => {
+      if (!dirtyIngs) { dirtyIngs = true; card.querySelector("#eCalcMsg").textContent = "Je paste ingrediënten aan: herbereken de macro's of vul ze zelf in."; }
+    }));
+    ["eK", "eP", "eC", "eF"].forEach((id) => card.querySelector("#" + id).addEventListener("input", () => { dirtyIngs = false; }));
+    card.querySelectorAll(".e-del").forEach((b) => (b.onclick = () => {
+      keep(); ings.splice(Number(b.closest(".mp-erow").dataset.k), 1); dirtyIngs = true; render();
+    }));
+    card.querySelector("#eAdd").onclick = () => {
+      keep(); ings.push({ name: "", amount: null, unit: "g", dept: "Overig", pantry: false }); dirtyIngs = true; render();
+      card.querySelector(".mp-erow:last-child .e-name")?.focus();
+    };
+    card.querySelector("#eCalc").onclick = async (e) => {
+      keep(); const list = ings.filter((i) => i.name);
+      const msg = card.querySelector("#eCalcMsg");
+      e.target.disabled = true; msg.textContent = "Claude rekent…";
+      try {
+        const text = `Bereken alleen de macro's per portie. Behoud deze ingrediënten en hoeveelheden exact (dit is 1 portie):\n${list.map((i) => "- " + ingLine(i)).join("\n")}\nGerecht: ${r.name}`;
+        const out = await C.invoke("recipe-ai", { text });
+        const m = out?.recipe || {};
+        for (const [id, k] of [["eK", "kcal"], ["eP", "protein"], ["eC", "carbs"], ["eF", "fat"]])
+          if (n(m[k]) != null) card.querySelector("#" + id).value = Math.round(m[k]);
+        dirtyIngs = false; msg.textContent = "Macro's herberekend (schatting). Pas aan als je het beter weet.";
+      } catch (err) { msg.textContent = "Herberekenen lukte niet: " + err.message; }
+      e.target.disabled = false;
+    };
+    card.querySelector("#eSave").onclick = async (e) => {
+      keep();
+      const list = ings.filter((i) => i.name);
+      if (!check(card, [
+        { el: "#eName", ok: !!r.name, msg: "Geef het recept een naam." },
+        { el: "#eK", ok: n(r.kcal) != null, msg: "Vul de kcal per portie in (of herbereken)." },
+      ])) return;
+      if (dirtyIngs && !confirm("Je paste ingrediënten aan maar herberekende de macro's niet. Toch bewaren met de oude macro's?")) return;
+      e.target.disabled = true;
+      try {
+        const saved = await C.rpc("mp_save_recipe", { p: { id: r.id, name: r.name, meal_type: r.meal_type, servings: r.servings,
+          kcal: r.kcal, protein: r.protein, carbs: r.carbs, fat: r.fat,
+          macros_checked: !dirtyIngs && !!orig.macros_checked && orig.kcal === r.kcal,
+          ingredients: list.map((i) => ({ name: i.name, amount: n(i.amount), unit: i.unit || null, dept: i.dept || "Overig", pantry: !!i.pantry })),
+          steps: r.steps, storage: r.storage || null, source_url: r.source_url || null, description: r.description || null,
+          status: "klaar", favorite: r.favorite } });
+        Object.assign(orig, saved || {});
+        close(); C.toast("Recept aangepast"); onSaved?.(); reload();
+      } catch (err) { e.target.disabled = false; C.toast(err.message, 5000); }
+    };
+  };
+  render();
 }
 
 // ---------------------------------------------------------------- kookmodus
@@ -436,7 +559,7 @@ async function openCook(r, portions) {
   const render = () => {
     card.innerHTML = `${head(`👨‍🍳 ${C.esc(r.name)}`)}
       <div class="row" style="justify-content:space-between;margin:8px 0">
-        <span class="small muted">${lock ? "Scherm blijft aan" : ""}</span>
+        <span class="row" style="gap:8px"><button class="btn ghost" id="cEdit" style="padding:6px 10px">✏️ Aanpassen</button><span class="small muted">${lock ? "Scherm blijft aan" : ""}</span></span>
         <span class="mp-step"><button data-p="-">−</button><b>${C.fmt(portions, 2)}</b><button data-p="+">+</button><span class="small muted">porties</span></span></div>
       <h4 style="margin:6px 0">Klaarzetten</h4>
       ${(r.ingredients || []).map((i, k) => `<label class="mp-check big ${done.has("i" + k) ? "done" : ""}"><input type="checkbox" data-k="i${k}" ${done.has("i" + k) ? "checked" : ""}>
@@ -446,6 +569,7 @@ async function openCook(r, portions) {
         <span class="t"><b>${k + 1}.</b> ${C.esc(s)}</span></label>`).join("")}
       ${r.storage ? `<p class="small" style="margin-top:12px"><b>Bewaren:</b> ${C.esc(r.storage)}</p>` : ""}`;
     card.querySelector("[data-close]").onclick = close;
+    card.querySelector("#cEdit").onclick = () => openEdit(r, () => render());
     card.querySelectorAll("[data-p]").forEach((b) => (b.onclick = () => { portions = Math.max(1, Math.min(12, portions + (b.dataset.p === "+" ? 1 : -1))); render(); }));
     card.querySelectorAll("input[data-k]").forEach((cb) => (cb.onchange = () => {
       cb.checked ? done.add(cb.dataset.k) : done.delete(cb.dataset.k);
