@@ -71,7 +71,7 @@ export async function renderNutrition(ctx, state) {
     return out;
   };
   const sugg = Object.fromEntries(meals.map((m) => [m, suggest(m)]));
-  const short = (s) => s.replace(/^AH\s+/i, "").replace(/\s*\(.*?\)\s*/g, " ").trim();
+  const short = (s) => s.replace(/^(AH|Upfront|Albert Heijn)\s+/i, "").replace(/\s*\(.*?\)\s*/g, " ").replace(/Proteïnereep/i, "Eiwitreep").trim();
 
   const mealCard = (m) => {
     const list = items.filter((i) => i.meal === m);
@@ -100,7 +100,7 @@ export async function renderNutrition(ctx, state) {
     <button class="btn secondary wide" id="search">Zoeken of barcode scannen</button>
     ${wk.length ? `<h2 class="section-title">Afgelopen 7 dagen</h2>
     <section class="panel weekfood">
-      ${weekVerdict(wk, week.goals || g)}
+      ${weekVerdict(wk.filter((x) => x.day !== C.today()), week.goals || g)}
       <div class="wkbars">${wk.map((x) => {
         const gk = n((week.goals || g).kcal_in) || 2000, gp = n((week.goals || g).protein_g) || 150;
         const h = x.kcal == null ? 0 : Math.min(100, (x.kcal / (gk * 1.25)) * 100);
@@ -109,16 +109,15 @@ export async function renderNutrition(ctx, state) {
           <span class="wkd">${["zo", "ma", "di", "wo", "do", "vr", "za"][new Date(x.day + "T12:00:00Z").getUTCDay()]}</span>
           <span class="wkp ${x.protein == null ? "" : pOk ? "ok" : "lo"}">${x.protein == null ? "–" : C.fmt(x.protein)}</span></div>`;
       }).join("")}</div>
-      <p class="small muted" style="margin:6px 0 0">Balk = kcal (streep = doel). Getal = gram eiwit, groen als je je doel haalde.</p>
+      <p class="small muted" style="margin:6px 0 0">Balk = kcal (streep = doel). Getal = gram eiwit, groen als je je doel haalde. Vandaag telt nog niet mee in het gemiddelde.</p>
     </section>` : ""}
     <details class="panel"><summary>Mijn recepten</summary><div id="recipes" style="margin-top:8px"></div></details>
-    ${isToday ? `<button class="fab" id="fab" aria-label="Eten toevoegen">+</button>` : ""}`;
+`;
 
   const reload = () => renderNutrition(ctx, state);
   C.view.querySelector("#prev").onclick = () => { state.nutDay = C.addDays(day, -1); reload(); };
   C.view.querySelector("#next").onclick = () => { if (!isToday) { state.nutDay = C.addDays(day, 1); reload(); } };
   C.view.querySelector("#search").onclick = () => openAddFood(C, { day, meal: isToday ? now : "Lunch", after: reload });
-  C.view.querySelector("#fab")?.addEventListener("click", () => openQuickAdd(C, { day, meal: now, after: reload }));
   C.view.querySelector("details.panel").addEventListener("toggle", (e) => {
     if (e.target.open && !e.target.dataset.loaded) { e.target.dataset.loaded = 1; renderRecipes(C, day, C.view.querySelector("#recipes"), reload); }
   });

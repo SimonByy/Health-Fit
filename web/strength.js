@@ -2,7 +2,7 @@
 // Loggen gebeurt in Hevy; deze pagina toont alleen wat eruit komt.
 let C;
 const n = (v) => (v == null || Number.isNaN(Number(v)) ? null : Number(v));
-const clean = (s) => s.replace(/\s*\((Machine|Cable|Dumbbell|Barbell|Smith Machine|Plate Loaded)\)/i, "").trim();
+const clean = (s) => s.replace(/\s*\([^)]*\)\s*$/, "").trim();
 
 // Huidige geschatte 1RM tegenover ~4 weken eerder
 function trend(series) {

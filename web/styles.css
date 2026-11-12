@@ -642,7 +642,7 @@ details.why summary { font-size: 14px; font-weight: 600; cursor: pointer; }
 .sg { display: inline-flex; align-items: baseline; gap: 6px; max-width: 100%; border: 1.5px dashed var(--line); background: transparent;
   border-radius: 999px; padding: 8px 13px; cursor: pointer; color: var(--ink); font-size: 14px; text-align: left; }
 .sg::before { content: "+"; font-weight: 700; color: var(--muted); }
-.sg span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.sg span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 190px; }
 .sg small { font-family: var(--font-num); font-size: 15px; color: var(--muted); }
 .sg:hover { border-style: solid; border-color: var(--faint); }
 .sg.busy { opacity: .45; }
