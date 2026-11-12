@@ -68,7 +68,7 @@ export async function renderNutrition(ctx, state) {
     const push = (s) => { if (out.length < 4 && !seen.has(s.name)) { seen.add(s.name); out.push(s); } };
     menu.filter((i) => i.slot === SLOT_OF[meal]).forEach((i) => push({ kind: "menu", name: i.r.name, kcal: i.r.kcal * i.portions, x: i }));
     (quick.frequent?.[meal] || []).forEach((f) => push({ kind: "freq", name: f.name, kcal: f.kcal, x: f }));
-    if (meal === "Snack" || meal === "Ontbijt" || meal === "Laat") (quick.products || []).forEach((p) => push({ kind: "prod", name: p.name, kcal: (p.per100?.kcal || 0) * (p.serving_g || 100) / 100, x: p }));
+    if (meal === "Snack" || meal === "Laat") (quick.products || []).forEach((p) => push({ kind: "prod", name: p.name, kcal: (p.per100?.kcal || 0) * (p.serving_g || 100) / 100, x: p }));
     (quick.recipes || []).filter((r) => r.meal_type === SLOT_OF[meal]).forEach((r) => push({ kind: "rec", name: r.name, kcal: r.kcal, x: r }));
     return out;
   };
@@ -85,7 +85,7 @@ export async function renderNutrition(ctx, state) {
           <span class="mi-t">${C.esc(i.name)}<small>${i.grams != null ? `${C.fmt(i.grams)} g · ` : ""}${C.fmt(i.protein)} g eiwit</small></span>
           <span class="mi-k">${C.fmt(i.kcal)}</span>
           <button class="mi-x" aria-label="${C.esc(i.name)} verwijderen">×</button></div>`).join("")}
-      ${sugg[m].length ? `<div class="sugg">${sugg[m].map((s, k) => `<button class="sg" data-sg="${k}"><span>${C.esc(short(s.name))}</span><small>${C.fmt(s.kcal)}</small></button>`).join("")}</div>`
+      ${sugg[m].length && (!list.length || (isToday && m === now)) ? `<div class="sugg">${sugg[m].map((s, k) => `<button class="sg" data-sg="${k}"><span>${C.esc(short(s.name))}</span><small>${C.fmt(s.kcal)}</small></button>`).join("")}</div>`
         : !list.length ? `<p class="mempty">Nog niets. Tik op + om iets toe te voegen.</p>` : ""}
     </section>`;
   };

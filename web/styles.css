@@ -772,3 +772,4 @@ body { background: radial-gradient(900px 420px at 50% -160px, #1C3470 0%, rgba(2
 .gauge .left b { font-family: var(--font-num); font-size: 20px; color: var(--ink); }
 .gauge .left.over { background: rgba(255, 92, 108, .16); }
 .gauge .left.over b { color: var(--bad); }
+.grid2 .field { align-content: start; }

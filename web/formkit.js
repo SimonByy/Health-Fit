@@ -58,7 +58,7 @@ export function parseLabel(text) {
   else { const kj = t.match(new RegExp(NUM + String.raw`\s*kj`, "i")); if (kj) kcal = Math.round(toN(kj[1]) / 4.184); }
   const out = {
     kcal,
-    fat: first(/\b(vetten|vet|fat|lipides)\b/i, /verzadig|saturat|satur|onverz/i),
+    fat: first(/\b(vetten|vet|fat|lipides)(?![a-z])/i, /verzadig|saturat|satur|onverz/i),
     carbs: first(/(koolhydraten|koolhydraat|carbohydrate|glucides)/i, /waarvan|suiker|sugar/i),
     protein: first(/(eiwitten|eiwit|protein|prot[eé]ines)/i),
     fiber: first(/(vezels|voedingsvezel|fibre|fiber|fibres)/i),
