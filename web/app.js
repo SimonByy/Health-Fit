@@ -1,6 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 import { SUPABASE_URL, SUPABASE_KEY } from "./config.js";
 
+let readyRefresh = null; // ververst de readiness-kaart op Vandaag
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
 });
@@ -256,6 +257,7 @@ async function route() {
   if (name === "log") { state.openWeight = param === "gewicht"; state.day = today(); name = "vandaag"; }
   const fn = ROUTES[name] || ROUTES.vandaag;
   $("#title").textContent = TITLES[name] || "Vandaag";
+  $("#syncBtn").hidden = !(name === "vandaag" || !name);
   document.querySelectorAll(".tabbar a").forEach((a) => {
     if (a.dataset.tab === (name === "workout" ? "training" : name)) {
       a.setAttribute("aria-current", "page");
@@ -499,7 +501,13 @@ async function renderToday() {
   $("#addWater")?.addEventListener("click", () => quickLog("dietary_water", 500, "500 ml water gelogd", reload));
   $("#addCaff")?.addEventListener("click", () => quickLog("dietary_caffeine", 50, "50 mg cafeïne gelogd", reload));
   $("#logWeight")?.addEventListener("click", () => openWeightForm(d.last_weight?.kg));
-  import("./ready.js").then((R) => { const el = $("#todayReady"); if (el) R.renderReadiness(ctx, el, state.day); });
+  import("./ready.js").then((R) => {
+    const el = $("#todayReady"); if (!el) return;
+    readyRefresh = () => { const cur = $("#todayReady"); if (cur) R.renderReadiness(ctx, cur, state.day); };
+    readyRefresh();
+    clearInterval(window.__readyTimer);
+    window.__readyTimer = setInterval(() => { if ($("#todayReady") && !document.hidden) readyRefresh(); else if (!$("#todayReady")) clearInterval(window.__readyTimer); }, 5 * 60 * 1000);
+  });
   import("./nutrition.js").then((N) => { const el = $("#todayFuel"); if (el) el.innerHTML = N.gauge(ctx, { kcal: t.kcal_in, p: t.protein_g, c: t.carbs_g, f: t.fat_g, goals: g }, { compact: true }); });
   if (isToday) {
     const fab = document.createElement("button");
@@ -1420,6 +1428,17 @@ async function boot() {
 }
 
 $("#settingsBtn").onclick = () => (location.hash = "#/instellingen");
+$("#syncBtn").onclick = async () => {
+  const b = $("#syncBtn");
+  if (b.classList.contains("spin")) return;
+  b.classList.add("spin");
+  try {
+    await rpc("request_garmin_sync");
+    toast("Garmin-sync gevraagd. Binnen het uur staan je nieuwste waarden erin, je krijgt een melding.", 5000);
+  } catch (e) { toast(e.message, 5000); }
+  setTimeout(() => b.classList.remove("spin"), 1500);
+  if (typeof readyRefresh === "function") readyRefresh();
+};
 window.addEventListener("hashchange", () => { if (!$("#tabbar").hidden) route(); });
 sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT" && !$("#tabbar").hidden) renderLogin(); });
 

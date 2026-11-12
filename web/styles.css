@@ -907,3 +907,12 @@ button.rd-card { cursor: pointer; }
 .rd-bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .rd-bar i { display: block; height: 100%; border-radius: 999px; background: var(--faint); }
 .rd-bar i.hi { background: var(--good); } .rd-bar i.mid { background: var(--accent); } .rd-bar i.low { background: var(--carb); } .rd-bar i.bad { background: var(--bad); }
+.sync-btn { margin-left: auto; margin-right: 4px; }
+.sync-btn.spin svg { animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.topbar-inner { gap: 4px; }
+.bb-flow { display: flex; align-items: center; justify-content: space-between; gap: 6px; background: var(--surface-2); border-radius: 16px; padding: 10px 14px; margin: 0 0 8px; }
+.bb-flow span { display: grid; text-align: center; }
+.bb-flow small { font-size: 11px; color: var(--muted); }
+.bb-flow b { font-family: var(--font-num); font-size: 24px; }
+.bb-flow .arrow { color: var(--faint); }
