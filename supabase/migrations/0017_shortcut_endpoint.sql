@@ -1,0 +1,1 @@
+-- Opdrachten-endpoint (toegepast via MCP 12/11/2026): app.settings shortcut_key_sha256, public.internal_shortcut_key_ok, internal_briefing_text, internal_log_quick.
