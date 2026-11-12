@@ -434,6 +434,7 @@ async function renderToday() {
         ${statRow({ name: "Koolhydraten", value: t.carbs_g, unit: "g", goal: g.carbs_g, avg: a.carbs_g, color: DOMAIN.fuel })}
         ${statRow({ name: "Vet", value: t.fat_g, unit: "g", goal: g.fat_g, avg: a.fat_g, color: DOMAIN.fuel })}
         <button class="btn secondary" id="addFood" style="margin:4px 0 12px">+ Voeding toevoegen</button>
+        <button class="btn" id="quickFood" style="margin:4px 0 12px">⚡ Snel</button>
       </section>
 
       <section class="domain" style="--c:${DOMAIN.heart}">
@@ -505,6 +506,7 @@ async function renderToday() {
   $("#addCaff")?.addEventListener("click", () => quickLog("dietary_caffeine", 50, "50 mg cafeïne gelogd", reload));
   $("#logWeight")?.addEventListener("click", () => openWeightForm(d.last_weight?.kg));
   $("#addFood").onclick = async () => (await foodMod()).openAddFood(ctx, { day: state.day, after: reload });
+  $("#quickFood")?.addEventListener("click", async () => (await foodMod()).openQuickAdd(ctx, { day: state.day, after: reload }));
   $("#insDet")?.addEventListener("toggle", (e) => { if (e.target.open && !ins.read_at) rpc("mark_insight_read", { p_id: ins.id }).catch(() => {}); });
   if (ins && !ins.read_at && isToday) rpc("mark_insight_read", { p_id: ins.id }).catch(() => {});
   if (state.openWeight) { state.openWeight = false; openWeightForm(d.last_weight?.kg); }
@@ -819,7 +821,10 @@ async function renderNutrition() {
         ${macro("Eiwit", p, g.protein_g)}${macro("Koolh.", c, g.carbs_g)}${macro("Vet", f, g.fat_g)}${macro("Vezels", fib, g.fiber_g)}
       </div>
     </section>
-    <button class="btn" id="addFood" style="width:100%;margin:2px 0 12px">+ Voeding toevoegen</button>
+    <div class="row" style="margin:2px 0 12px;flex-wrap:nowrap">
+      <button class="btn" id="quickFood" style="flex:1">⚡ Snel toevoegen</button>
+      <button class="btn secondary" id="addFood" style="flex:1">+ Zoeken of scannen</button>
+    </div>
 
     <h2 class="section-title">Gelogd in Health Hub</h2>
     <div class="panel" id="foodLog"><div class="skeleton" style="height:40px"></div></div>
@@ -850,6 +855,7 @@ async function renderNutrition() {
   bindCal(state.nutDay, (dd) => { state.nutDay = dd; renderNutrition(); });
   const F = await foodMod();
   $("#addFood").onclick = () => F.openAddFood(ctx, { day: state.nutDay, after: renderNutrition });
+  $("#quickFood").onclick = () => F.openQuickAdd(ctx, { day: state.nutDay, after: renderNutrition });
   $("#newRecipe").onclick = () => F.openAddFood(ctx, { day: state.nutDay, after: renderNutrition, start: "recipe" });
   await Promise.all([F.renderFoodLog(ctx, state.nutDay, $("#foodLog"), renderNutrition), F.renderRecipes(ctx, state.nutDay, $("#recipes"), renderNutrition)]);
 }

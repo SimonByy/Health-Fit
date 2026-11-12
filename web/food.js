@@ -487,3 +487,98 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
   else if (product) amount(product);
   else search();
 }
+
+// ---------------- snel toevoegen ----------------
+// Eén tik = gelogd: vaste producten (kwark, repen, shakes), wat je per maaltijd het vaakst eet,
+// en je mealprep-recepten. Vandaag staat het menu van je weekplanning bovenaan.
+const SLOT_OF = { Ontbijt: "ontbijt", Lunch: "lunch", Snack: "snack", Avondeten: "avond", Laat: "snack" };
+export async function openQuickAdd(ctx, { day = todayIso(), meal = mealForNow(), after } = {}) {
+  C = ctx;
+  const sheet = document.createElement("div");
+  sheet.className = "sheet";
+  sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Snel toevoegen"><div class="skeleton" style="height:120px"></div></div>`;
+  document.body.appendChild(sheet);
+  const close = () => sheet.remove();
+  sheet._close = close;
+  sheet.addEventListener("click", (e) => { if (e.target === sheet) close(); });
+  let data, menu = [];
+  try {
+    [data, menu] = await Promise.all([C.rpc("get_quick_add"),
+      day === todayIso() ? C.rpc("mp_get").then((m) => {
+        const w = m.weeks?.find((x) => x.id === m.current_week_id);
+        return (w?.items || []).filter((i) => i.day === day).map((i) => ({ ...i, r: m.recipes.find((r) => r.id === i.recipe_id) })).filter((i) => i.r);
+      }).catch(() => []) : Promise.resolve([])]);
+  } catch (e) { sheet.querySelector(".sheet-card").innerHTML = `<p class="warn">${C.esc(e.message)}</p>`; return; }
+
+  const k = (v) => (v == null ? "" : `${C.fmt(v)} kcal`);
+  const pP = (v) => (v == null ? "" : ` · ${C.fmt(v)} g eiwit`);
+  const logged = (id, label) => { undoMany([id], label, after); after?.(); };
+
+  const render = () => {
+    const slot = SLOT_OF[meal];
+    const prods = data.products || [];
+    const freq = (data.frequent?.[meal] || []).filter((f) => !prods.some((p) => p.name === f.name));
+    const recs = (data.recipes || []).filter((r) => r.meal_type === slot);
+    const onMenu = menu.filter((i) => i.slot === slot);
+    const row = (attrs, title, sub) => `<button class="pk-item" ${attrs}><span><b>${C.esc(title)}</b><br><span class="small muted">${sub}</span></span><span>+</span></button>`;
+    sheet.querySelector(".sheet-card").innerHTML = `
+      <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h3 style="margin:0">⚡ Snel toevoegen</h3>
+        <button class="icon-btn" data-close aria-label="Sluiten">✕</button></div>
+      <div class="chips" id="qMeal" style="margin:10px 0">${MEALS.map((m) => `<button class="chip ${m === meal ? "on" : ""}" data-m="${m}">${m}</button>`).join("")}</div>
+      ${onMenu.length ? `<div class="sub-h">Op je menu vandaag</div>${onMenu.map((i, n) => row(`data-menu="${n}"`, i.r.name,
+        `${C.fmt(i.portions, 2)} portie · ${k(i.r.kcal * i.portions)}${pP(i.r.protein * i.portions)}`)).join("")}` : ""}
+      <div class="sub-h">Vaste producten</div>
+      ${prods.map((p, n) => { const s = scale(p.per100, p.serving_g || 100);
+        return row(`data-prod="${n}"`, `${p.name}${p.brand ? ` (${p.brand})` : ""}`, `${C.esc(p.serving_label || `${C.fmt(p.serving_g)} g`)} · ${k(s.kcal)}${pP(s.protein)}`); }).join("")
+        || `<p class="muted small">Nog geen vaste producten.</p>`}
+      ${freq.length ? `<div class="sub-h">Vaak bij ${meal.toLowerCase()}</div>${freq.map((f, n) => row(`data-freq="${n}"`, f.name,
+        `${f.n}× gelogd${f.grams ? ` · ${C.fmt(f.grams)} g` : ""} · ${k(f.kcal)}${pP(f.protein)}`)).join("")}` : ""}
+      ${recs.length ? `<div class="sub-h">Uit je recepten</div>${recs.map((r, n) => row(`data-rec="${n}"`, `${r.favorite ? "★ " : ""}${r.name}`,
+        `1 portie · ${k(r.kcal)}${pP(r.protein)}`)).join("")}` : ""}
+      <button class="linkbtn" id="qManage" style="margin-top:12px">Vaste producten beheren</button>
+      <p class="small muted" style="margin:6px 0 0">Wat je vaker logt, komt hier vanzelf bij "Vaak bij…".</p>`;
+    const card = sheet.querySelector(".sheet-card");
+    card.querySelector("[data-close]").onclick = close;
+    card.querySelector("#qMeal").onclick = (e) => { const b = e.target.closest(".chip"); if (b) { meal = b.dataset.m; render(); } };
+    card.querySelector("#qManage").onclick = manage;
+    card.onclick = async (e) => {
+      const b = e.target.closest(".pk-item"); if (!b || b.disabled) return;
+      b.disabled = true;
+      try {
+        let r, label;
+        if (b.dataset.prod != null) {
+          const p = prods[Number(b.dataset.prod)];
+          r = await C.rpc("log_food", { p: { day, meal, grams: p.serving_g || 100, food: { id: p.id } } }); label = p.name;
+        } else if (b.dataset.freq != null) {
+          const f = freq[Number(b.dataset.freq)];
+          r = await C.rpc("log_food", { p: f.food_id && f.grams ? { day, meal, grams: f.grams, food: { id: f.food_id } }
+            : { day, meal, name: f.name, kcal: f.kcal, protein: f.protein, carbs: f.carbs, fat: f.fat } }); label = f.name;
+        } else {
+          const it = b.dataset.menu != null ? onMenu[Number(b.dataset.menu)] : { r: recs[Number(b.dataset.rec)], portions: 1 };
+          const q = Number(it.portions) || 1, x = it.r;
+          r = await C.rpc("log_food", { p: { day, meal, name: x.name, kcal: x.kcal * q, protein: x.protein * q, carbs: x.carbs * q, fat: x.fat * q } }); label = x.name;
+        }
+        b.querySelector("span:last-child").textContent = "✓";
+        logged(r.id, `${label} toegevoegd aan ${meal.toLowerCase()}`);
+      } catch (err) { b.disabled = false; C.toast(err.message, 4000); }
+    };
+  };
+
+  // Vaste producten aan/uit zetten: je huidige lijst en je recent gebruikte producten
+  async function manage() {
+    const recent = (await C.rpc("get_foods", { p_query: null, p_limit: 40 }).catch(() => [])).filter((f) => f.source !== "recipe");
+    const ids = new Set((data.products || []).map((p) => p.id));
+    const all = [...(data.products || []), ...recent.filter((f) => !ids.has(f.id))];
+    const card = sheet.querySelector(".sheet-card");
+    card.innerHTML = `<div class="row" style="justify-content:space-between;flex-wrap:nowrap"><button class="icon-btn" data-back aria-label="Terug">‹</button>
+        <h3 style="margin:0;flex:1">Vaste producten</h3><button class="icon-btn" data-close aria-label="Sluiten">✕</button></div>
+      <p class="hint small" style="margin:8px 0">Vink aan wat je met één tik wil toevoegen. Een product dat er niet bij staat: log het eerst één keer via "+ Voeding toevoegen".</p>
+      ${all.map((f) => `<label class="mp-check"><input type="checkbox" data-id="${f.id}" ${ids.has(f.id) ? "checked" : ""}>
+        <span class="t">${C.esc(f.name)}${f.brand ? ` <span class="muted">(${C.esc(f.brand)})</span>` : ""}${f.serving_g ? ` <span class="small muted">· ${C.fmt(f.serving_g)} g</span>` : ""}</span></label>`).join("")}`;
+    card.querySelector("[data-close]").onclick = close;
+    card.querySelector("[data-back]").onclick = async () => { data = await C.rpc("get_quick_add"); render(); };
+    card.querySelectorAll("input[data-id]").forEach((cb) => (cb.onchange = () =>
+      C.rpc("set_food_quick", { p_id: cb.dataset.id, p_quick: cb.checked }).catch((e) => { cb.checked = !cb.checked; C.toast(e.message, 4000); })));
+  }
+  render();
+}

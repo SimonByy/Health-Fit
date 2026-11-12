@@ -1,0 +1,3 @@
+-- Snel toevoegen (toegepast via MCP op 12/11/2026): app.foods.quick, vaste producten (AH kwark, AH proteïnerepen,
+-- Upfront Clear Whey), public.get_quick_add(), public.set_food_quick(uuid, boolean).
+-- Ochtendbriefing: routine 09:00 uitgezet; de melding komt nu via app.push_outbox zodra de briefing klaar is.
