@@ -389,10 +389,22 @@ function openSwap(item) {
   card.innerHTML = `${head("Ander gerecht kiezen")}
     <p class="small muted" style="margin:4px 0 8px">${C.esc(dshort(item.day))}, ${SLOTS[item.slot].toLowerCase()}. Nu: ${C.esc(cur?.name || "")} (${C.fmt(cur?.kcal)} kcal).</p>
     <label class="small row" style="margin-bottom:6px"><input type="checkbox" id="allDays" checked> Ook op de andere dagen met dit gerecht</label>
+    <button class="newidea" id="newIdea"><span>✨</span><span><b>Nieuw recept laten voorstellen</b><br><span class="small">Claude bedenkt iets nieuws dat in je macro's past en zet het op je menu. Binnen het uur, met een melding.</span></span></button>
+    <input class="input" id="ideaHint" placeholder="Wens? Bv. iets met zalm, of snel klaar (optioneel)" style="margin:8px 0 10px">
+    <div class="sub-h" style="margin-top:4px">Of kies een bestaand recept</div>
     ${opts.map((r) => `<button class="pk-item" data-r="${r.id}"><span><b>${r.favorite ? "★ " : ""}${C.esc(r.name)}</b><br>
       <span class="small muted">${C.fmt(r.kcal)} kcal · ${C.fmt(r.protein)} g eiwit${n(cur?.kcal) != null && n(r.kcal) != null ? ` · ${r.kcal - cur.kcal >= 0 ? "+" : ""}${C.fmt(r.kcal - cur.kcal)} kcal` : ""}</span></span><span>⇄</span></button>`).join("")
       || `<p class="muted">Geen andere ${SLOTS[item.slot].toLowerCase()}recepten. Voeg er een toe bij Recepten.</p>`}`;
   card.querySelector("[data-close]").onclick = close;
+  card.querySelector("#newIdea").onclick = async () => {
+    const w = currentWeek();
+    const targets = card.querySelector("#allDays").checked
+      ? w.items.filter((i) => i.slot === item.slot && i.recipe_id === item.recipe_id) : [item];
+    const hint = card.querySelector("#ideaHint").value.trim();
+    const text = `Nieuw voorstel voor menu: vervang "${cur?.name || "?"}" (${SLOTS[item.slot].toLowerCase()}) op ${targets.map((t) => t.day).join(", ")}.\nItems: ${targets.map((t) => t.id).join(",")}\nMaaltijd: ${item.slot}${hint ? `\nWens: ${hint}` : ""}`;
+    try { await C.rpc("recipe_inbox_add", { p_text: text, p_image_path: null }); close(); C.toast("Gevraagd. Je krijgt een melding zodra het nieuwe recept op je menu staat.", 5000); }
+    catch (e) { C.toast(e.message, 5000); }
+  };
   card.querySelectorAll("[data-r]").forEach((b) => (b.onclick = async () => {
     const w = currentWeek();
     const targets = card.querySelector("#allDays").checked
