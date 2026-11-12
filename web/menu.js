@@ -215,7 +215,7 @@ function drawRecipes(box) {
     return !r.disliked;
   });
   box.innerHTML = `
-    <button class="btn mp-add" id="addRec">+ Recept toevoegen</button>
+    <button class="btn mp-add" id="addRec">📷 + Recept toevoegen</button>
     <p class="small muted" style="margin:6px 0 10px">Via een foto, een link naar een receptensite of zelf typen. ★ betekent: vaker in je weekmenu. 👎: nooit meer.</p>
     <input class="input" id="rq" placeholder="Zoek een recept…" value="${C.esc(query)}" autocomplete="off" style="margin-bottom:10px">
     <div class="chips" id="rf" style="margin-bottom:12px">${F.map(([k, l]) => `<button class="chip ${filter === k ? "on" : ""}" data-f="${k}">${l}</button>`).join("")}</div>
@@ -472,7 +472,12 @@ function openAdd() {
     msg.textContent = "Bezig met herkennen… (10 à 30 seconden)";
     if (btn) btn.disabled = true;
     try { const res = await C.invoke("recipe-ai", body); close(); openPreview(res.recipe); }
-    catch (e) { msg.textContent = e.message; if (btn) btn.disabled = false; }
+    catch (e) {
+      msg.textContent = /credit balance|Plans & Billing/i.test(e.message)
+        ? "Herkennen lukt nu niet: het tegoed van je Claude API-sleutel is op. Laad het op via console.anthropic.com → Billing, of bewaar het hieronder als concept."
+        : e.message;
+      if (btn) btn.disabled = false;
+    }
   };
   card.querySelector("#aPhoto").onchange = async (e) => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -515,9 +520,10 @@ function openPreview(rec) {
     ${rec.storage ? `<p class="small"><b>Bewaren:</b> ${C.esc(rec.storage)}</p>` : ""}
     <label class="small row" style="margin:10px 0"><input type="checkbox" id="pFav" ${rec.favorite !== false ? "checked" : ""}> ★ Lekker: vaker in mijn weekmenu</label>
     <button class="btn" id="pSave" style="width:100%">Recept bewaren</button>
+    <button class="btn secondary" id="pLog" style="width:100%;margin-top:8px">Bewaren en 1 portie loggen bij vandaag</button>
     <p class="small muted" style="margin:6px 0 0">Macro's zijn een schatting van de AI. Je kan ingrediënten later via Claude laten aanpassen.</p>`;
   card.querySelector("[data-close]").onclick = close;
-  card.querySelector("#pSave").onclick = async (e) => {
+  const save = async (e, log) => {
     const v = (id) => card.querySelector("#" + id).value.trim();
     const num = (id) => { const x = v(id).replace(",", "."); return x === "" || Number.isNaN(Number(x)) ? null : Number(x); };
     e.target.disabled = true;
@@ -526,7 +532,11 @@ function openPreview(rec) {
         servings: num("pServ") || 2, kcal: num("pK"), protein: num("pP"), carbs: num("pC"), fat: num("pF"), macros_checked: false,
         ingredients: rec.ingredients || [], steps: rec.steps || [], storage: rec.storage || null, source_url: rec.source_url || null,
         description: rec.notes || null, status: "klaar", favorite: card.querySelector("#pFav").checked } });
-      close(); C.toast("Recept bewaard"); tab = "recepten"; filter = "alle"; reload();
+      if (log) await C.rpc("log_food", { p: { day: C.today(), meal: FOOD_MEAL[card.querySelector("#pType").value], name: v("pName"),
+        kcal: num("pK"), protein: num("pP"), carbs: num("pC"), fat: num("pF") } });
+      close(); C.toast(log ? "Recept bewaard en gelogd" : "Recept bewaard"); tab = "recepten"; filter = "alle"; reload();
     } catch (err) { e.target.disabled = false; C.toast(err.message, 5000); }
   };
+  card.querySelector("#pSave").onclick = (e) => save(e, false);
+  card.querySelector("#pLog").onclick = (e) => save(e, true);
 }
