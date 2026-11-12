@@ -4,7 +4,8 @@
 import { MEALS, mealForNow, openQuickAdd, openAddFood, renderRecipes } from "./food.js";
 
 let C;
-const SHOWN = ["Ontbijt", "Lunch", "Snack", "Avondeten"];
+const SHOWN = ["Ontbijt", "Lunch", "Snack", "Avondeten", "Laat"];
+const LABEL = { Laat: "Avondsnack" };
 const SLOT_OF = { Ontbijt: "ontbijt", Lunch: "lunch", Snack: "snack", Avondeten: "avond", Laat: "snack" };
 const n = (v) => (v == null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
 
@@ -26,6 +27,7 @@ export function gauge(ctx, { kcal, p, c, f, goals: g }, { compact = false } = {}
   return `<section class="gauge ${compact ? "compact" : ""}">
     <div class="ring" role="img" aria-label="${C.fmt(eaten)} van ${C.fmt(goal)} kcal gegeten">
       <svg viewBox="0 0 120 120" aria-hidden="true">
+        <defs><linearGradient id="kcalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--g1)"/><stop offset="1" stop-color="var(--g2)"/></linearGradient></defs>
         <circle cx="60" cy="60" r="${R}" class="ring-track"/>
         <circle cx="60" cy="60" r="${R}" class="ring-fill ${over ? "over" : ""}" stroke-dasharray="${L}" stroke-dashoffset="${L * (1 - frac)}" transform="rotate(-90 60 60)"/>
       </svg>
@@ -58,7 +60,7 @@ export async function renderNutrition(ctx, state) {
   const g = d.goals || {};
   const tot = { kcal: n(by.dietary_energy?.value), p: n(by.protein?.value), c: n(by.carbohydrates?.value), f: n(by.total_fat?.value), goals: g };
   const now = mealForNow();
-  const meals = [...SHOWN, ...(items.some((i) => i.meal === "Laat") ? ["Laat"] : [])];
+  const meals = SHOWN;
 
   // Suggesties per maaltijd: menu van vandaag, wat je daar vaak eet, vaste producten, recepten
   const suggest = (meal) => {
@@ -66,7 +68,7 @@ export async function renderNutrition(ctx, state) {
     const push = (s) => { if (out.length < 4 && !seen.has(s.name)) { seen.add(s.name); out.push(s); } };
     menu.filter((i) => i.slot === SLOT_OF[meal]).forEach((i) => push({ kind: "menu", name: i.r.name, kcal: i.r.kcal * i.portions, x: i }));
     (quick.frequent?.[meal] || []).forEach((f) => push({ kind: "freq", name: f.name, kcal: f.kcal, x: f }));
-    if (meal === "Snack" || meal === "Ontbijt") (quick.products || []).forEach((p) => push({ kind: "prod", name: p.name, kcal: (p.per100?.kcal || 0) * (p.serving_g || 100) / 100, x: p }));
+    if (meal === "Snack" || meal === "Ontbijt" || meal === "Laat") (quick.products || []).forEach((p) => push({ kind: "prod", name: p.name, kcal: (p.per100?.kcal || 0) * (p.serving_g || 100) / 100, x: p }));
     (quick.recipes || []).filter((r) => r.meal_type === SLOT_OF[meal]).forEach((r) => push({ kind: "rec", name: r.name, kcal: r.kcal, x: r }));
     return out;
   };
@@ -77,8 +79,8 @@ export async function renderNutrition(ctx, state) {
     const list = items.filter((i) => i.meal === m);
     const kc = list.reduce((s, i) => s + (Number(i.kcal) || 0), 0);
     return `<section class="mcard ${m === now && isToday ? "now" : ""}" data-meal="${m}">
-      <header><h2>${m}</h2><span class="mk">${list.length ? `${C.fmt(kc)} kcal` : ""}</span>
-        <button class="madd" data-add="${m}" aria-label="Iets toevoegen aan ${m.toLowerCase()}">+</button></header>
+      <header><h2>${LABEL[m] || m}</h2><span class="mk">${list.length ? `${C.fmt(kc)} kcal` : ""}</span>
+        <button class="madd" data-add="${m}" aria-label="Iets toevoegen aan ${(LABEL[m] || m).toLowerCase()}">+</button></header>
       ${list.map((i) => `<div class="mi" data-id="${i.id}">
           <span class="mi-t">${C.esc(i.name)}<small>${i.grams != null ? `${C.fmt(i.grams)} g · ` : ""}${C.fmt(i.protein)} g eiwit</small></span>
           <span class="mi-k">${C.fmt(i.kcal)}</span>

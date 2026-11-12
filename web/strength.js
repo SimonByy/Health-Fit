@@ -30,9 +30,9 @@ function spark(series, w = 120, h = 34) {
 export async function renderStrength(ctx) {
   C = ctx;
   C.view.innerHTML = `<div id="coachWeek"></div><div class="skeleton"></div>`;
-  import("./coach.js").then((m) => m.renderCoachWeek(ctx, C.view.querySelector("#coachWeek"))).catch(() => {});
+  import("./coach.js").then((m) => m.renderCoachCalendar(ctx, C.view.querySelector("#coachWeek"))).catch(() => {});
   const o = await C.rpc("get_strength_overview", { p_weeks: 12 });
-  const lifts = (o.lifts || []).filter((l) => n(l.recent) > 0).map((l) => ({ ...l, t: trend(l.series) })).filter((l) => l.t);
+  const lifts = (o.lifts || []).filter((l) => n(l.recent) > 0).map((l) => ({ ...l, t: trend(l.series) })).filter((l) => l.t).sort((a, b) => b.t.pct - a.t.pct);
   const up = lifts.filter((l) => l.t.pct >= 1).length, flat = lifts.filter((l) => Math.abs(l.t.pct) < 1).length, down = lifts.filter((l) => l.t.pct <= -1).length;
   const weekly = o.weekly || [];
   const thisWeek = weekly.at(-1), prev = weekly.slice(-5, -1);
@@ -44,11 +44,14 @@ export async function renderStrength(ctx) {
   box.innerHTML = `
     <section class="sverdict">
       <h2>Progressie, laatste 4 weken</h2>
-      ${lifts.length ? `<div class="tally"><span class="up"><b>${up}</b>sterker</span><span><b>${flat}</b>gelijk</span><span class="down"><b>${down}</b>zwakker</span></div>
-      <p class="small muted">${lifts.length} oefeningen die je de laatste 4 weken deed, op basis van je geschatte 1RM.${lastDays != null && lastDays > 3 ? ` Laatste Hevy-training is van ${lastDays} dagen geleden: deel je export om bij te werken.` : ""}</p>`
+      ${lifts.length ? `<div class="tally" role="group" aria-label="Filter oefeningen">
+        <button class="up" data-f="up" aria-pressed="false"><b>${up}</b>sterker</button>
+        <button data-f="flat" aria-pressed="false"><b>${flat}</b>gelijk</button>
+        <button class="down" data-f="down" aria-pressed="false"><b>${down}</b>zwakker</button></div>
+      <p class="small muted">Per oefening: je zwaarste werkset nu tegenover 4 weken geleden, omgerekend naar een geschatte 1RM (zo tellen meer reps ook mee). Tik op een getal om alleen die oefeningen te zien, of op een oefening voor de grafiek.${lastDays != null && lastDays > 3 ? ` Laatste Hevy-training is van ${lastDays} dagen geleden: deel je export om bij te werken.` : ""}</p>`
       : `<p class="muted">Nog te weinig trainingen uit Hevy. Deel je Hevy-export naar Health Hub met de opdracht op je iPhone.</p>`}
     </section>
-    ${lifts.length ? `<div class="lifts">${lifts.map((l, i) => `<button class="lift ${l.t.pct >= 1 ? "up" : l.t.pct <= -1 ? "down" : ""}" data-i="${i}">
+    ${lifts.length ? `<div class="lifts">${lifts.map((l, i) => `<button class="lift ${l.t.pct >= 1 ? "up" : l.t.pct <= -1 ? "down" : "flat"}" data-i="${i}">
         <span class="lift-n">${C.esc(clean(l.exercise))}</span>
         <span class="lift-v"><b>${C.fmt(l.t.last.kg, 1)}</b> kg × ${C.fmt(l.t.last.reps)}</span>
         ${spark(l.series)}
@@ -83,6 +86,13 @@ export async function renderStrength(ctx) {
     if (e.target.open && !e.target.dataset.loaded) { e.target.dataset.loaded = 1; C.renderMuscles(box.querySelector("#mvBox")); }
   });
   box.querySelectorAll(".lift").forEach((b) => (b.onclick = () => openLift(lifts[Number(b.dataset.i)])));
+  box.querySelectorAll(".tally button").forEach((t) => (t.onclick = () => {
+    const on = t.getAttribute("aria-pressed") !== "true";
+    box.querySelectorAll(".tally button").forEach((x) => x.setAttribute("aria-pressed", "false"));
+    t.setAttribute("aria-pressed", String(on));
+    box.querySelectorAll(".lift").forEach((l) => { l.hidden = on && !l.classList.contains(t.dataset.f); });
+    if (on) box.querySelector(".lifts")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }));
 }
 
 function openLift(l) {
