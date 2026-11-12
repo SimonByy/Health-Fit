@@ -804,3 +804,6 @@ body { background: radial-gradient(900px 420px at 50% -160px, #1C3470 0%, rgba(2
 .searchbar.big { padding: 15px 16px; font-size: 16px; border: 1px solid var(--line); margin: 6px 0 4px; }
 .ring-num b { font-size: 44px; }
 .ring-num .rn-g { font-size: 14px; }
+.fi-main { grid-template-columns: minmax(0, 1fr); }
+.add-sheet { overflow-x: hidden; }
+.searchrow input::placeholder { color: var(--faint); }
