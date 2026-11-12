@@ -502,7 +502,7 @@ async function renderToday() {
   if (isToday) {
     const fab = document.createElement("button");
     fab.className = "fab"; fab.setAttribute("aria-label", "Eten toevoegen"); fab.textContent = "+";
-    fab.onclick = async () => { const F = await foodMod(); F.openQuickAdd(ctx, { day: state.day, meal: F.mealForNow(), after: reload }); };
+    fab.onclick = async () => { const F = await foodMod(); F.openAddFood(ctx, { day: state.day, meal: F.mealForNow(), after: reload }); };
     view.appendChild(fab);
   }
   if ($("#coachToday")) import("./coach.js").then((m) => m.renderCoachToday(ctx, $("#coachToday"))).catch(() => {});

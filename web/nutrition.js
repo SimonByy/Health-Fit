@@ -1,7 +1,7 @@
 // Voeding: één scherm om te zien waar je staat en in één tik te loggen.
 // Bovenaan de brandstofmeter (kcal over + macro's), daaronder per maaltijd
 // wat je at en de dingen die je daar meestal eet als knoppen.
-import { MEALS, mealForNow, openQuickAdd, openAddFood, renderRecipes } from "./food.js";
+import { MEALS, mealForNow, openAddFood, openEditFood, renderRecipes } from "./food.js";
 
 let C;
 const SHOWN = ["Ontbijt", "Lunch", "Snack", "Avondeten", "Laat"];
@@ -31,7 +31,7 @@ export function gauge(ctx, { kcal, p, c, f, goals: g }, { compact = false } = {}
         <circle cx="60" cy="60" r="${R}" class="ring-track"/>
         <circle cx="60" cy="60" r="${R}" class="ring-fill ${over ? "over" : ""}" stroke-dasharray="${L}" stroke-dashoffset="${L * (1 - frac)}" transform="rotate(-90 60 60)"/>
       </svg>
-      <div class="ring-num"><span class="rn-l">gegeten</span><b>${C.fmt(eaten)}</b><span class="rn-g">van ${C.fmt(goal)} kcal</span></div>
+      <div class="ring-num"><b>${C.fmt(eaten)}</b><span class="rn-g">kcal</span></div>
     </div>
     <div class="macros2">
       ${macro("prot", "Eiwit", p, g.protein_g)}
@@ -82,7 +82,7 @@ export async function renderNutrition(ctx, state) {
       <header><h2>${LABEL[m] || m}</h2><span class="mk">${list.length ? `${C.fmt(kc)} kcal` : ""}</span>
         <button class="madd" data-add="${m}" aria-label="Iets toevoegen aan ${(LABEL[m] || m).toLowerCase()}">+</button></header>
       ${list.map((i) => `<div class="mi" data-id="${i.id}">
-          <span class="mi-t">${C.esc(i.name)}<small>${i.grams != null ? `${C.fmt(i.grams)} g · ` : ""}${C.fmt(i.protein)} g eiwit</small></span>
+          <button class="mi-t" type="button" aria-label="${C.esc(i.name)} aanpassen">${C.esc(i.name)}<small>${i.grams != null ? `${C.fmt(i.grams)} g · ` : ""}${C.fmt(i.protein)} g eiwit</small></button>
           <span class="mi-k">${C.fmt(i.kcal)}</span>
           <button class="mi-x" aria-label="${C.esc(i.name)} verwijderen">×</button></div>`).join("")}
       ${sugg[m].length && (!list.length || (isToday && m === now)) ? `<div class="sugg">${sugg[m].map((s, k) => `<button class="sg" data-sg="${k}"><span>${C.esc(short(s.name))}</span><small>${C.fmt(s.kcal)}</small></button>`).join("")}</div>`
@@ -99,7 +99,7 @@ export async function renderNutrition(ctx, state) {
     </div>
     ${gauge(C, tot)}
     ${meals.map(mealCard).join("")}
-    <button class="btn secondary wide" id="search">Zoeken of barcode scannen</button>
+    <button class="searchbar big" id="search"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Zoek iets om toe te voegen…</button>
     ${wk.length ? `<h2 class="section-title">Afgelopen 7 dagen</h2>
     <section class="panel weekfood">
       ${weekVerdict(wk.filter((x) => x.day !== C.today()), week.goals || g)}
@@ -126,7 +126,7 @@ export async function renderNutrition(ctx, state) {
 
   C.view.querySelectorAll(".mcard").forEach((card) => {
     const meal = card.dataset.meal;
-    card.querySelector("[data-add]").onclick = () => openQuickAdd(C, { day, meal, after: reload });
+    card.querySelector("[data-add]").onclick = () => openAddFood(C, { day, meal, after: reload });
     card.querySelectorAll(".sg").forEach((b) => (b.onclick = async () => {
       if (b.disabled) return;
       b.disabled = true; b.classList.add("busy");
@@ -145,6 +145,7 @@ export async function renderNutrition(ctx, state) {
         reload();
       } catch (e) { b.disabled = false; b.classList.remove("busy"); C.toast(e.message, 4000); }
     }));
+    card.querySelectorAll(".mi-t").forEach((b) => (b.onclick = () => openEditFood(C, items.find((i) => i.id === b.closest(".mi").dataset.id), reload)));
     card.querySelectorAll(".mi-x").forEach((b) => (b.onclick = async () => {
       const it = items.find((i) => i.id === b.closest(".mi").dataset.id);
       await C.rpc("void_food", { p_id: it.id });
