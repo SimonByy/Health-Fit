@@ -8,6 +8,7 @@ let tab = "week";
 let hideChecked = false;
 let filter = "alle";
 let query = "";
+let curDay = null;       // dag die open staat in het weekmenu
 
 const SLOTS = { ontbijt: "Ontbijt", lunch: "Lunch", snack: "Snack", avond: "Avond", avondsnack: "Avondsnack" };
 const SLOT_ORDER = ["ontbijt", "lunch", "snack", "avond", "avondsnack"];
@@ -19,6 +20,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const n = (v) => (v === null || v === undefined || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
 const wd = (iso) => WD[new Date(iso + "T12:00:00Z").getUTCDay()];
 const dshort = (iso) => { const d = new Date(iso + "T12:00:00Z"); return `${wd(iso)} ${d.getUTCDate()}/${d.getUTCMonth() + 1}`; };
+const addDaysIso = (iso, k) => { const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + k); return d.toISOString().slice(0, 10); };
 const recById = (id) => D.recipes.find((r) => r.id === id);
 const currentWeek = () => D.weeks.find((w) => w.id === D.current_week_id) || null;
 
@@ -98,7 +100,7 @@ function drawWeek(box) {
     return;
   }
   const g = D.goals || {};
-  const days = [...new Set(w.items.map((i) => i.day))].sort();
+  const days = Array.from({ length: 7 }, (_, k) => addDaysIso(w.week_start, k));
   const plan = cookPlan(w);
   box.innerHTML = `
     <h2 class="section-title" style="margin-top:4px">Week van ${C.esc(dshort(w.week_start))}</h2>
@@ -115,29 +117,51 @@ function drawWeek(box) {
           <button class="btn secondary mp-cook" data-r="${r.id}" data-p="${p.portions}">Koken</button></span></div>` : ""; }).join("")}
         ${w.prep?.length ? `<details class="mp-prep"><summary>Prepschema</summary><ol>${w.prep.map((s) => `<li>${C.esc(s)}</li>`).join("")}</ol></details>` : ""}
       </section>` : ""}
-    ${days.map((d) => {
+    <div class="mp-tabs" id="mpTabs">${days.map((d) => `<button class="mp-tab ${d === D.today ? "today" : ""}" data-go="${d}">
+      <span>${wd(d).slice(0, 2)}</span><b>${Number(d.slice(8))}</b></button>`).join("")}</div>
+    <div class="mp-swipe" id="mpSwipe">${days.map((d) => {
       const its = w.items.filter((i) => i.day === d).sort((a, b) => SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot));
       const t = dayTotals(its);
-      const kPct = g.kcal_in ? Math.min(100, (t.kcal / g.kcal_in) * 100) : 0;
-      const pPct = g.protein_g ? Math.min(100, (t.protein / g.protein_g) * 100) : 0;
-      return `<section class="panel mp-day ${d === D.today ? "today" : ""}">
-        <div class="row" style="justify-content:space-between"><h3 style="text-transform:capitalize">${C.esc(dshort(d))}${d === D.today ? ` <span class="badge" style="background:var(--fuel)">vandaag</span>` : ""}</h3>
-          <span class="small muted">${C.fmt(t.kcal)} kcal · ${C.fmt(t.protein)} g eiwit</span></div>
-        ${its.length >= 3 && g.kcal_in ? `<div class="mp-bars"><div class="bar" style="--c:var(--fuel)"><i style="width:${kPct}%"></i></div><div class="bar" style="--c:var(--move)"><i style="width:${pPct}%"></i></div></div>` : ""}
+      const bar = (cls, label, v, goal, unit = "g") => `<div class="mrow ${cls}"><div class="mrow-h"><span>${label}</span><span><b>${C.fmt(v)}</b>${goal ? ` / ${C.fmt(goal)}` : ""} ${unit}</span></div>
+        <div class="mtrack"><i style="width:${goal ? Math.min(100, (v / goal) * 100) : 0}%"></i></div></div>`;
+      const have = new Set(its.map((i) => i.slot));
+      const free = SLOT_ORDER.filter((sl) => !have.has(sl));
+      return `<section class="panel mp-day ${d === D.today ? "today" : ""}" data-day="${d}">
+        <div class="row" style="justify-content:space-between"><h3 style="text-transform:capitalize;margin:0">${C.esc(dshort(d))}${d === D.today ? ` <span class="badge" style="background:var(--fuel)">vandaag</span>` : ""}</h3>
+          <span class="mp-dk"><b>${C.fmt(t.kcal)}</b>${g.kcal_in ? ` / ${C.fmt(g.kcal_in)}` : ""} kcal</span></div>
+        <div class="mp-dbars">
+          ${bar("prot", "Eiwit", t.protein, n(g.protein_g))}
+          ${bar("carb", "Koolhydraten", t.carbs, n(g.carbs_g))}
+          ${bar("fat", "Vet", t.fat, n(g.fat_g))}
+        </div>
         ${its.map((it) => { const r = recById(it.recipe_id); if (!r) return "";
           const q = n(it.portions) || 1;
           const canEat = d <= D.today;
-          return `<div class="mp-irow ${it.eaten ? "eaten" : ""}">${canEat ? `<label class="mp-eat" title="Gegeten"><input type="checkbox" data-eat="${it.id}" ${it.eaten ? "checked" : ""} aria-label="${C.esc(r.name)} gegeten"></label>` : ""}
-            <button class="mp-item" data-item="${it.id}">
-            <span class="slot">${SLOTS[it.slot]}</span>
-            <span class="nm">${r.favorite ? "★ " : ""}${C.esc(r.name)}${q !== 1 ? ` <span class="muted">· ${C.fmt(q, 2)} portie</span>` : ""}</span>
-            <span class="k">${C.fmt(q * (n(r.kcal) || 0))}</span></button></div>`; }).join("")}
-        ${(() => { const have = new Set(its.map((i) => i.slot)); const free = SLOT_ORDER.filter((sl) => !have.has(sl));
-          return free.length ? `<div class="chips mp-addslot">${free.map((sl) => `<button class="chip" data-addday="${d}" data-addslot="${sl}">+ ${SLOTS[sl]}</button>`).join("")}</div>` : ""; })()}
+          return `<div class="mp-meal">
+            <div class="mp-meal-h"><span>${SLOTS[it.slot]}</span>
+              <span class="mp-mm"><b>${C.fmt(q * (n(r.kcal) || 0))} kcal</b> · E ${C.fmt(q * (n(r.protein) || 0))} · K ${C.fmt(q * (n(r.carbs) || 0))} · V ${C.fmt(q * (n(r.fat) || 0))}</span></div>
+            <div class="mp-irow ${it.eaten ? "eaten" : ""}">${canEat ? `<label class="mp-eat" title="Gegeten"><input type="checkbox" data-eat="${it.id}" ${it.eaten ? "checked" : ""} aria-label="${C.esc(r.name)} gegeten"></label>` : ""}
+              <button class="mp-item" data-item="${it.id}">
+                <span class="nm">${r.favorite ? "★ " : ""}${C.esc(r.name)}${q !== 1 ? ` <span class="muted">· ${C.fmt(q, 2)} portie</span>` : ""}${r.macros_checked ? "" : ` <span class="small muted">· geschat</span>`}</span>
+                <span class="k">›</span></button></div></div>`; }).join("") || `<p class="muted small" style="margin:12px 0 0">Nog niets gepland.</p>`}
+        ${free.length ? `<div class="chips mp-addslot">${free.map((sl) => `<button class="chip" data-addday="${d}" data-addslot="${sl}">+ ${SLOTS[sl]}</button>`).join("")}</div>` : ""}
       </section>`;
-    }).join("")}
+    }).join("")}</div>
     ${w.bonus?.length ? `<section class="panel"><h3>In de bonus verwerkt</h3><ul class="mp-ul">${w.bonus.map((b) =>
       `<li>${C.esc(b.product || "")}${b.deal ? ` · <b>${C.esc(b.deal)}</b>` : ""}${b.valid ? ` <span class="muted small">(${C.esc(b.valid)})</span>` : ""}</li>`).join("")}</ul></section>` : ""}`;
+
+  // Dagen naast elkaar: swipen, of tik een dag in de balk. Onthoudt de dag bij herladen.
+  const sw = $("#mpSwipe"), tabs = [...box.querySelectorAll(".mp-tab")];
+  const mark = (d) => { tabs.forEach((t) => t.classList.toggle("on", t.dataset.go === d)); };
+  const go = (d, smooth) => { const el = sw.querySelector(`[data-day="${d}"]`); if (!el) return;
+    sw.scrollTo({ left: el.offsetLeft - sw.offsetLeft, behavior: smooth ? "smooth" : "auto" }); mark(d); curDay = d; };
+  tabs.forEach((t) => (t.onclick = () => go(t.dataset.go, true)));
+  let st;
+  sw.addEventListener("scroll", () => { clearTimeout(st); st = setTimeout(() => {
+    const i = Math.round(sw.scrollLeft / (sw.clientWidth || 1)); const d = days[Math.max(0, Math.min(days.length - 1, i))];
+    if (d) { mark(d); curDay = d; } }, 60); }, { passive: true });
+  const start = days.includes(curDay) ? curDay : days.includes(D.today) ? D.today : days.find((d) => w.items.some((i) => i.day === d)) || days[0];
+  requestAnimationFrame(() => go(start, false));
 
   $("#review")?.addEventListener("click", async () => { await C.rpc("mp_week_review", { p_week_id: w.id, p_reviewed: true }); C.toast("Menu goedgekeurd"); reload(); });
   $("#unreview")?.addEventListener("click", async () => { await C.rpc("mp_week_review", { p_week_id: w.id, p_reviewed: false }); reload(); });

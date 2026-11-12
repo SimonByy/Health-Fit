@@ -590,6 +590,7 @@ details.why summary { font-size: 14px; font-weight: 600; cursor: pointer; }
 .ring-num span { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .macros2 { display: grid; gap: 11px; min-width: 0; }
 .mrow-h { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.mp-dbars .mrow-h b { font-size: 14px; }
 .mrow-h b { font-family: var(--font-num); font-size: 18px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
 .mtrack { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .mtrack i { display: block; height: 100%; border-radius: 999px; transition: width .7s cubic-bezier(.2,.8,.2,1); }
@@ -831,3 +832,23 @@ body { background: radial-gradient(900px 420px at 50% -160px, #1C3470 0%, rgba(2
 .mplan input { width: 22px; height: 22px; accent-color: var(--fuel); }
 .mplan:not(.eaten) .mi-t, .mplan:not(.eaten) .mi-k { opacity: .65; }
 .mplan:not(.eaten) .mi-t small { font-style: italic; }
+/* Weekmenu: dagen naast elkaar (swipen) */
+.mp-tabs { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 4px 0 8px; position: sticky; top: 0; z-index: 2; background: var(--paper); padding: 4px 0; }
+.mp-tab { display: grid; justify-items: center; gap: 1px; padding: 6px 0; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font: inherit; cursor: pointer; }
+.mp-tab span { font-size: 11px; text-transform: uppercase; }
+.mp-tab b { font-size: 16px; color: var(--ink); }
+.mp-tab.today { border-color: var(--fuel); }
+.mp-tab.on { background: var(--fuel); border-color: var(--fuel); }
+.mp-tab.on span, .mp-tab.on b { color: #0b1020; }
+.mp-swipe { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.mp-swipe::-webkit-scrollbar { display: none; }
+.mp-swipe > .mp-day { flex: 0 0 100%; scroll-snap-align: start; margin: 0; min-width: 0; }
+.mp-dk { font-size: 13px; color: var(--muted); }
+.mp-dk b { font-size: 20px; color: var(--ink); }
+.mp-dbars { display: grid; gap: 6px; margin: 10px 0 4px; }
+.mp-dbars .mrow.kcal .mtrack i { background: var(--fuel); }
+.mp-meal { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
+.mp-meal-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; color: var(--faint); text-transform: uppercase; letter-spacing: .03em; }
+.mp-mm { text-transform: none; letter-spacing: 0; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mp-mm b { color: var(--ink); font-weight: 600; }
+.mp-swipe .mp-item { grid-template-columns: 1fr auto; }
