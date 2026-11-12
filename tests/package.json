@@ -1,0 +1,7 @@
+{
+  "name": "health-hub-tests",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node planner.test.mjs" },
+  "devDependencies": { "jsdom": "^24.0.0" }
+}

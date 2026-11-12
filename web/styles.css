@@ -816,8 +816,11 @@ body { background: radial-gradient(900px 420px at 50% -160px, #1C3470 0%, rgba(2
 .mp-erow .e-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mp-erow .e-link.warn { border-color: var(--bad); color: var(--bad); }
 .mp-erow .e-gpu-in { width: 64px; display: inline-block; padding: 4px 6px; }
-.mp-erow .e-dept { grid-column: 1 / 4; font-size: 13px; padding: 6px 8px; }
-.mp-erow .e-pan { white-space: nowrap; display: inline-flex; gap: 4px; align-items: center; }
+.mp-erow .e-opts { grid-column: 1 / -1; display: grid; gap: 6px; }
+.mp-erow .e-opts[hidden] { display: none; }
+.mp-erow .e-dept, .mp-erow .e-shop { font-size: 13px; padding: 6px 8px; }
+.mp-erow .e-pan { display: inline-flex; gap: 6px; align-items: center; }
+.mp-erow .e-more { margin-left: auto; font-size: 12.5px; color: var(--muted); }
 .mp-days { display: grid; gap: 2px; margin-bottom: 10px; }
 /* Weekmenu: gegeten afvinken en lege plekken vullen */
 .mp-irow { display: flex; align-items: center; gap: 8px; }
@@ -855,4 +858,17 @@ body { background: radial-gradient(900px 420px at 50% -160px, #1C3470 0%, rgba(2
 .ok-badge { color: var(--good); font-weight: 600; }
 .warn-badge { color: var(--fuel); font-weight: 600; }
 .mp-cookday { text-transform: uppercase; letter-spacing: .04em; color: var(--fuel); font-weight: 700; font-size: 11px; }
-.mp-erow .e-shop { grid-column: 1 / -1; font-size: 13px; padding: 6px 8px; }
+
+/* Planner: gebruiksvriendelijker */
+.mp-weeks { margin: 2px 0 10px; }
+.mp-reviewbar { display: flex; align-items: center; gap: 10px; justify-content: space-between; padding: 10px 12px; margin: 0 0 10px; border: 1px solid var(--fuel); border-radius: 14px; background: color-mix(in srgb, var(--fuel) 10%, transparent); }
+.mp-reviewbar .btn { flex: 0 0 auto; padding: 8px 14px; }
+.mp-left { margin: 6px 0 0; color: var(--muted); }
+.mp-left b { color: var(--ink); }
+.mp-acts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
+.mp-act { display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 12.5px; cursor: pointer; }
+.mp-act span { font-size: 18px; }
+.mp-act.on { border-color: var(--good); color: var(--good); }
+.mp-more { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 8px; }
+.mp-more summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+.mp-shophead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
