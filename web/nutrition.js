@@ -6,7 +6,7 @@ import { MEALS, mealForNow, openQuickAdd, openAddFood, renderRecipes } from "./f
 let C;
 const SHOWN = ["Ontbijt", "Lunch", "Snack", "Avondeten", "Laat"];
 const LABEL = { Laat: "Avondsnack" };
-const SLOT_OF = { Ontbijt: "ontbijt", Lunch: "lunch", Snack: "snack", Avondeten: "avond", Laat: "snack" };
+const SLOT_OF = { Ontbijt: "ontbijt", Lunch: "lunch", Snack: "snack", Avondeten: "avond", Laat: "avondsnack" };
 const n = (v) => (v == null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
 
 export function gauge(ctx, { kcal, p, c, f, goals: g }, { compact = false } = {}) {
@@ -31,13 +31,13 @@ export function gauge(ctx, { kcal, p, c, f, goals: g }, { compact = false } = {}
         <circle cx="60" cy="60" r="${R}" class="ring-track"/>
         <circle cx="60" cy="60" r="${R}" class="ring-fill ${over ? "over" : ""}" stroke-dasharray="${L}" stroke-dashoffset="${L * (1 - frac)}" transform="rotate(-90 60 60)"/>
       </svg>
-      <div class="ring-num"><b>${C.fmt(Math.abs(left))}</b><span>${over ? "kcal te veel" : "kcal over"}</span></div>
+      <div class="ring-num"><span class="rn-l">gegeten</span><b>${C.fmt(eaten)}</b><span class="rn-g">van ${C.fmt(goal)} kcal</span></div>
     </div>
     <div class="macros2">
       ${macro("prot", "Eiwit", p, g.protein_g)}
       ${macro("carb", "Koolhydraten", c, g.carbs_g)}
       ${macro("fat", "Vet", f, g.fat_g)}
-      <div class="eaten small muted">${C.fmt(eaten)} van ${C.fmt(goal)} kcal gegeten</div>
+      <div class="left ${over ? "over" : ""}"><b>${C.fmt(Math.abs(left))}</b> ${over ? "kcal te veel" : "kcal over"}</div>
     </div>
   </section>`;
 }

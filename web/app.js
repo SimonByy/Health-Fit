@@ -380,7 +380,7 @@ async function renderToday() {
   const [brief, mp] = state.day === today() ? await Promise.all([rpc("get_briefing", {}).catch(() => null), rpc("mp_get").catch(() => null)]) : [null, null];
   const mpWeek = mp?.weeks?.find((w) => w.id === mp.current_week_id);
   const mpToday = (mpWeek?.items || []).filter((i) => i.day === state.day)
-    .sort((x, y) => ["ontbijt", "lunch", "snack", "avond"].indexOf(x.slot) - ["ontbijt", "lunch", "snack", "avond"].indexOf(y.slot))
+    .sort((x, y) => ["ontbijt", "lunch", "snack", "avond", "avondsnack"].indexOf(x.slot) - ["ontbijt", "lunch", "snack", "avond", "avondsnack"].indexOf(y.slot))
     .map((i) => ({ ...i, r: mp.recipes.find((r) => r.id === i.recipe_id) })).filter((i) => i.r);
   const r = rec.today || {}, ra = rec.avg7 || {};
   const tile = (label, v, avg, unit = "", lowGood = false) => v == null ? "" : `<div class="rtile">

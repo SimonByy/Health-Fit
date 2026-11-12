@@ -3,6 +3,7 @@
 // maaltijden kopiëren, vaste maaltijden en recepten.
 let C;
 export const MEALS = ["Ontbijt", "Lunch", "Snack", "Avondeten", "Laat"];
+import { check, enterSubmits, readLabel } from "./formkit.js";
 const MACROS = [["kcal", "kcal", ""], ["protein", "Eiwit", "g"], ["carbs", "Koolh.", "g"], ["fat", "Vet", "g"]];
 
 const todayIso = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Brussels" }).format(new Date());
@@ -156,10 +157,10 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
         <input class="input" id="fQ" placeholder="Zoek product of merk…" autocomplete="off" enterkeyhint="search" value="${C.esc(initial)}">
         <button class="btn" id="fScan" aria-label="Barcode scannen">▥ Scan</button>
       </div>
-      ${picking ? "" : `<div id="fShort"></div>
+      ${picking ? `<div class="row small" style="margin:8px 0 2px"><button class="linkbtn" id="fCustom">+ Nieuw product (foto van het etiket)</button></div>` : `<div id="fShort"></div>
       <div class="row small" style="margin:8px 0 2px;gap:14px">
         <button class="linkbtn" id="fQuick">Snel kcal/macro's</button>
-        <button class="linkbtn" id="fCustom">Eigen product</button>
+        <button class="linkbtn" id="fCustom">Nieuw product (foto etiket)</button>
         <button class="linkbtn" id="fRecipe">Recept maken</button>
       </div>`}
       <div id="fRes" class="pk-list"></div>
@@ -254,7 +255,7 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
       (loc.length ? `<div class="sub-h">${term ? "Mijn producten" : "Recent"}</div>${loc.map((p, i) => itemHtml(p, i, "l")).join("")}` : "")
       + (rem.length ? `<div class="sub-h">Open Food Facts</div>${rem.map((p, i) => itemHtml(p, i, "r")).join("")}` : "")
       + (remoteState === "loading" ? `<p class="muted small">Zoeken in Open Food Facts…</p>` : remoteState ? `<p class="muted small">Open Food Facts: ${C.esc(remoteState)}</p>` : "")
-      + (!loc.length && !rem.length && !remoteState ? `<p class="muted small">${term ? "Niets gevonden. Scan de barcode of maak een eigen product." : "Zoek een product of scan een barcode."}</p>` : "");
+      + (!loc.length && !rem.length && !remoteState ? `<p class="muted small">${term ? "Niets gevonden. Scan de barcode of tik op Nieuw product en fotografeer het etiket." : "Zoek een product of scan een barcode."}</p>` : "");
     box.onclick = (e) => {
       const b = e.target.closest(".pk-item"); if (!b) return;
       amount(b.dataset.src === "l" ? loc[b.dataset.i] : rem[b.dataset.i]);
@@ -336,15 +337,16 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
     const live = () => {
       g = numIn(inp.value) || 0;
       const v = scale(per, g);
-      sheet.querySelector("#fLive").innerHTML = MACROS.map(([k, l, u]) => `<div class="macro"><div class="v">${C.fmt(v[k])}${u ? `<small> ${u}</small>` : ""}</div><div class="l">${l}</div></div>`).join("");
+      sheet.querySelector("#fLive").innerHTML = MACROS.map(([k, l, u]) => `<div class="macro m-${k}"><div class="v">${C.fmt(v[k])}${u ? `<small> ${u}</small>` : ""}</div><div class="l">${l}</div></div>`).join("");
       sheet.querySelector("#fAdd").textContent = picking ? "Toevoegen aan recept" : `Toevoegen aan ${meal}`;
     };
     inp.oninput = live;
     sheet.querySelectorAll("[data-g]").forEach((b) => (b.onclick = () => { inp.value = b.dataset.g; live(); }));
     live();
     sheet.querySelector("#fEditRec")?.addEventListener("click", () => editRecipe(p));
+    enterSubmits(sheet.querySelector(".sheet-card"), "#fAdd");
     sheet.querySelector("#fAdd").onclick = async (e) => {
-      if (!(g > 0)) return C.toast("Vul een hoeveelheid in");
+      if (!check(sheet, [{ el: "#fG", ok: g > 0, msg: "Vul een hoeveelheid in grammen in." }])) return;
       if (picking) { recipe.ingredients.push({ food: p, grams: g }); picking = false; return recipeEditor(); }
       e.target.disabled = true;
       try {
@@ -373,7 +375,8 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
       const tot = Object.fromEntries(MACROS.map(([k]) => [k, r.ingredients.reduce((s, i) => s + (Number(i.food.per100?.[k]) || 0) * i.grams / 100, 0)]));
       const serv = Math.max(1, numIn(r.servings) || 1);
       const t = sheet.querySelector("#rT"); if (t) t.placeholder = `${Math.round(sumG)} (som)`;
-      return `Totaal ${C.fmt(tot.kcal)} kcal · per portie <b>${C.fmt(tot.kcal / serv)} kcal</b>, E ${C.fmt(tot.protein / serv)} g · K ${C.fmt(tot.carbs / serv)} g · V ${C.fmt(tot.fat / serv)} g`;
+      return `<span class="rsum-k"><b>${C.fmt(tot.kcal / serv)}</b> kcal per portie <span class="muted">(totaal ${C.fmt(tot.kcal)})</span></span>
+        <span class="mpills"><span class="mp prot">Eiwit <b>${C.fmt(tot.protein / serv)} g</b></span><span class="mp carb">Koolh. <b>${C.fmt(tot.carbs / serv)} g</b></span><span class="mp fat">Vet <b>${C.fmt(tot.fat / serv)} g</b></span></span>`;
     };
     const ikcal = (i) => (i.food.per100 ? `${C.fmt((Number(i.food.per100.kcal) || 0) * i.grams / 100)} kcal` : "");
     sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Recept">
@@ -389,7 +392,7 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
         <div class="field"><label for="rS">Aantal porties</label><input class="input" id="rS" inputmode="numeric" value="${C.esc(r.servings)}"></div>
         <div class="field"><label for="rT">Gewicht na bereiden (g)</label><input class="input" id="rT" inputmode="decimal" value="${C.esc(r.total_g)}"></div>
       </div>
-      <p class="small" id="rSum" style="margin:4px 0 0"></p>
+      <div class="rsum" id="rSum"></div>
       <p class="small muted" style="margin:4px 0 0">Kook je pasta of rijst? Weeg het eindresultaat en vul het in, dan klopt het per gram.</p>
       <button class="btn" id="rSave" style="width:100%;margin-top:12px">Recept opslaan</button>
     </div>`;
@@ -408,11 +411,16 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
     sheet.querySelector("#rS").oninput = () => { r.servings = sheet.querySelector("#rS").value; upd(); };
     upd();
     sheet.querySelector("#rAdd").onclick = () => { sync(); picking = true; search(); };
+    enterSubmits(sheet.querySelector(".sheet-card"), "#rSave");
     sheet.querySelector("#rSave").onclick = async (e) => {
       sync();
-      if (!r.name.trim()) return C.toast("Geef het recept een naam");
-      r.ingredients = r.ingredients.filter((i) => i.grams > 0);
-      if (!r.ingredients.length) return C.toast("Voeg minstens één ingrediënt toe");
+      const withG = r.ingredients.filter((i) => i.grams > 0);
+      if (!check(sheet, [
+        { el: "#rN", ok: !!r.name.trim(), msg: "Geef je recept een naam." },
+        { el: "#rAdd", ok: withG.length > 0, msg: "Voeg minstens één ingrediënt toe (met grammen)." },
+        ...[...sheet.querySelectorAll("[data-k]")].map((row) => ({ el: row.querySelector(".rg"), ok: (numIn(row.querySelector(".rg").value) || 0) > 0, msg: "Gram?" })),
+      ])) return;
+      r.ingredients = withG;
       e.target.disabled = true;
       try {
         // producten uit Open Food Facts eerst bewaren (ingrediënten hebben een id nodig)
@@ -436,26 +444,53 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
   function custom(p = {}, note = "") {
     scanner?.stop(); scanner = null;
     const per = p.per100 || {};
-    const f = (id, label, val, ph = "") => `<div class="field"><label for="${id}">${label}</label><input class="input" id="${id}" inputmode="decimal" value="${val ?? ""}" placeholder="${ph}"></div>`;
+    const f = (id, label, val, cls = "", ph = "") => `<div class="field ${cls}"><label for="${id}">${label}</label><input class="input" id="${id}" inputmode="decimal" value="${val ?? ""}" placeholder="${ph}"></div>`;
     sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Eigen product">
-      ${head("Eigen product", true)}
+      ${head("Nieuw product", true)}
       ${note ? `<p class="hint" style="margin-top:8px">${C.esc(note)}</p>` : ""}
-      <div class="field"><label for="cN">Naam</label><input class="input" id="cN" value="${C.esc(p.name || "")}"></div>
+      <div class="ocr-row">
+        <label class="ocr-btn"><span>📷</span><span><b>Foto van het etiket</b><small>vult de voedingswaarden in</small></span>
+          <input type="file" id="cLabel" accept="image/*" capture="environment" hidden></label>
+        ${p.barcode ? "" : `<button class="ocr-btn" id="cScan" type="button"><span>▥</span><span><b>Barcode scannen</b><small>zoekt het product op</small></span></button>`}
+      </div>
+      <p class="small muted" id="cOcr" hidden></p>
+      <div class="field"><label for="cN">Naam</label><input class="input" id="cN" value="${C.esc(p.name || "")}" placeholder="bv. XXL Fit Pudding chocolade"></div>
       <div class="field"><label for="cB">Merk (optioneel)</label><input class="input" id="cB" value="${C.esc(p.brand || "")}"></div>
       <p class="small muted" style="margin:12px 0 0">Per 100 g (zoals op het etiket)</p>
-      <div class="grid2">${f("cK", "kcal", per.kcal != null ? Math.round(per.kcal) : "")}${f("cP", "Eiwit (g)", per.protein)}${f("cC", "Koolhydraten (g)", per.carbs)}${f("cF", "Vet (g)", per.fat)}${f("cFi", "Vezels (g)", per.fiber, "optioneel")}${f("cS", "Portie (g)", p.serving_g, "optioneel")}</div>
+      <div class="grid2">${f("cK", "kcal", per.kcal != null ? Math.round(per.kcal) : "", "fk-kcal")}${f("cP", "Eiwit (g)", per.protein, "fk-prot")}${f("cC", "Koolhydraten (g)", per.carbs, "fk-carb")}${f("cF", "Vet (g)", per.fat, "fk-fat")}${f("cFi", "Vezels (g)", per.fiber, "", "optioneel")}${f("cS", "Portie (g)", p.serving_g, "", "optioneel")}</div>
       ${p.barcode ? `<p class="small muted">Barcode ${C.esc(p.barcode)}</p>` : ""}
       <button class="btn" id="cSave" style="width:100%;margin-top:10px">Opslaan en verder</button></div>`;
     wire();
-    sheet.querySelector("#cSave").onclick = async () => {
+    const card = sheet.querySelector(".sheet-card");
+    enterSubmits(card, "#cSave");
+    sheet.querySelector("#cScan")?.addEventListener("click", scan);
+    sheet.querySelector("#cLabel").onchange = async (e) => {
+      const file = e.target.files?.[0]; if (!file) return;
+      const st = sheet.querySelector("#cOcr"); st.hidden = false;
+      try {
+        const { values } = await readLabel(file, (m) => { st.textContent = m; });
+        const map = { cK: values.kcal, cP: values.protein, cC: values.carbs, cF: values.fat, cFi: values.fiber };
+        let n = 0;
+        for (const [id, v] of Object.entries(map)) {
+          if (v == null) continue;
+          const el = sheet.querySelector("#" + id); el.value = String(v).replace(".", ","); el.classList.add("filled"); n++;
+        }
+        st.textContent = n ? `${n} waarden ingevuld uit de foto (blauw omrand). Kijk ze even na.` : "Ik kon geen waarden lezen. Probeer een scherpere foto, recht van voor, of typ ze over.";
+      } catch (err) { st.textContent = "Etiket lezen lukte niet (" + (err.message || err) + "). Typ de waarden over."; }
+    };
+    sheet.querySelector("#cSave").onclick = async (e) => {
       const v = (id) => numIn(sheet.querySelector("#" + id).value);
       const name = sheet.querySelector("#cN").value.trim();
-      if (!name || v("cK") == null) return C.toast("Naam en kcal zijn nodig");
+      if (!check(sheet, [
+        { el: "#cN", ok: !!name, msg: "Geef het product een naam." },
+        { el: "#cK", ok: v("cK") != null, msg: "Vul de kcal per 100 g in." },
+      ])) return;
+      e.target.disabled = true;
       try {
         const saved = await C.rpc("save_food", { p: { barcode: p.barcode || null, name, brand: sheet.querySelector("#cB").value.trim() || null,
           per100: { kcal: v("cK"), protein: v("cP"), carbs: v("cC"), fat: v("cF"), fiber: v("cFi") }, serving_g: v("cS") } });
         amount(saved);
-      } catch (e) { C.toast(e.message, 5000); }
+      } catch (err) { e.target.disabled = false; C.toast(err.message, 5000); }
     };
   }
 
@@ -473,9 +508,10 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
       </div>
       <button class="btn" id="qSave" style="width:100%;margin-top:10px">Toevoegen</button></div>`;
     wire(); bindMeal();
+    enterSubmits(sheet.querySelector(".sheet-card"), "#qSave");
     sheet.querySelector("#qSave").onclick = async () => {
       const v = (id) => numIn(sheet.querySelector("#" + id).value);
-      if (v("qK") == null) return C.toast("Vul minstens kcal in");
+      if (!check(sheet, [{ el: "#qK", ok: v("qK") != null, msg: "Vul minstens de kcal in." }])) return;
       await C.rpc("log_food", { p: { day, meal, name: sheet.querySelector("#qN").value.trim() || "Snel ingevoerd",
         kcal: v("qK"), protein: v("qP"), carbs: v("qC"), fat: v("qF") } });
       close(); C.toast("Toegevoegd"); after?.();
@@ -491,7 +527,7 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
 // ---------------- snel toevoegen ----------------
 // Eén tik = gelogd: vaste producten (kwark, repen, shakes), wat je per maaltijd het vaakst eet,
 // en je mealprep-recepten. Vandaag staat het menu van je weekplanning bovenaan.
-const SLOT_OF = { Ontbijt: "ontbijt", Lunch: "lunch", Snack: "snack", Avondeten: "avond", Laat: "snack" };
+const SLOT_OF = { Ontbijt: "ontbijt", Lunch: "lunch", Snack: "snack", Avondeten: "avond", Laat: "avondsnack" };
 export async function openQuickAdd(ctx, { day = todayIso(), meal = mealForNow(), after } = {}) {
   C = ctx;
   const sheet = document.createElement("div");

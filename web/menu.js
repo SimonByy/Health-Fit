@@ -1,6 +1,7 @@
 // Mealprep in Health Hub: weekmenu (zondagavond t/m vrijdagmiddag), boodschappenlijst en recepten.
 // Het weekmenu stelt Claude elke vrijdag voor; hier kijk je het na, wissel je gerechten,
 // geef je je mening (lekker / niet lekker), kook je en vink je af in de winkel.
+import { check, enterSubmits } from "./formkit.js";
 let C;
 let D = null;            // laatste mp_get
 let tab = "week";
@@ -8,9 +9,9 @@ let hideChecked = false;
 let filter = "alle";
 let query = "";
 
-const SLOTS = { ontbijt: "Ontbijt", lunch: "Lunch", snack: "Snack", avond: "Avond" };
-const SLOT_ORDER = ["ontbijt", "lunch", "snack", "avond"];
-const FOOD_MEAL = { ontbijt: "Ontbijt", lunch: "Lunch", snack: "Snack", avond: "Avondeten" };
+const SLOTS = { ontbijt: "Ontbijt", lunch: "Lunch", snack: "Snack", avond: "Avond", avondsnack: "Avondsnack" };
+const SLOT_ORDER = ["ontbijt", "lunch", "snack", "avond", "avondsnack"];
+const FOOD_MEAL = { ontbijt: "Ontbijt", lunch: "Lunch", snack: "Snack", avond: "Avondeten", avondsnack: "Laat" };
 const DEPTS = ["Groenten & fruit", "Vlees & vis", "Zuivel & eieren", "Brood & wraps", "Houdbaar", "Ontbijt & sport", "Diepvries", "Overig"];
 const WD = ["zondag", "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag"];
 
@@ -490,7 +491,7 @@ function openAdd() {
   card.querySelector("#aSend").onclick = async (e) => {
     const t = card.querySelector("#aText").value.trim();
     const type = card.querySelector("#aType").value;
-    if (!photo && !t) return C.toast("Kies een foto of typ wat het is");
+    if (!check(card, [{ el: "#aText", ok: !!(photo || t), msg: "Kies een foto of typ wat het is." }])) return;
     e.target.disabled = true; msg.textContent = "Versturen…";
     try {
       let path = null;
@@ -525,8 +526,8 @@ function openPreview(rec) {
     <div class="grid2">
       <div class="field"><label for="pType">Maaltijd</label><select class="input" id="pType">${Object.entries(SLOTS).map(([k, l]) => `<option value="${k}" ${k === rec.meal_type ? "selected" : ""}>${l}</option>`).join("")}</select></div>
       ${f("pServ", "Koken voor (porties)", rec.servings, "numeric")}
-      ${f("pK", "kcal / portie", Math.round(rec.kcal))}${f("pP", "Eiwit (g)", Math.round(rec.protein))}
-      ${f("pC", "Koolhydraten (g)", Math.round(rec.carbs))}${f("pF", "Vet (g)", Math.round(rec.fat))}
+      <div class="fk-kcal">${f("pK", "kcal / portie", Math.round(rec.kcal))}</div><div class="fk-prot">${f("pP", "Eiwit (g)", Math.round(rec.protein))}</div>
+      <div class="fk-carb">${f("pC", "Koolhydraten (g)", Math.round(rec.carbs))}</div><div class="fk-fat">${f("pF", "Vet (g)", Math.round(rec.fat))}</div>
     </div>
     <h4 style="margin:10px 0 4px">Ingrediënten per portie</h4>
     <ul class="mp-ul">${(rec.ingredients || []).map((i) => `<li>${C.esc(ingLine(i))}${i.pantry ? ` <span class="small muted">· voorraad</span>` : ""}</li>`).join("")}</ul>
@@ -541,6 +542,10 @@ function openPreview(rec) {
   const save = async (e, log) => {
     const v = (id) => card.querySelector("#" + id).value.trim();
     const num = (id) => { const x = v(id).replace(",", "."); return x === "" || Number.isNaN(Number(x)) ? null : Number(x); };
+    if (!check(card, [
+      { el: "#pName", ok: !!v("pName"), msg: "Geef het recept een naam." },
+      { el: "#pK", ok: num("pK") != null, msg: "Vul de kcal per portie in." },
+    ])) return;
     e.target.disabled = true;
     try {
       await C.rpc("mp_save_recipe", { p: { id: rec.id ?? null, name: v("pName"), meal_type: card.querySelector("#pType").value,
@@ -552,6 +557,7 @@ function openPreview(rec) {
       close(); C.toast(log ? "Recept bewaard en gelogd" : "Recept bewaard"); tab = "recepten"; filter = "alle"; reload();
     } catch (err) { e.target.disabled = false; C.toast(err.message, 5000); }
   };
+  enterSubmits(card, "#pSave");
   card.querySelector("#pSave").onclick = (e) => save(e, false);
   card.querySelector("#pLog").onclick = (e) => save(e, true);
 }

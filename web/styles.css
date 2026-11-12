@@ -738,3 +738,37 @@ body { background: radial-gradient(900px 420px at 50% -160px, #1C3470 0%, rgba(2
   background: linear-gradient(135deg, var(--g1), var(--g2)); border-radius: 16px; padding: 14px; margin-top: 6px; }
 .newidea > span:first-child { font-size: 22px; }
 .newidea .small { color: rgba(255, 255, 255, .85); }
+
+/* ---------- v9: formulieren ---------- */
+.input.invalid, .btn.invalid { border-color: var(--bad) !important; box-shadow: 0 0 0 3px rgba(255, 92, 108, .22); }
+.fk-err { color: var(--bad); font-size: 13px; margin: 4px 2px 0; font-weight: 500; }
+.input.filled { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(91, 140, 255, .18); }
+.fk-kcal label, .fk-prot label, .fk-carb label, .fk-fat label { display: flex; align-items: center; gap: 6px; }
+.fk-kcal label::before, .fk-prot label::before, .fk-carb label::before, .fk-fat label::before { content: ""; width: 8px; height: 8px; border-radius: 50%; }
+.fk-kcal label::before { background: linear-gradient(135deg, var(--g1), var(--g2)); }
+.fk-prot label::before { background: var(--prot); } .fk-prot .input { border-left: 3px solid var(--prot); }
+.fk-carb label::before { background: var(--carb); } .fk-carb .input { border-left: 3px solid var(--carb); }
+.fk-fat label::before { background: var(--fat); } .fk-fat .input { border-left: 3px solid var(--fat); }
+.fk-prot label { color: var(--prot); } .fk-carb label { color: var(--carb); } .fk-fat label { color: var(--fat); }
+.macro.m-protein .v { color: var(--prot); } .macro.m-carbs .v { color: var(--carb); } .macro.m-fat .v { color: var(--fat); }
+.rsum { display: grid; gap: 8px; margin: 6px 0 0; }
+.rsum-k b { font-family: var(--font-num); font-size: 26px; }
+.mpills { display: flex; flex-wrap: wrap; gap: 6px; }
+.mp { font-size: 13px; padding: 5px 10px; border-radius: 999px; background: var(--surface-2); }
+.mp b { font-family: var(--font-num); font-size: 16px; }
+.mp.prot { color: var(--prot); background: rgba(46, 230, 166, .12); }
+.mp.carb { color: var(--carb); background: rgba(255, 181, 71, .12); }
+.mp.fat { color: var(--fat); background: rgba(255, 92, 138, .12); }
+.ocr-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0 4px; }
+.ocr-btn { display: flex; gap: 10px; align-items: center; text-align: left; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink);
+  border-radius: 14px; padding: 12px; cursor: pointer; font: inherit; }
+.ocr-btn > span:first-child { font-size: 20px; }
+.ocr-btn b { display: block; font-size: 14px; } .ocr-btn small { color: var(--muted); font-size: 12px; }
+.ocr-row .ocr-btn:only-child { grid-column: 1 / -1; }
+.ring-num .rn-l { font-size: 12px; color: var(--muted); margin: 0 0 2px; }
+.ring-num .rn-g { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.gauge .left { display: inline-flex; align-items: baseline; gap: 6px; justify-self: start; font-size: 13px; color: var(--muted);
+  background: rgba(91, 140, 255, .14); border-radius: 999px; padding: 4px 12px; }
+.gauge .left b { font-family: var(--font-num); font-size: 20px; color: var(--ink); }
+.gauge .left.over { background: rgba(255, 92, 108, .16); }
+.gauge .left.over b { color: var(--bad); }
