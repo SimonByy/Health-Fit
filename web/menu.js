@@ -288,8 +288,7 @@ function openRecipe(r, { item = null } = {}) {
           <span class="mp-step" aria-label="Porties in je menu"><button data-ip="-">−</button><b>${C.fmt(itemPortions, 2)}</b><button data-ip="+">+</button></span></div>
           <button class="btn secondary" id="swap" style="width:100%;margin-top:8px">⇄ Ander gerecht kiezen</button></section>` : ""}
       ${r.status === "concept" ? `<section class="mp-box"><p class="small" style="margin:0 0 8px">${C.esc(r.description || "Nog geen details.")}</p>
-          <button class="btn" id="aiFill" style="width:100%">✨ Uitwerken met AI</button>
-          <p class="small muted" style="margin:6px 0 0">Anders werkt Claude het vrijdag uit bij het weekmenu.</p></section>` : ""}
+          <button class="btn" id="aiFill" style="width:100%">✨ Laat Claude het uitwerken</button></section>` : ""}
       ${m("kcal") != null ? `<div class="macros" style="grid-template-columns:repeat(4,1fr)">
           ${[["kcal", "kcal", ""], ["protein", "eiwit", "g"], ["carbs", "koolh.", "g"], ["fat", "vet", "g"]].map(([k, l, u]) =>
             `<div class="macro"><div class="v">${C.fmt(m(k))}${u ? `<small> ${u}</small>` : ""}</div><div class="l">${l} / portie</div></div>`).join("")}</div>` : ""}
@@ -336,11 +335,11 @@ function openRecipe(r, { item = null } = {}) {
     }));
     card.querySelector("#swap")?.addEventListener("click", () => { close(); openSwap(item); });
     card.querySelector("#aiFill")?.addEventListener("click", async (e) => {
-      e.target.disabled = true; e.target.textContent = "Bezig…";
+      e.target.disabled = true;
       try {
-        const res = await C.invoke("recipe-ai", { text: `${r.name}\n${r.description || ""}` });
-        close(); openPreview({ ...res.recipe, id: r.id, name: r.name, meal_type: r.meal_type, favorite: r.favorite });
-      } catch (err) { e.target.disabled = false; e.target.textContent = "✨ Uitwerken met AI"; C.toast(err.message, 5000); }
+        await C.rpc("recipe_inbox_add", { p_text: `Concept #${r.id} uitwerken: ${r.name}\n${r.description || ""}`, p_image_path: null });
+        e.target.textContent = "✓ Claude werkt het binnen het uur uit";
+      } catch (err) { e.target.disabled = false; C.toast(err.message, 5000); }
     });
     card.querySelector("#cook")?.addEventListener("click", () => { close(); openCook(r, portions); });
     card.querySelector("#toList")?.addEventListener("click", async () => {
@@ -437,7 +436,7 @@ async function openCook(r, portions) {
 }
 
 // ---------------------------------------------------------------- recept toevoegen
-async function imageToBase64(file, max = 1400) {
+async function imageToBlob(file, max = 1280) {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
@@ -445,59 +444,63 @@ async function imageToBase64(file, max = 1400) {
     const cv = document.createElement("canvas");
     cv.width = Math.round(img.naturalWidth * s); cv.height = Math.round(img.naturalHeight * s);
     cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
-    return cv.toDataURL("image/jpeg", 0.85).split(",")[1];
+    return await new Promise((res) => cv.toBlob(res, "image/jpeg", 0.82));
   } finally { URL.revokeObjectURL(url); }
 }
 
+// Recept toevoegen: foto en/of tekst gaan naar de inbox. Een geplande Claude-taak (elk uur)
+// werkt ze uit tot een volledig recept en stuurt een melding. Geen API-kosten.
 function openAdd() {
   const { card, close } = sheetShell("Recept toevoegen");
+  let photo = null, preview = null;
   card.innerHTML = `${head("Recept toevoegen")}
-    <label class="btn mp-big" style="margin-top:12px">📷 Foto maken of kiezen
+    <label class="btn mp-big" style="margin-top:12px" id="aPhotoBtn">📷 Foto maken of kiezen
       <input type="file" id="aPhoto" accept="image/*" hidden></label>
-    <p class="small muted" style="margin:4px 0 12px">Een bord eten, een receptkaart of een screenshot. De AI herkent het gerecht en rekent alles om per portie.</p>
-    <div class="field"><label for="aText">Of plak een link of het recept zelf</label>
-      <textarea class="input" id="aText" rows="4" placeholder="https://… of: 500 g kipfilet, 2 paprika's, …"></textarea></div>
-    <button class="btn" id="aGo" style="width:100%">✨ Omzetten</button>
-    <p class="small muted" id="aMsg" style="margin:8px 0 0"></p>
-    <details style="margin-top:14px"><summary class="small">Liever zelf typen zonder AI?</summary>
-      <div class="field"><label for="dName">Naam</label><input class="input" id="dName" maxlength="120"></div>
-      <div class="field"><label for="dType">Maaltijd</label><select class="input" id="dType">${Object.entries(SLOTS).map(([k, l]) => `<option value="${k}" ${k === "avond" ? "selected" : ""}>${l}</option>`).join("")}</select></div>
-      <div class="field"><label for="dDesc">Wat zit erin, hoe maak je het?</label><textarea class="input" id="dDesc" rows="3"></textarea></div>
-      <button class="btn secondary" id="dSave" style="width:100%">Bewaren als concept</button>
-      <p class="small muted" style="margin:6px 0 0">Claude werkt het vrijdag uit met hoeveelheden en macro's, of je tikt later zelf op "Uitwerken met AI".</p>
-    </details>`;
-  card.querySelector("[data-close]").onclick = close;
+    <img id="aPrev" alt="" hidden style="width:100%;max-height:220px;object-fit:cover;border-radius:12px;margin-top:10px">
+    <div class="field" style="margin-top:12px"><label for="aText">Wat is het? (optioneel bij een foto)</label>
+      <textarea class="input" id="aText" rows="3" placeholder="bv. kip curry met rijst voor 3 dagen, of plak een link"></textarea></div>
+    <select class="input" id="aType" style="margin-bottom:10px"><option value="">Maaltijd: laat Claude kiezen</option>${Object.entries(SLOTS).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
+    <button class="btn" id="aSend" style="width:100%">Versturen</button>
+    <p class="small muted" id="aMsg" style="margin:8px 0 0">Claude werkt het binnen het uur uit (tussen 8u en 23u) met ingrediënten, stappen en macro's, en zet het met ★ bij je recepten. Je krijgt een melding.</p>
+    <div id="aInbox"></div>`;
+  card.querySelector("[data-close]").onclick = () => { if (preview) URL.revokeObjectURL(preview); close(); };
   const msg = card.querySelector("#aMsg");
-  const run = async (body, btn) => {
-    msg.textContent = "Bezig met herkennen… (10 à 30 seconden)";
-    if (btn) btn.disabled = true;
-    try { const res = await C.invoke("recipe-ai", body); close(); openPreview(res.recipe); }
-    catch (e) {
-      msg.textContent = /credit balance|Plans & Billing/i.test(e.message)
-        ? "Herkennen lukt nu niet: het tegoed van je Claude API-sleutel is op. Laad het op via console.anthropic.com → Billing, of bewaar het hieronder als concept."
-        : e.message;
-      if (btn) btn.disabled = false;
-    }
-  };
   card.querySelector("#aPhoto").onchange = async (e) => {
     const f = e.target.files?.[0]; if (!f) return;
-    msg.textContent = "Foto verkleinen…";
-    try { run({ image: await imageToBase64(f), media_type: "image/jpeg" }); }
-    catch { msg.textContent = "Deze foto kon ik niet openen. Probeer een andere (JPEG of PNG)."; }
-  };
-  card.querySelector("#aGo").onclick = (e) => {
-    const t = card.querySelector("#aText").value.trim();
-    if (!t) return C.toast("Plak een link of een recept");
-    run({ text: t }, e.target);
-  };
-  card.querySelector("#dSave").onclick = async () => {
-    const name = card.querySelector("#dName").value.trim();
-    if (!name) return C.toast("Geef het een naam");
     try {
-      await C.rpc("mp_save_recipe", { p: { name, meal_type: card.querySelector("#dType").value, description: card.querySelector("#dDesc").value, status: "concept", favorite: true } });
-      close(); C.toast("Concept bewaard"); filter = "concept"; tab = "recepten"; reload();
-    } catch (e) { C.toast(e.message, 5000); }
+      photo = await imageToBlob(f);
+      if (preview) URL.revokeObjectURL(preview);
+      preview = URL.createObjectURL(photo);
+      const im = card.querySelector("#aPrev"); im.src = preview; im.hidden = false;
+      card.querySelector("#aPhotoBtn").firstChild.textContent = "📷 Andere foto ";
+    } catch { C.toast("Deze foto kon ik niet openen. Probeer een JPEG of PNG.", 5000); }
   };
+  card.querySelector("#aSend").onclick = async (e) => {
+    const t = card.querySelector("#aText").value.trim();
+    const type = card.querySelector("#aType").value;
+    if (!photo && !t) return C.toast("Kies een foto of typ wat het is");
+    e.target.disabled = true; msg.textContent = "Versturen…";
+    try {
+      let path = null;
+      if (photo) {
+        path = `${crypto.randomUUID()}.jpg`;
+        const { error } = await C.sb.storage.from("recipe-inbox").upload(path, photo, { contentType: "image/jpeg", upsert: false });
+        if (error) throw error;
+      }
+      const text = [type ? `Maaltijd: ${SLOTS[type].toLowerCase()}` : "", t].filter(Boolean).join("\n") || null;
+      await C.rpc("recipe_inbox_add", { p_text: text, p_image_path: path });
+      if (preview) URL.revokeObjectURL(preview);
+      close(); C.toast("Verstuurd. Claude zet het binnen het uur bij je recepten.", 5000);
+    } catch (err) { e.target.disabled = false; msg.textContent = "Versturen lukte niet: " + (err.message || err); }
+  };
+  // Wat staat er nog in de wachtrij?
+  C.rpc("recipe_inbox_list").then((list) => {
+    if (!list?.length) return;
+    const lab = { nieuw: "⏳ in de wachtrij", bezig: "⏳ bezig", klaar: "✓ klaar", fout: "⚠︎ lukte niet" };
+    card.querySelector("#aInbox").innerHTML = `<h4 style="margin:16px 0 4px">Recent verstuurd</h4>${list.map((i) =>
+      `<div class="mp-row"><span class="small">${C.esc(i.recipe_name || (i.text || "Foto").split("\n").pop().slice(0, 60))}${i.error ? `<br><span class="muted">${C.esc(i.error)}</span>` : ""}</span>
+        <span class="small muted" style="white-space:nowrap">${lab[i.status] || i.status}</span></div>`).join("")}`;
+  }).catch(() => {});
 }
 
 // Voorbeeld van een herkend recept: aanpassen en bewaren

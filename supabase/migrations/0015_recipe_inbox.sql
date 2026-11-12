@@ -1,0 +1,3 @@
+-- Recepten-inbox (foto/tekst → geplande Claude-taak) en push-outbox. Toegepast via MCP op 12/11/2026.
+-- Zie migratie "recipe_inbox" in Supabase: app.recipe_inbox, app.push_outbox, bucket recipe-inbox,
+-- public.recipe_inbox_add, public.recipe_inbox_list, public.internal_claim_outbox.

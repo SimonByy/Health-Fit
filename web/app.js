@@ -105,7 +105,7 @@ function showError(err) {
 }
 
 // Gedeelde helpers voor de modules training (workout.js) en voeding (food.js)
-const ctx = { rpc, invoke, toast, fmt, esc, view, today, addDays, shortDate, mountChart, SUPABASE_URL, md: (s) => md(s),
+const ctx = { sb, rpc, invoke, toast, fmt, esc, view, today, addDays, shortDate, mountChart, SUPABASE_URL, md: (s) => md(s),
   importAppleHealth: (...a) => importAppleHealth(...a) };
 const workoutMod = () => import("./workout.js");
 const foodMod = () => import("./food.js");

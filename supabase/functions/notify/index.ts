@@ -92,5 +92,11 @@ Deno.serve(async (req) => {
       results.push({ id: r.id, error: String(e).slice(0, 300) });
     }
   }
-  return json({ ok: true, due: due.length, results });
+  // Losse meldingen (bv. "recept staat klaar"), geschreven door geplande taken
+  const outbox = await rpc<any[]>("internal_claim_outbox").catch(() => []);
+  for (const m of outbox || []) {
+    try { results.push({ outbox: m.id, ...(await pushAll({ title: m.title, body: m.body || "", url: m.url || "/#/vandaag", tag: "outbox-" + m.id })) }); }
+    catch (e) { results.push({ outbox: m.id, error: String(e).slice(0, 300) }); }
+  }
+  return json({ ok: true, due: due.length, outbox: (outbox || []).length, results });
 });
