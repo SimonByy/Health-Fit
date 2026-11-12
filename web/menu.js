@@ -154,11 +154,18 @@ function drawList(box) {
       <span class="small muted">${w ? `Week van ${C.esc(dshort(w.week_start))} · ` : ""}${done} van ${all.length} afgevinkt</span>
       <button class="chip ${hideChecked ? "on" : ""}" id="hideC">Verberg afgevinkt</button>
     </div>
-    <p class="hint small muted" style="margin:0 0 10px">Vink af wat je al hebt of kocht. Wat vóór vrijdagavond is afgevinkt, komt niet in je AH-mandje.</p>
-    ${groups.length ? groups.map((g) => {
+    <p class="hint small muted" style="margin:0 0 10px">Vink af wat je al hebt of kocht. Vers spul voor later in de week staat op de lijst van de tussendag. Wat vóór vrijdagavond is afgevinkt, komt niet in je AH-mandje.</p>
+    ${groups.length ? groups.map((g, gi) => {
       const items = g.items.filter((i) => !(hideChecked && i.checked));
-      if (!items.length) return "";
-      return `<section class="panel mp-shop"><h3>${C.esc(g.dept)}</h3>
+      // Kop per winkelmoment (zondag AH / tussendag Okay) boven de eerste afdeling ervan.
+      let head = "";
+      if (g.moment && (gi === 0 || groups[gi - 1].moment !== g.moment)) {
+        const mi = groups.filter((x) => x.moment === g.moment).flatMap((x) => x.items.filter((i) => !i.pantry));
+        head = `<h2 class="section-title" style="margin-top:${gi ? 18 : 4}px">${C.esc(g.moment_label || g.moment)}
+          <span class="small muted">· ${mi.filter((i) => i.checked).length}/${mi.length}</span></h2>`;
+      }
+      if (!items.length) return head;
+      return `${head}<section class="panel mp-shop"><h3>${C.esc(g.afdeling || g.dept)}</h3>
         ${items.map((i) => `<label class="mp-check ${i.checked ? "done" : ""} ${i.pantry ? "pantry" : ""}">
           <input type="checkbox" data-key="${C.esc(i.key)}" ${i.checked ? "checked" : ""}>
           <span class="t">${C.esc(i.amount != null ? amountText(i.amount, i.unit, true) + " " : "")}${C.esc(i.name)}
