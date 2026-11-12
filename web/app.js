@@ -413,6 +413,7 @@ async function renderToday() {
       </section>` : ""}
     ${brief?.text ? `<a class="panel lk-cta" href="#/briefing"><span><b>▶ Ochtendbriefing</b><br><span class="small muted">Laten voorlezen en antwoorden</span></span><span aria-hidden="true">›</span></a>` : ""}
     ${mpToday.length ? `<a class="panel lk-cta" href="#/menu/week"><span><b>Vandaag op je menu</b><br><span class="small muted">${mpToday.map((i) => esc(i.r.name)).join(" · ")}</span></span><span aria-hidden="true">›</span></a>` : ""}
+    ${isToday ? `<div id="coachToday"></div>` : ""}
     <div class="board">
       <section class="domain" style="--c:${DOMAIN.move}">
         <h2>Beweging</h2>
@@ -507,6 +508,7 @@ async function renderToday() {
   $("#logWeight")?.addEventListener("click", () => openWeightForm(d.last_weight?.kg));
   $("#addFood").onclick = async () => (await foodMod()).openAddFood(ctx, { day: state.day, after: reload });
   $("#quickFood")?.addEventListener("click", async () => (await foodMod()).openQuickAdd(ctx, { day: state.day, after: reload }));
+  if ($("#coachToday")) import("./coach.js").then((m) => m.renderCoachToday(ctx, $("#coachToday"))).catch(() => {});
   $("#insDet")?.addEventListener("toggle", (e) => { if (e.target.open && !ins.read_at) rpc("mark_insight_read", { p_id: ins.id }).catch(() => {}); });
   if (ins && !ins.read_at && isToday) rpc("mark_insight_read", { p_id: ins.id }).catch(() => {});
   if (state.openWeight) { state.openWeight = false; openWeightForm(d.last_weight?.kg); }
@@ -555,8 +557,10 @@ async function renderTraining() {
       </div>
       <label class="btn ghost" style="margin-bottom:14px;cursor:pointer">Hevy importeren<input type="file" id="hevyCsv" accept=".csv,text/csv" hidden></label>
     </div>
+    <div id="coachWeek"></div>
     <div id="wstart"></div>
     <div id="tcontent"><div class="skeleton"></div></div>`;
+  import("./coach.js").then((m) => m.renderCoachWeek(ctx, $("#coachWeek"))).catch(() => {});
   if (tab === "workouts") renderWorkoutStart($("#wstart"));
   view.querySelectorAll(".seg button").forEach((b) => (b.onclick = () => { state.trainTab = b.dataset.t; renderTraining(); }));
   $("#hevyCsv").onchange = (e) => importHevyFile(e.target.files?.[0], renderTraining);

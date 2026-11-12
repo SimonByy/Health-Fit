@@ -569,3 +569,10 @@ details.why summary { font-size: 14px; font-weight: 600; cursor: pointer; }
 .mp-prep summary { cursor: pointer; margin-top: 10px; font-weight: 500; }
 .mp-cookmode .sheet-card { max-height: 100dvh; height: 100dvh; border-radius: 0; }
 .briefing .md { font-size: 16px; line-height: 1.55; }
+
+/* ---------- coach ---------- */
+.coach-item { border-top: 1px solid var(--line); padding: 10px 0; }
+.coach-item:first-of-type { border-top: 0; }
+.coach-item.gedaan b { color: var(--good); }
+.coach-item.overgeslagen { opacity: .6; }
+.coach-item details summary { cursor: pointer; margin-top: 4px; }
