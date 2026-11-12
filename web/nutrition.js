@@ -46,14 +46,15 @@ export async function renderNutrition(ctx, state) {
   C = ctx;
   const day = state.nutDay;
   const isToday = day === C.today();
-  const [d, items, quick, menu, week] = await Promise.all([
+  const [d, items, quick, menu, week, pairs] = await Promise.all([
     C.rpc("get_nutrition_day", { p_day: day }),
     C.rpc("get_food_log", { p_day: day }),
     C.rpc("get_quick_add").catch(() => ({})),
     // geplande maaltijden uit het weekmenu voor deze dag (uit welke week ook)
-    C.rpc("mp_get").then((m) => (m.weeks || []).flatMap((w) => w.items || []).filter((i) => i.day === day)
+    C.rpc("mp_get").then((m) => (m.weeks || []).flatMap((w) => (w.items || []).map((i) => ({ ...i, week_id: w.id }))).filter((i) => i.day === day)
       .map((i) => ({ ...i, r: m.recipes.find((r) => r.id === i.recipe_id) })).filter((i) => i.r)).catch(() => []),
     C.rpc("get_food_week", { p_days: 7 }).catch(() => null),
+    C.rpc("get_day_pairs", { p_day: day }).catch(() => ({})),
   ]);
   const by = Object.fromEntries((d.nutrients || []).map((x) => [x.metric, x]));
   const g = d.goals || {};
@@ -65,6 +66,7 @@ export async function renderNutrition(ctx, state) {
   const suggest = (meal) => {
     const out = [], seen = new Set(items.filter((i) => i.meal === meal).map((i) => i.name));
     const push = (s) => { if (out.length < 4 && !seen.has(s.name)) { seen.add(s.name); out.push(s); } };
+    (pairs?.[meal] || []).forEach((f) => push({ kind: "freq", pair: true, name: f.name, kcal: f.kcal, x: f }));
     (quick.frequent?.[meal] || []).forEach((f) => push({ kind: "freq", name: f.name, kcal: f.kcal, x: f }));
     if (meal === "Snack" || meal === "Laat") (quick.products || []).forEach((p) => push({ kind: "prod", name: p.name, kcal: (p.per100?.kcal || 0) * (p.serving_g || 100) / 100, x: p }));
     (quick.recipes || []).filter((r) => r.meal_type === SLOT_OF[meal]).forEach((r) => push({ kind: "rec", name: r.name, kcal: r.kcal, x: r }));
@@ -91,7 +93,7 @@ export async function renderNutrition(ctx, state) {
           <button class="mi-t" type="button" aria-label="${C.esc(i.name)} aanpassen">${C.esc(i.name)}<small>${i.grams != null ? `${C.fmt(i.grams)} g · ` : ""}${C.fmt(i.protein)} g eiwit</small></button>
           <span class="mi-k">${C.fmt(i.kcal)}</span>
           <button class="mi-x" aria-label="${C.esc(i.name)} verwijderen">×</button></div>`).join("")}
-      ${sugg[m].length && (!list.length || (isToday && m === now)) ? `<div class="sugg">${sugg[m].map((s, k) => `<button class="sg" data-sg="${k}"><span>${C.esc(short(s.name))}</span><small>${C.fmt(s.kcal)}</small></button>`).join("")}</div>`
+      ${sugg[m].length && (!list.length || (isToday && m === now) || sugg[m].some((x) => x.pair)) ? `<div class="sugg">${sugg[m].some((x) => x.pair) && all.length ? `<span class="sugg-h">Vaak samen met wat je al at:</span>` : ""}${sugg[m].map((s, k) => `<button class="sg ${s.pair ? "pair" : ""}" data-sg="${k}"><span>${s.pair ? "＋ " : ""}${C.esc(short(s.name))}</span><small>${C.fmt(s.kcal)}</small></button>`).join("")}</div>`
         : !list.length && !plan.length ? `<p class="mempty">Nog niets. Tik op + om iets toe te voegen.</p>` : ""}
     </section>`;
   };
@@ -104,6 +106,8 @@ export async function renderNutrition(ctx, state) {
       <button id="next" aria-label="Volgende dag" ${isToday ? "disabled" : ""}>›</button>
     </div>
     ${gauge(C, tot)}
+    ${menu.length ? (() => { const e = menu.filter((i) => i.eaten).length; return `<div class="mp-planbar"><span class="small">Weekmenu: <b>${e} van ${menu.length}</b> gegeten</span>
+      ${e < menu.length ? `<button class="chip" id="eatAll">✓ Rest afvinken</button>` : `<span class="small ok-badge">✓ alles gelogd</span>`}</div>`; })() : ""}
     ${meals.map(mealCard).join("")}
     <button class="searchbar big" id="search"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Zoek iets om toe te voegen…</button>
     ${wk.length ? `<h2 class="section-title">Afgelopen 7 dagen</h2>
@@ -125,6 +129,11 @@ export async function renderNutrition(ctx, state) {
   const reload = () => renderNutrition(ctx, state);
   C.view.querySelector("#prev").onclick = () => { state.nutDay = C.addDays(day, -1); reload(); };
   C.view.querySelector("#next").onclick = () => { if (!isToday) { state.nutDay = C.addDays(day, 1); reload(); } };
+  C.view.querySelector("#eatAll")?.addEventListener("click", async (ev) => {
+    ev.currentTarget.disabled = true;
+    try { const k = await C.rpc("mp_day_eaten", { p_week_id: menu[0].week_id, p_day: day, p_eaten: true }); C.toast(`${k} maaltijden uit je menu gelogd`); reload(); }
+    catch (e) { C.toast(e.message, 5000); reload(); }
+  });
   C.view.querySelector("#search").onclick = () => openAddFood(C, { day, meal: isToday ? now : "Lunch", after: reload });
   C.view.querySelector("details.panel").addEventListener("toggle", (e) => {
     if (e.target.open && !e.target.dataset.loaded) { e.target.dataset.loaded = 1; renderRecipes(C, day, C.view.querySelector("#recipes"), reload); }

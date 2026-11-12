@@ -872,3 +872,11 @@ body { background: radial-gradient(900px 420px at 50% -160px, #1C3470 0%, rgba(2
 .mp-more { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 8px; }
 .mp-more summary { cursor: pointer; color: var(--muted); font-size: 14px; }
 .mp-shophead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.mp-dayeat { margin-top: 8px; }
+.mp-sugg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.mp-sugg .chip { font-size: 13px; }
+.mp-planbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 14px; }
+.mp-erow .e-packl { display: flex; align-items: center; gap: 6px; }
+.mp-erow .e-pack { width: 80px; padding: 4px 6px; }
+.sugg-h { width: 100%; font-size: 12px; color: var(--muted); }
+.sg.pair { border-color: var(--good); }

@@ -21,14 +21,17 @@ add("2026-11-15", "avond", 4); add("2026-11-16", "avond", 4, 1, true); add("2026
 add("2026-11-17", "avond", 19); add("2026-11-18", "avond", 19); add("2026-11-19", "avond", 19); add("2026-11-17", "lunch", 16); add("2026-11-18", "avondsnack", 10);
 const data = { today: "2026-11-16", current_week_id: 1, goals: { kcal_in: 2000, protein_g: 150, carbs_g: 238, fat_g: 50 }, recipes,
   weeks: [{ id: 1, week_start: "2026-11-15", items, prep: ["x"], bonus: [], notes: "n", reviewed_at: null, list_recipes: [],
-    shopping: [{ moment: "zondag", moment_label: "Zondag (AH)", afdeling: "Vlees & vis", dept: "Zondag (AH) · Vlees & vis", items: [{ key: "kip|g", name: "Kip", amount: 600, unit: "g", checked: true }, { key: "gehakt|g", name: "Gehakt", amount: 400, unit: "g" }] },
+    shopping: [{ moment: "zondag", moment_label: "Zondag (AH)", afdeling: "Vlees & vis", dept: "Zondag (AH) · Vlees & vis", items: [{ key: "kip|g", name: "Kip", amount: 600, unit: "g", checked: true }, { key: "gehakt|g", name: "Gehakt", amount: 400, unit: "g", pack: 300 }] },
+      { moment: "zondag", moment_label: "Zondag (AH)", afdeling: "Groenten & fruit", dept: "z", items: [{ key: "bessen|g", name: "Bessen", amount: 150, unit: "g", pack: 300 }, { key: "wrap|stuk", name: "Wraps", amount: 10, unit: "stuk", pack: 6 }] },
       { moment: "zondag", moment_label: "Zondag (AH)", afdeling: "Houdbaar", dept: "x", items: [{ key: "zout|", name: "Zout", pantry: true }] },
-      { moment: "tussendag", moment_label: "Woensdag (Okay)", afdeling: "Zuivel & eieren", dept: "y", items: [{ key: "tus|kwark|g", name: "Kwark", amount: 250, unit: "g" }] }] }] };
+      { moment: "tussendag", moment_label: "Woensdag (Okay)", afdeling: "Zuivel & eieren", dept: "y", items: [{ key: "tus|kwark|g", name: "Kwark", amount: 250, unit: "g" }, { key: "tus|bessen|g", name: "Bessen", amount: 75, unit: "g", pack: 300 }] }] }] };
 const calls = [];
 const foods = [{ id: "fA", name: "AH Rundergehakt mager", per100: P(190, 20, 0.5, 12), serving_g: 100 }, { id: "fB", name: "AH Ui", per100: P(40, 1.2, 8, 0.1) }];
 const ctx = { rpc: async (fn, a) => { calls.push([fn, a]);
     if (fn === "mp_get") return JSON.parse(JSON.stringify(data)); if (fn === "mp_save_recipe") return { ...a.p, id: a.p.id ?? 77 };
     if (fn === "get_foods") return foods; if (fn === "get_quick_add") return {}; if (fn === "get_food_log") return [{ id: "L102", meal: "Avondeten", name: "Hete bliksem", kcal: 600, protein: 45 }];
+    if (fn === "get_day_pairs") return { Avondeten: [{ name: "Appelmoes", kcal: 52, protein: 0.3, carbs: 12, fat: 0, food_id: "fx", grams: 100, times: 3 }] };
+    if (fn === "mp_day_eaten") return 2;
     if (fn === "get_nutrition_day") return { nutrients: [{ metric: "dietary_energy", value: 600 }], goals: {} }; return null; },
   invoke: async () => ({ products: [] }), toast: (m) => calls.push(["toast", m]), fmt: (x) => String(Math.round((x ?? 0) * 10) / 10), esc: (s) => String(s ?? "").replace(/</g, "&lt;"),
   view: document.getElementById("v"), today: () => "2026-11-16", addDays: (d) => d };
@@ -130,8 +133,12 @@ $$(".sheet").forEach((s) => s.remove());
 console.log("— Boodschappen");
 await m.renderMenu(ctx, "lijst"); await wait();
 const heads = $$("h2.section-title").map(txt);
-ok(heads[0] === "Zondag (AH) · 1/2" && heads[1] === "Woensdag (Okay) · 0/1", "koppen per winkel met teller: " + heads.join(" | "));
-ok($$(".mp-shop h3").map(txt).join(",") === "Vlees & vis,Houdbaar,Zuivel & eieren", "afdelingen zonder dubbele dagnaam");
+ok(heads[0] === "Zondag (AH) · 1/4" && heads[1] === "Woensdag (Okay) · 0/2", "koppen per winkel met teller: " + heads.join(" | "));
+ok($$(".mp-shop h3").map(txt).join(",") === "Vlees & vis,Groenten & fruit,Houdbaar,Zuivel & eieren", "afdelingen zonder dubbele dagnaam");
+const shopTxt = $$(".mp-shop .t").map(txt);
+ok(shopTxt.some((t) => t.startsWith("400 g Gehakt · 2 × 300 g")), "verpakkingen: 400 g → 2 × 300 g");
+ok(shopTxt.some((t) => t.startsWith("10 stuks Wraps · 2 pakken van 6")), "stuks: 10 → 2 pakken van 6");
+ok(shopTxt.some((t) => t.includes("75 g Bessen") && t.includes("zit al in je zondagverpakking")), "woensdag-bessen zitten al in het zondagpak");
 
 console.log("— Voeding");
 const nmod = await import("../web/nutrition.js");
@@ -183,7 +190,9 @@ $$(".sheet").forEach((x) => x.remove());
 let copied = null; Object.defineProperty(globalThis.navigator, "clipboard", { value: { writeText: async (t) => { copied = t; } }, configurable: true });
 await m.renderMenu(ctx, "lijst"); await wait();
 $('.mp-copy[data-moment="zondag"]').click(); await wait();
-ok(copied === "Zondag (AH)\n\nVlees & vis\n- 400 g Gehakt", "kopie: alleen niet-afgevinkt, zonder voorraad: " + JSON.stringify(copied));
+ok(copied === "Zondag (AH)\n\nVlees & vis\n- 400 g Gehakt (2 × 300 g)\n\nGroenten & fruit\n- 150 g Bessen (1 × 300 g)\n- 10 stuks Wraps (2 pakken van 6)", "kopie: alleen niet-afgevinkt, met verpakkingen: " + JSON.stringify(copied));
+$('.mp-copy[data-moment="tussendag"]').click(); await wait();
+ok(copied === "Woensdag (Okay)\n\nZuivel & eieren\n- 250 g Kwark", "kopie woensdag: gedekte bessen niet: " + JSON.stringify(copied));
 
 
 console.log("— Recept verwijderen dat in het menu staat");
@@ -194,5 +203,26 @@ $(".mp-more").open = true; $("#hide").click(); await wait(60);
 ok(lastConfirm.includes("dinsdag 17/11") && lastConfirm.includes("donderdag 19/11") && lastConfirm.includes("boodschappenlijst"), "vraag noemt de dagen in het menu");
 ok(JSON.stringify(calls.filter((c) => c[0] === "mp_hide_recipe").at(-1)?.[1]) === '{"p_id":19}', "mp_hide_recipe wordt aangeroepen");
 globalThis.confirm = () => confirmAns;
+
+console.log("— Dag gegeten, aanvullen, wissel-effect, vaak samen");
+await m.renderMenu(ctx, "week"); await wait();
+const maDay = $('.mp-day[data-day="2026-11-16"]');
+ok(maDay.querySelector("[data-dayeat]"), "knop 'Alles van deze dag gegeten' op vandaag");
+ok(!$('.mp-day[data-day="2026-11-17"] [data-dayeat]'), "niet op toekomstige dagen");
+maDay.querySelector("[data-dayeat]").click(); await wait();
+ok(JSON.stringify(calls.filter((c) => c[0] === "mp_day_eaten").at(-1)[1]) === '{"p_week_id":1,"p_day":"2026-11-16","p_eaten":true}', "mp_day_eaten voor die dag");
+const sg = $$('.mp-day[data-day="2026-11-16"] [data-sr]');
+ok(sg.length >= 1 && txt(sg[0]).includes("Fitpudding") && sg[0].dataset.sslot === "avondsnack", "aanvulsuggestie: Fitpudding op de vrije avondsnack: " + sg.map(txt).join(" | "));
+sg[0].click(); await wait();
+ok(JSON.stringify(calls.filter((c) => c[0] === "mp_item_add").at(-1)[1]) === '{"p_week_id":1,"p_day":"2026-11-16","p_slot":"avondsnack","p_recipe_id":10,"p_portions":1}', "één tik voegt toe");
+ok(!$$("[data-sr]").some((b) => b.dataset.sr === "30"), "geschatte recepten worden niet voorgesteld");
+$('.mp-item[data-item="101"]').click(); await wait(); $("#swap").click(); await wait();
+ok($$(".pk-item .small").map(txt).some((t) => t.includes("dag wordt")), "wissel toont nieuw dagtotaal");
+$$(".sheet").forEach((x) => x.remove());
+const nm2 = await import("../web/nutrition.js");
+await nm2.renderNutrition(ctx, { nutDay: "2026-11-16" }); await wait();
+ok(txt($(".mp-planbar")).includes("1 van 3 gegeten") && $("#eatAll"), "Voeding: hoeveel van je menu gegeten + knop");
+const pr = $('.mcard[data-meal="Avondeten"] .sg.pair');
+ok(pr && txt(pr).includes("Appelmoes") && txt($('.mcard[data-meal="Avondeten"] .sugg-h')).startsWith("Vaak samen"), "vaak samen: appelmoes bij avondeten");
 
 console.log(fails ? `\n${fails} FOUT(EN)` : "\nAlles OK");

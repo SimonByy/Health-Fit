@@ -92,6 +92,21 @@ function cookPlan(w) {
     .sort((a, b) => a.cook.localeCompare(b.cook) || a.days[0].localeCompare(b.days[0]));
 }
 
+// Aanvullen: snacks die passen in wat er nog over is (alleen recepten met echte waarden)
+function suggestHtml(d, its, t, g) {
+  const left = n(g.kcal_in) - t.kcal;
+  const have = new Set(its.map((i) => i.slot));
+  const free = ["snack", "avondsnack"].filter((sl) => !have.has(sl));
+  if (!free.length || left < 120) return "";
+  const used = new Set(its.map((i) => i.recipe_id));
+  const c = D.recipes.filter((r) => ["snack", "avondsnack"].includes(r.meal_type) && r.status === "klaar" && !r.disliked && r.macros_checked
+      && !used.has(r.id) && n(r.kcal) != null && n(r.kcal) <= left + 60)
+    .sort((a, b) => (b.favorite - a.favorite) || (n(b.protein) / n(b.kcal)) - (n(a.protein) / n(a.kcal))).slice(0, 2);
+  if (!c.length) return "";
+  return `<div class="mp-sugg"><span class="small muted">Past nog:</span>${c.map((r) => {
+    const slot = free.includes(r.meal_type) ? r.meal_type : free[0];
+    return `<button class="chip" data-sday="${d}" data-sslot="${slot}" data-sr="${r.id}">+ ${C.esc(r.name)} <span class="muted">${C.fmt(r.kcal)} kcal · ${C.fmt(r.protein)} g E</span></button>`; }).join("")}</div>`;
+}
 // Wat er nog over is van je dagdoel (of hoeveel je erover zit)
 function leftText(t, g) {
   const k = n(g.kcal_in) - t.kcal, p = n(g.protein_g) != null ? n(g.protein_g) - t.protein : null;
@@ -153,6 +168,9 @@ function drawWeek(box) {
         <div class="row" style="justify-content:space-between"><h3 style="text-transform:capitalize;margin:0">${C.esc(dshort(d))}${d === D.today ? ` <span class="badge" style="background:var(--fuel)">vandaag</span>` : ""}</h3>
           <span class="mp-dk"><b>${C.fmt(t.kcal)}</b>${g.kcal_in ? ` / ${C.fmt(g.kcal_in)}` : ""} kcal</span></div>
         ${its.length && g.kcal_in ? `<p class="small mp-left">${leftText(t, g)}</p>` : ""}
+        ${d <= D.today && its.length ? (its.every((i) => i.eaten) ? `<p class="small ok-badge" style="margin:4px 0 0">✓ Alles gegeten en gelogd</p>`
+          : `<button class="chip mp-dayeat" data-dayeat="${d}">✓ Alles van deze dag gegeten</button>`) : ""}
+        ${suggestHtml(d, its, t, g)}
         <div class="mp-dbars">
           ${bar("prot", "Eiwit", t.protein, n(g.protein_g))}
           ${bar("carb", "Koolhydraten", t.carbs, n(g.carbs_g))}
@@ -208,6 +226,17 @@ function drawWeek(box) {
     } catch (e) { cb.checked = !cb.checked; C.toast(e.message, 5000); }
   }));
   box.querySelectorAll("[data-addslot]").forEach((b) => (b.onclick = () => openAddSlot(w, b.dataset.addday, b.dataset.addslot)));
+  box.querySelectorAll("[data-dayeat]").forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    try { const k = await C.rpc("mp_day_eaten", { p_week_id: w.id, p_day: b.dataset.dayeat, p_eaten: true }); C.toast(`${k} ${k === 1 ? "maaltijd" : "maaltijden"} gelogd in Voeding`); reload(); }
+    catch (e) { b.disabled = false; C.toast(e.message, 5000); }
+  }));
+  box.querySelectorAll("[data-sr]").forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    try { await C.rpc("mp_item_add", { p_week_id: w.id, p_day: b.dataset.sday, p_slot: b.dataset.sslot, p_recipe_id: Number(b.dataset.sr), p_portions: 1 });
+      C.toast(`${recById(Number(b.dataset.sr))?.name} toegevoegd`); reload(); }
+    catch (e) { b.disabled = false; C.toast(e.message, 5000); }
+  }));
   box.querySelectorAll("[data-prep]").forEach((cb) => (cb.onchange = () => {
     cb.checked ? prepDone.add(Number(cb.dataset.prep)) : prepDone.delete(Number(cb.dataset.prep));
     cb.closest(".mp-check").classList.toggle("done", cb.checked); prepSave(w.id, prepDone);
@@ -220,9 +249,29 @@ function drawWeek(box) {
 }
 
 // ---------------------------------------------------------------- boodschappen
+// "4 × 300 g" of "2 pakken van 6"
+function packPlain(i) {
+  const a = n(i.amount), p = n(i.pack);
+  if (a == null || !p || i.pantry) return "";
+  const k = Math.max(1, Math.ceil(a / p - 0.001));
+  return i.unit === "stuk" ? `${k} ${k === 1 ? "pak" : "pakken"} van ${C.fmt(p)}` : `${k} × ${amountText(p, i.unit, true)}`;
+}
+const packText = (i) => { const t = packPlain(i); return t ? ` <span class="small muted mp-pack">· ${C.esc(t)}</span>` : ""; };
+// Tussendag-items die al in de rest van een zondagverpakking zitten (bv. 150 g bessen + 75 g, verpakking 300 g)
+function markCovered(groups) {
+  const sun = new Map();
+  for (const g of groups) if (g.moment === "zondag") for (const i of g.items) if (n(i.pack) && n(i.amount) != null) sun.set(i.name.toLowerCase() + "|" + (i.unit || ""), i);
+  for (const g of groups) if (g.moment === "tussendag") for (const i of g.items) {
+    const z = sun.get(i.name.toLowerCase() + "|" + (i.unit || "")); if (!z || n(i.amount) == null) continue;
+    const rest = Math.ceil(n(z.amount) / n(z.pack) - 0.001) * n(z.pack) - n(z.amount);
+    i.covered = rest + 0.001 >= n(i.amount);
+  }
+}
+
 function drawList(box) {
   const w = currentWeek();
   const groups = w?.shopping || [];
+  markCovered(groups);
   const all = groups.flatMap((g) => g.items.filter((i) => !i.pantry));
   const done = all.filter((i) => i.checked).length;
   box.innerHTML = `
@@ -246,7 +295,7 @@ function drawList(box) {
       return `${head}<section class="panel mp-shop"><h3>${C.esc(g.afdeling || g.dept)}</h3>
         ${items.map((i) => `<label class="mp-check ${i.checked ? "done" : ""} ${i.pantry ? "pantry" : ""}">
           <input type="checkbox" data-key="${C.esc(i.key)}" ${i.checked ? "checked" : ""}>
-          <span class="t">${C.esc(i.amount != null ? amountText(i.amount, i.unit, true) + " " : "")}${C.esc(i.name)}
+          <span class="t">${C.esc(i.amount != null ? amountText(i.amount, i.unit, true) + " " : "")}${C.esc(i.name)}${packText(i)}${i.covered ? ` <span class="small ok-badge">· zit al in je zondagverpakking</span>` : ""}
             ${i.bonus ? ` <span class="badge" style="background:var(--fuel)">bonus</span>` : ""}
             ${i.pantry ? ` <span class="small muted">· check voorraad</span>` : ""}</span>
           ${i.extra_id ? `<button class="icon-btn mp-xdel" data-x="${i.extra_id}" aria-label="${C.esc(i.name)} verwijderen">✕</button>` : ""}
@@ -269,8 +318,8 @@ function drawList(box) {
     const gs = groups.filter((x) => x.moment === b.dataset.moment);
     const lines = [gs[0]?.moment_label || ""];
     for (const g of gs) {
-      const it = g.items.filter((i) => !i.pantry && !i.checked); if (!it.length) continue;
-      lines.push("", g.afdeling || g.dept, ...it.map((i) => `- ${i.amount != null ? amountText(i.amount, i.unit, true) + " " : ""}${i.name}`));
+      const it = g.items.filter((i) => !i.pantry && !i.checked && !i.covered); if (!it.length) continue;
+      lines.push("", g.afdeling || g.dept, ...it.map((i) => `- ${i.amount != null ? amountText(i.amount, i.unit, true) + " " : ""}${i.name}${packPlain(i) ? ` (${packPlain(i)})` : ""}`));
     }
     const txt = lines.join("\n");
     if (await copyText(txt)) C.toast("Lijst gekopieerd"); else showText("Boodschappenlijst", txt);
@@ -524,6 +573,9 @@ function openSwap(item) {
     const ids = [...card.querySelectorAll("[data-day]:checked")].map((c) => Number(c.dataset.day));
     return dayItems.filter((i) => ids.includes(i.id));
   };
+  const dayKcal = dayTotals((currentWeek()?.items || []).filter((i) => i.day === item.day)).kcal;
+  const q0 = n(item.portions) || 1;
+  const after = (r) => dayKcal - q0 * (n(cur?.kcal) || 0) + q0 * (n(r.kcal) || 0);
   const { card, close } = sheetShell("Ander gerecht");
   card.innerHTML = `${head("Ander gerecht kiezen")}
     <p class="small muted" style="margin:4px 0 8px">${C.esc(dshort(item.day))}, ${SLOTS[item.slot].toLowerCase()}. Nu: ${C.esc(cur?.name || "")} (${C.fmt(cur?.kcal)} kcal).</p>
@@ -534,7 +586,7 @@ function openSwap(item) {
     <input class="input" id="ideaHint" placeholder="Wens? Bv. iets met zalm, of snel klaar (optioneel)" style="margin:8px 0 10px">
     <div class="sub-h" style="margin-top:4px">Of kies een bestaand recept</div>
     ${opts.map((r) => `<button class="pk-item" data-r="${r.id}"><span><b>${r.favorite ? "★ " : ""}${C.esc(r.name)}</b><br>
-      <span class="small muted">${C.fmt(r.kcal)} kcal · ${C.fmt(r.protein)} g eiwit${n(cur?.kcal) != null && n(r.kcal) != null ? ` · ${r.kcal - cur.kcal >= 0 ? "+" : ""}${C.fmt(r.kcal - cur.kcal)} kcal` : ""}</span></span><span>⇄</span></button>`).join("")
+      <span class="small muted">${C.fmt(r.kcal)} kcal · ${C.fmt(r.protein)} g eiwit${r.macros_checked ? "" : " · geschat"} · dag wordt ${C.fmt(after(r))} kcal</span></span><span>⇄</span></button>`).join("")
       || `<p class="muted">Geen andere ${SLOTS[item.slot].toLowerCase()}recepten. Voeg er een toe bij Recepten.</p>`}`;
   card.querySelector("[data-close]").onclick = close;
   card.querySelector("#newIdea").onclick = async () => {
@@ -647,6 +699,7 @@ async function openEdit(r0, onSaved) {
       <div class="e-opts" hidden>
         <select class="input e-dept" aria-label="Afdeling in de winkel">${DEPTS.map((d) => `<option ${d === (i.dept || "Overig") ? "selected" : ""}>${C.esc(d)}</option>`).join("")}</select>
         <select class="input e-shop" aria-label="Winkel"><option value="">Winkel: automatisch</option>${Object.entries(SHOP_LABEL).map(([k, l]) => `<option value="${k}" ${i.winkel === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+        <label class="small e-packl">Verpakking: <input class="input e-pack" inputmode="decimal" value="${C.esc(n(i.pack) ?? "")}" placeholder="bv. 300" aria-label="Inhoud van 1 verpakking"> ${C.esc(i.unit === "stuk" ? "stuks" : i.unit || "g")}</label>
         <label class="small e-pan"><input type="checkbox" class="e-pantry" ${i.pantry ? "checked" : ""}> altijd in huis (niet op de lijst)</label>
       </div>
     </div>`;
@@ -660,6 +713,8 @@ async function openEdit(r0, onSaved) {
       i.dept = row.querySelector(".e-dept").value;
       i.pantry = row.querySelector(".e-pantry").checked;
       i.winkel = row.querySelector(".e-shop").value || null;
+      const pk = row.querySelector(".e-pack").value.trim().replace(",", ".");
+      i.pack = pk === "" || Number.isNaN(Number(pk)) || Number(pk) <= 0 ? null : Number(pk);
       const gp = row.querySelector(".e-gpu-in");
       if (gp) { const x = gp.value.trim().replace(",", "."); i.g_per_unit = x === "" || Number.isNaN(Number(x)) ? null : Number(x); }
     });
@@ -713,6 +768,7 @@ async function openEdit(r0, onSaved) {
     F.pickFood(C, (food, g) => {
       const per = food.per100 || {};
       i.food_id = food.id; i.food_name = food.name;
+      if (n(food.package_g)) i.pack = !i.unit || i.unit === "g" || i.unit === "ml" ? n(food.package_g) : n(i.g_per_unit) ? Math.round(n(food.package_g) / n(i.g_per_unit)) : i.pack;
       if (!i.dept || i.dept === "Overig") i.dept = guessDept(food.name);
       i.per100 = { kcal: n(per.kcal), protein: n(per.protein), carbs: n(per.carbs), fat: n(per.fat) };
       if (!i.name) i.name = food.name;
@@ -732,7 +788,7 @@ async function openEdit(r0, onSaved) {
       keep();
       F.pickFood(C, (food, g) => {
         const per = food.per100 || {};
-        ings.push({ name: food.name, amount: g, unit: "g", dept: guessDept(food.name), pantry: false, food_id: food.id, food_name: food.name,
+        ings.push({ name: food.name, amount: g, unit: "g", dept: guessDept(food.name), pantry: false, food_id: food.id, food_name: food.name, pack: n(food.package_g),
           per100: { kcal: n(per.kcal), protein: n(per.protein), carbs: n(per.carbs), fat: n(per.fat) } });
         render();
         card.querySelector(".mp-erow:last-of-type .e-dept")?.focus();
@@ -757,6 +813,7 @@ async function openEdit(r0, onSaved) {
           ingredients: list.map((i) => {
             const o = { ...i, name: i.name, amount: n(i.amount), unit: i.unit || null, dept: i.dept || "Overig", pantry: !!i.pantry };
             if (!o.winkel) delete o.winkel;
+            if (!n(o.pack)) delete o.pack;
             if (o.per100) o.g_per_unit = n(o.g_per_unit); else { delete o.food_id; delete o.food_name; delete o.per100; delete o.g_per_unit; }
             return o;
           }),
