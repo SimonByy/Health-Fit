@@ -687,3 +687,4 @@ details.why summary { font-size: 14px; font-weight: 600; cursor: pointer; }
 .lift.up .lift-d { color: var(--good); } .lift.down .lift-d { color: var(--bad); }
 .hevy-sync { margin-top: 18px; }
 @media (prefers-reduced-motion: reduce) { .ring-fill, .mtrack i { transition: none; } }
+.msg.pending { opacity: .7; font-style: italic; }

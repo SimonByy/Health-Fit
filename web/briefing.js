@@ -65,9 +65,9 @@ export async function renderBriefing(ctx) {
       <p class="hint">Claude maakt elke ochtend rond 08:45 je briefing klaar. Om 09:00 krijg je een melding.</p></section>`;
     return;
   }
-  const chat = B.conversation_id ? await C.rpc("get_chat", { p_conversation: B.conversation_id }).catch(() => null) : null;
-  // De eerste twee berichten zijn de briefing zelf; daarna volgt het gesprek
-  const extra = (chat?.messages || []).filter((m) => !m.meta?.briefing).slice(1);
+  const replies = await C.rpc("briefing_replies_get", { p_day: B.day || C.today() }).catch(() => []);
+  const extra = replies.flatMap((r) => [{ role: "user", content: r.text },
+    { role: "assistant", content: r.answer || (r.status === "fout" ? "Dit kon ik niet beantwoorden." : "Ontvangen. Je krijgt binnen het uur antwoord met een melding."), pending: !r.answer }]);
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   C.view.innerHTML = `
     <section class="panel briefing">
@@ -77,7 +77,7 @@ export async function renderBriefing(ctx) {
       </div>
       <div class="md" style="margin-top:10px">${C.md(B.text)}</div>
     </section>
-    <div class="chat" id="bChat">${extra.map((m) => `<div class="msg ${m.role}">${m.role === "user" ? C.esc(m.content) : C.md(m.content)}</div>`).join("")}</div>
+    <div class="chat" id="bChat">${extra.map((m) => `<div class="msg ${m.role}${m.pending ? " pending" : ""}">${m.role === "user" ? C.esc(m.content) : C.md(m.content)}</div>`).join("")}</div>
     <section class="panel">
       <label for="bAns" class="small muted">Jouw antwoord</label>
       <textarea class="input" id="bAns" rows="3" placeholder="${SR ? "Tik op Inspreken of typ…" : "Typ, of gebruik de microfoon van je toetsenbord…"}" style="margin-top:6px"></textarea>
@@ -85,7 +85,7 @@ export async function renderBriefing(ctx) {
         ${SR ? `<button class="btn secondary mic" id="bMic" type="button" aria-pressed="false"><span class="dot"></span><span>Inspreken</span></button>` : ""}
         <button class="btn" id="bSend" style="flex:1">Antwoorden</button>
       </div>
-      <p class="small muted" style="margin:8px 0 0">Na het voorlezen start de microfoon vanzelf. Je antwoord gaat ook in je dagboek.</p>
+      <p class="small muted" style="margin:8px 0 0">Na het voorlezen start de microfoon vanzelf. Claude beantwoordt het binnen het uur en stuurt je een melding.</p>
     </section>`;
   const play = $("#bPlay");
   play.onclick = () => speak(B.text, play);
@@ -104,20 +104,13 @@ async function send() {
   rec?.stop();
   btn.disabled = true;
   const box = $("#bChat");
-  box.insertAdjacentHTML("beforeend", `<div class="msg user">${C.esc(msg)}</div><div class="thinking" id="bThink"><i></i>Even denken…</div>`);
   ta.value = "";
-  // Altijd bewaren in het dagboek, zodat de briefing van morgen er rekening mee houdt
-  C.rpc("save_journal", { p_day: C.today(), p_text: `Antwoord op ochtendbriefing: ${msg}`, p_append: true }).catch(() => {});
   try {
-    const r = await C.invoke("ask", { message: msg, conversation_id: B.conversation_id });
-    $("#bThink")?.remove();
-    box.insertAdjacentHTML("beforeend", `<div class="msg assistant">${C.md(r.answer)}</div>`);
-    speak(r.answer, null);
+    await C.rpc("briefing_reply_add", { p_text: msg });
+    C.rpc("save_journal", { p_day: C.today(), p_text: `Antwoord op ochtendbriefing: ${msg}`, p_append: true }).catch(() => {});
+    box.insertAdjacentHTML("beforeend", `<div class="msg user">${C.esc(msg)}</div><div class="msg assistant pending"><p>Ontvangen. Je krijgt binnen het uur antwoord met een melding.</p></div>`);
   } catch (e) {
-    $("#bThink")?.remove();
-    const credits = /credit balance|Plans & Billing/i.test(e.message);
-    box.insertAdjacentHTML("beforeend", `<div class="msg assistant"><p>${credits
-      ? "Bewaard in je dagboek. Live antwoorden lukt nu niet: het API-tegoed van je Claude-sleutel is op. Morgen houdt de briefing rekening met wat je zei."
-      : `Bewaard in je dagboek. Antwoorden lukte niet: ${C.esc(e.message)}`}</p></div>`);
+    ta.value = msg;
+    C.toast(`Niet verstuurd: ${e.message}`, 5000);
   } finally { btn.disabled = false; }
 }
