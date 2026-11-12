@@ -1,0 +1,1 @@
+-- Hevy-import via iPhone-opdracht (toegepast via MCP 12/11/2026): public.internal_import_hevy(jsonb); routine 'Hevy naar Health Hub' zondag 18:30.
