@@ -416,6 +416,7 @@ async function renderToday() {
     ${mpToday.length ? `<a class="panel lk-cta" href="#/menu/week"><span><b>Vandaag op je menu</b><br><span class="small muted">${mpToday.map((i) => esc(i.r.name)).join(" · ")}</span></span><span aria-hidden="true">›</span></a>` : ""}
     ${isToday ? `<div id="coachToday"></div>` : ""}
     <div class="board">
+      <div id="todayReady"></div>
       <a class="todayfuel" href="#/voeding" id="todayFuel"></a>
       <section class="domain" style="--c:${DOMAIN.move}">
         <h2>Beweging</h2>
@@ -498,6 +499,7 @@ async function renderToday() {
   $("#addWater")?.addEventListener("click", () => quickLog("dietary_water", 500, "500 ml water gelogd", reload));
   $("#addCaff")?.addEventListener("click", () => quickLog("dietary_caffeine", 50, "50 mg cafeïne gelogd", reload));
   $("#logWeight")?.addEventListener("click", () => openWeightForm(d.last_weight?.kg));
+  import("./ready.js").then((R) => { const el = $("#todayReady"); if (el) R.renderReadiness(ctx, el, state.day); });
   import("./nutrition.js").then((N) => { const el = $("#todayFuel"); if (el) el.innerHTML = N.gauge(ctx, { kcal: t.kcal_in, p: t.protein_g, c: t.carbs_g, f: t.fat_g, goals: g }, { compact: true }); });
   if (isToday) {
     const fab = document.createElement("button");

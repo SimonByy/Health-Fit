@@ -1,0 +1,3 @@
+-- Eigen readiness-score (de Venu 3 heeft geen Training Readiness):
+-- slaapscore 30 %, Body Battery bij opstaan 30 %, HRV t.o.v. 7-daags gemiddelde 25 %, rusthartslag t.o.v. 7-daags gemiddelde 15 %.
+-- (Zie de toegepaste migratie readiness_score voor de volledige functie public.get_readiness.)
