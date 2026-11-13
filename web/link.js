@@ -61,7 +61,7 @@ export async function renderLink(C) {
         <li>Kom terug hier en kies het bestand <b>export.zip</b>:</li>
       </ol>
       <div class="row" style="margin-top:8px">
-        <select class="input" id="ahSince" style="max-width:170px" aria-label="Periode">
+        <select class="input" id="ahSince" style="max-width:200px" aria-label="Periode">
           <option value="3">Laatste 3 maanden</option><option value="6" selected>Laatste 6 maanden</option>
           <option value="12">Laatste 12 maanden</option><option value="0">Alles</option>
         </select>

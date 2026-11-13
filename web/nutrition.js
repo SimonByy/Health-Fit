@@ -1,7 +1,7 @@
 // Voeding: één scherm om te zien waar je staat en in één tik te loggen.
 // Bovenaan de brandstofmeter (kcal over + macro's), daaronder per maaltijd
 // wat je at en de dingen die je daar meestal eet als knoppen.
-import { MEALS, mealForNow, openAddFood, openEditFood, renderRecipes } from "./food.js";
+import { mealForNow, openAddFood, openEditFood, renderRecipes } from "./food.js";
 
 let C;
 const SHOWN = ["Ontbijt", "Lunch", "Snack", "Avondeten", "Laat"];
@@ -37,7 +37,7 @@ export function gauge(ctx, { kcal, p, c, f, goals: g }, { compact = false } = {}
       ${macro("prot", "Eiwit", p, g.protein_g)}
       ${macro("carb", "Koolhydraten", c, g.carbs_g)}
       ${macro("fat", "Vet", f, g.fat_g)}
-      <div class="left ${over ? "over" : ""}"><b>${C.fmt(Math.abs(left))}</b> ${over ? "kcal te veel" : "kcal over"}</div>
+      <div class="left ${over ? "over" : ""}"><b>${C.fmt(Math.abs(left))}</b> ${over ? "kcal te veel" : "kcal te gaan"}</div>
     </div>
   </section>`;
 }

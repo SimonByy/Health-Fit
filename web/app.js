@@ -113,7 +113,7 @@ const workoutMod = () => import("./workout.js");
 const foodMod = () => import("./food.js");
 const moreMod = () => import("./more.js");
 // Datumknop in de dagnavigatie: opent de agenda
-const calBtn = (label) => `<button class="label calbtn" id="calBtn" aria-label="Kies een dag in de agenda"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 7h16v13H4zM4 11h16M8 3v4M16 3v4"/></svg>${esc(label)}</button>`;
+const calBtn = (label) => `<button class="label calbtn" id="calBtn" aria-label="Kies een dag in de agenda"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 7h16v13H4zM4 11h16M8 3v4M16 3v4"/></svg>${esc(label.charAt(0).toUpperCase() + label.slice(1))}</button>`;
 async function bindCal(current, onPick) {
   $("#calBtn")?.addEventListener("click", async () => (await moreMod()).openCalendar(ctx, { current, onPick }));
 }
@@ -252,12 +252,18 @@ const state = { day: today(), nutDay: today(), trendDays: 30, trainTab: "workout
 const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training", koppelen: "Koppelen", menu: "Menu", briefing: "Briefing" };
 const ACCENT = { workout: "--strength", dagboek: "--sleep", vandaag: "--move", training: "--strength", voeding: "--fuel", trends: "--heart", vraag: "--sleep", menu: "--fuel", briefing: "--sleep" };
 
+const SUBPAGES = new Set(["instellingen", "dagboek", "koppelen", "briefing", "vraag", "workout"]);
+const navStack = [location.hash]; // eigen spoor van bezochte schermen: bepaalt of "terug" ergens naartoe kan
 async function route() {
   let [name, param] = (location.hash.replace(/^#\/?/, "") || "vandaag").split("/");
   if (name === "log") { state.openWeight = param === "gewicht"; state.day = today(); name = "vandaag"; }
   const fn = ROUTES[name] || ROUTES.vandaag;
   $("#title").textContent = TITLES[name] || "Vandaag";
   $("#syncBtn").hidden = !(name === "vandaag" || !name);
+  // Subpagina's (niet in de tabbalk) krijgen een terugknop: in de geïnstalleerde app is er geen browserknop
+  const sub = SUBPAGES.has(name);
+  $("#backBtn").hidden = !sub;
+  $("#settingsBtn").hidden = name === "instellingen";
   document.querySelectorAll(".tabbar a").forEach((a) => {
     if (a.dataset.tab === (name === "workout" ? "training" : name)) {
       a.setAttribute("aria-current", "page");
@@ -298,7 +304,9 @@ function statRow({ name, value, unit = "", dec = 0, goal = null, avg = null, col
     const cls = rel < 0.03 ? "neutral" : (diff > 0) === higherIsBetter ? "up" : "down";
     const sign = diff > 0 ? "+" : "−";
     const dtxt = display ? hours(Math.abs(diff)) : fmt(Math.abs(diff), dec);
-    right = `<span class="delta ${cls}">${sign}${dtxt} vs. 7d-gem.</span>`;
+    // Afgerond geen verschil: geen "−0" tonen
+    const same = display ? Math.round(Math.abs(diff) * 60) === 0 : Number(Math.abs(diff).toFixed(dec)) === 0;
+    right = same ? `<span class="delta neutral">gelijk aan 7d-gem.</span>` : `<span class="delta ${cls}">${sign}${dtxt} vs. 7d-gem.</span>`;
   } else if (a !== null) {
     right = `<span>7d-gem. ${display ? hours(a) : fmt(a, dec)}</span>`;
   }
@@ -399,8 +407,6 @@ async function renderToday() {
   const caff = num(t.caffeine_mg) || 0;
   const acts = d.day_activities || [];
   const ins = d.insight;
-  let activeWorkout = null;
-  try { activeWorkout = JSON.parse(localStorage.getItem("hh_active_workout") || "null"); } catch { /* */ }
 
   view.innerHTML = `
     <div class="daynav">
@@ -486,7 +492,7 @@ async function renderToday() {
     </div>
 
     <p class="muted small" style="margin-top:18px">
-      ${rec.garmin_sync ? `Garmin: ${esc(timeAgo(rec.garmin_sync))} · ` : ""}<a href="#/koppelen">Apple Health: ${esc(timeAgo(d.sync?.apple_health?.last_success))}</a>
+      ${rec.garmin_sync ? `Garmin: ${esc(timeAgo(rec.garmin_sync))} · ` : ""}<a href="#/koppelen">Apple Health: ${d.sync?.apple_health?.last_success ? esc(timeAgo(d.sync.apple_health.last_success)) : "niet gekoppeld"}</a>
       ${d.sync?.hevy_csv ? ` · Hevy-import: ${esc(timeAgo(d.sync.hevy_csv.last_success))}` : ""}
     </p>`;
 
@@ -1108,6 +1114,13 @@ async function renderSettings() {
   const c = s.counts || {};
 
   view.innerHTML = `
+    <nav class="quicklinks" aria-label="Meer">
+      <a href="#/dagboek"><b>Dagboek</b><span>Inspreken of typen</span></a>
+      <a href="#/vraag"><b>Vraag het</b><span>AI over je data</span></a>
+      <a href="#/briefing"><b>Briefing</b><span>Je ochtendoverzicht</span></a>
+      <a href="#/koppelen"><b>Koppelen</b><span>Garmin en Gezondheid</span></a>
+    </nav>
+
     <section class="panel">
       <h3>Meldingen</h3>
       <p class="hint">${pstate === "on" ? `<span class="ok">Aan op dit toestel</span>` : pstate === "denied" ? `<span class="warn">Geblokkeerd</span>: zet ze aan via iPhone-instellingen → Meldingen → Health Hub.` : pstate === "unsupported" ? `Zet de app eerst op je beginscherm en open hem daar; daarna kan je meldingen aanzetten.` : "Nog niet aangezet op dit toestel."}</p>
@@ -1161,8 +1174,9 @@ async function renderSettings() {
     </section>
 
     <section class="panel">
-      <h3>Apple Health</h3>
-      <p class="hint">Status: ${sync.apple_health?.last_success ? `<span class="ok">laatst ontvangen ${esc(timeAgo(sync.apple_health.last_success))}</span>` : `<span class="warn">nog niets ontvangen</span>`}</p>
+      <h3>Garmin en Apple Health</h3>
+      <p class="hint">Garmin (rechtstreeks): ${sync.garmin?.last_success ? `<span class="ok">bijgewerkt ${esc(timeAgo(sync.garmin.last_success))}</span>` : "nog niet gekoppeld"}${sync.garmin?.last_error ? ` · <span class="warn">laatste fout: ${esc(sync.garmin.last_error)}</span>` : ""}<br>
+      Apple Health: ${sync.apple_health?.last_success ? `<span class="ok">laatst ontvangen ${esc(timeAgo(sync.apple_health.last_success))}</span>` : sync.garmin?.last_success ? "niet gekoppeld (optioneel, voor oudere historiek)" : `<span class="warn">nog niets ontvangen</span>`}</p>
       <a class="btn" href="#/koppelen" style="display:inline-block;text-decoration:none;margin-bottom:8px">Koppel-assistent openen (stap voor stap)</a>
 
       <details class="why"><summary>Waarom kan ik Health Hub niet aanvinken in Gezondheid → Apps?</summary>
@@ -1173,7 +1187,7 @@ async function renderSettings() {
       <h4 class="sub-h">1. Historiek en workouts: export importeren</h4>
       <p class="small">Gezondheid-app → je profielfoto → <b>Exporteer alle gezondheidsgegevens</b> → bewaar <i>export.zip</i> in Bestanden. Kies het hier. Tip: op een computer gaat het sneller (log daar in op dezelfde site).</p>
       <div class="row">
-        <select class="input" id="ahSince" style="max-width:170px" aria-label="Periode">
+        <select class="input" id="ahSince" style="max-width:200px" aria-label="Periode">
           <option value="3">Laatste 3 maanden</option><option value="6" selected>Laatste 6 maanden</option>
           <option value="12">Laatste 12 maanden</option><option value="0">Alles</option>
         </select>
@@ -1248,9 +1262,9 @@ async function renderSettings() {
     <section class="panel">
       <h3>Data</h3>
       <dl class="kv">
-        <dt>Metingen (Apple Health + zelf gelogd)</dt><dd>${fmt(c.samples)}</dd>
+        <dt>Metingen (Garmin, Apple Health en zelf gelogd)</dt><dd>${fmt(c.samples)}</dd>
         <dt>Slaapnachten</dt><dd>${fmt(c.sleep_nights)}</dd>
-        <dt>Workouts (Apple Health)</dt><dd>${fmt(c.workouts)}</dd>
+        <dt>Cardio-workouts (Garmin en Apple Health)</dt><dd>${fmt(c.workouts)}</dd>
         <dt>Hevy-trainingen</dt><dd>${fmt(c.hevy_workouts)}</dd>
         <dt>Eerste dag</dt><dd>${c.first_day ? esc(dayLabel(c.first_day, { day: "numeric", month: "short", year: "numeric" })) : "–"}</dd>
       </dl>
@@ -1314,7 +1328,7 @@ async function renderSettings() {
   }));
   $("#showTok").onclick = () => { const i = $("#ingTok"); i.type = i.type === "password" ? "text" : "password"; };
   $("#rotTok").onclick = async () => {
-    if (!confirm("Nieuw token maken? Je moet het daarna ook in Health Auto Export aanpassen.")) return;
+    if (!confirm("Nieuw token maken? Je moet het daarna ook aanpassen in je opdracht in de app Opdrachten (of in Health Auto Export).")) return;
     $("#ingTok").value = await rpc("rotate_ingest_token");
     toast("Nieuw token aangemaakt");
   };
@@ -1428,6 +1442,11 @@ async function boot() {
 }
 
 $("#settingsBtn").onclick = () => (location.hash = "#/instellingen");
+$("#backBtn").onclick = () => { if (navStack.length > 1) history.back(); else location.hash = "#/vandaag"; };
+window.addEventListener("hashchange", () => {
+  if (navStack.length > 1 && navStack[navStack.length - 2] === location.hash) navStack.pop(); // terug
+  else if (navStack[navStack.length - 1] !== location.hash) navStack.push(location.hash);
+});
 $("#syncBtn").onclick = async () => {
   const b = $("#syncBtn");
   if (b.classList.contains("spin")) return;

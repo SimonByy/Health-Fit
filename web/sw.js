@@ -1,6 +1,8 @@
 // Service worker: app-shell offline, pushmeldingen. Data (Supabase) wordt nooit gecachet.
-const CACHE = "health-hub-v31";
-const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/config.js", "/healthimport.js", "/workout.js", "/food.js", "/more.js", "/link.js", "/menu.js", "/briefing.js", "/coach.js", "/nutrition.js", "/strength.js", "/formkit.js", "/ready.js", "/manifest.webmanifest", "/icons/icon-192.png"];
+const CACHE = "health-hub-v32";
+const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/config.js", "/healthimport.js", "/workout.js", "/food.js", "/more.js", "/link.js", "/menu.js", "/briefing.js", "/coach.js", "/nutrition.js", "/strength.js", "/formkit.js", "/ready.js", "/manifest.webmanifest", "/icons/icon-192.png",
+  "/fonts/barlow-latin-400-normal.woff2", "/fonts/barlow-latin-500-normal.woff2", "/fonts/barlow-latin-600-normal.woff2",
+  "/fonts/barlow-condensed-latin-500-normal.woff2", "/fonts/barlow-condensed-latin-600-normal.woff2", "/fonts/barlow-condensed-latin-700-normal.woff2"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -14,8 +16,11 @@ self.addEventListener("fetch", (e) => {
   e.respondWith(
     fetch(e.request)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        // Alleen geslaagde antwoorden bewaren: een foutpagina mag de offline-versie niet overschrijven
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy));
+        }
         return res;
       })
       .catch(() => caches.match(e.request).then((r) => r || caches.match("/index.html")))

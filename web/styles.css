@@ -2,6 +2,14 @@
    Typografie: Barlow Condensed voor cijfers en koppen (scorebord), Barlow voor tekst.
    Kleur per domein: beweging, slaap, voeding, kracht, hart. */
 
+/* Lettertypes staan in de app zelf (geen externe server nodig, werkt ook offline) */
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/barlow-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/barlow-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/barlow-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/barlow-condensed-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/barlow-condensed-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/barlow-condensed-latin-700-normal.woff2") format("woff2"); }
+
 :root {
   /* Altijd donker: diep marineblauw met heldere accenten */
   --paper: #0A1326;
@@ -916,3 +924,46 @@ button.rd-card { cursor: pointer; }
 .bb-flow small { font-size: 11px; color: var(--muted); }
 .bb-flow b { font-family: var(--font-num); font-size: 24px; }
 .bb-flow .arrow { color: var(--faint); }
+
+/* ===== Afwerking (eindcontrole) ===== */
+/* Datum: alleen de eerste letter als hoofdletter ("Donderdag 12 november") */
+.daynav .label { text-transform: none; }
+
+/* Terugknop op subpagina's */
+.topbar-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.back-btn { margin-left: -10px; color: var(--ink); }
+.sync-btn { margin-left: 0; }
+
+/* Eén huisstijl voor aanvinkvakjes, overal even groot en goed aan te tikken */
+input[type="checkbox"]:not(.switch input):not(.daypick input) {
+  -webkit-appearance: none; appearance: none; flex: 0 0 auto; margin: 0;
+  width: 22px; height: 22px; border-radius: 7px; cursor: pointer;
+  border: 1.5px solid color-mix(in srgb, var(--muted) 55%, transparent);
+  background: var(--surface-2) center / 14px 14px no-repeat;
+  transition: background-color .12s, border-color .12s, transform .08s;
+}
+input[type="checkbox"]:not(.switch input):not(.daypick input):checked {
+  border-color: var(--fuel); background-color: var(--fuel);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%230B1220' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round' d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+}
+input[type="checkbox"]:not(.switch input):not(.daypick input):active { transform: scale(.92); }
+input[type="checkbox"]:not(.switch input):not(.daypick input):focus-visible { outline: 2px solid var(--heart); outline-offset: 2px; }
+
+/* Weekplan: korte labels mogen op twee regels in plaats van afgekapt te worden */
+.wpill { white-space: normal; text-overflow: clip; }
+.wdone { font-size: 11px; font-weight: 600; line-height: 1.15; color: var(--good); border-radius: 9px; padding: 6px 2px; background: rgba(46, 230, 166, .10); }
+
+/* Boodschappen: verpakking blijft bij elkaar; "Iets extra" met een volwaardig invoerveld */
+.mp-pack { white-space: nowrap; }
+.mp-xform #xName { flex: 1 1 100%; }
+.mp-xform #xDept { flex: 1 1 0; min-width: 0; }
+.mp-xform .btn { flex: 0 0 auto; }
+
+/* Instellingen: snelle links naar schermen die niet in de tabbalk staan */
+.quicklinks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 14px; }
+.quicklinks a { display: grid; gap: 2px; padding: 12px 14px; border-radius: 16px; background: var(--surface); border: 1px solid rgba(255, 255, 255, .04); color: var(--ink); text-decoration: none; }
+.quicklinks a b { font-weight: 600; font-size: 15px; }
+.quicklinks a span { font-size: 12.5px; color: var(--muted); }
+.quicklinks a:active { background: var(--surface-2); }
+.daynav span.label { display: inline-block; }
+.daynav span.label::first-letter { text-transform: uppercase; }

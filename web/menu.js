@@ -118,10 +118,18 @@ function leftText(t, g) {
 function prepState(id) { try { return new Set(JSON.parse(localStorage.getItem("mp-prep-" + id) || "[]")); } catch { return new Set(); } }
 function prepSave(id, set) { try { localStorage.setItem("mp-prep-" + id, JSON.stringify([...set])); } catch { /* geen opslag */ } }
 // Weekkeuze: deze week, volgende week of een nieuwe week maken
+// "Deze week" alleen als vandaag erin valt; een menu dat nog moet beginnen heet "Komende week"
+function weekLabel(x) {
+  const t = C.today();
+  const end = new Date(Date.parse(x.week_start + "T12:00:00") + 6 * 864e5).toISOString().slice(0, 10);
+  if (x.week_start <= t && t <= end) return "Deze week";
+  if (x.id === D.current_week_id) return x.week_start > t ? "Komende week" : "Deze week";
+  return "Week van";
+}
 function weekPicker(w) {
   const cur = D.weeks.find((x) => x.id === D.current_week_id);
   const list = D.weeks.filter((x) => !cur || x.week_start >= cur.week_start).sort((a, b) => a.week_start.localeCompare(b.week_start));
-  return `<div class="chips mp-weeks">${list.map((x) => `<button class="chip ${w && x.id === w.id ? "on" : ""}" data-week="${x.id}">${x.id === D.current_week_id ? "Deze week" : "Week van"} ${C.esc(dshort(x.week_start).replace(/^\S+ /, ""))}</button>`).join("")}
+  return `<div class="chips mp-weeks">${list.map((x) => `<button class="chip ${w && x.id === w.id ? "on" : ""}" data-week="${x.id}">${weekLabel(x)} ${C.esc(dshort(x.week_start).replace(/^\S+ /, ""))}</button>`).join("")}
     <button class="chip" id="newWeek">+ Week erna</button></div>`;
 }
 function bindWeekPicker(box, w) {
@@ -302,10 +310,10 @@ function drawList(box) {
         </label>`).join("")}</section>`;
     }).join("") : `<div class="empty">Nog geen boodschappen. Ze verschijnen zodra je weekmenu er is, of zet zelf iets op je lijst.</div>`}
     <section class="panel"><h3>Iets extra</h3>
-      <form class="row" id="xForm" style="margin-top:8px">
-        <input class="input" id="xName" placeholder="bv. tandpasta, 2 l cola zero" autocomplete="off" maxlength="120">
-        <select class="input" id="xDept" style="flex:0 0 auto;width:auto">${DEPTS.map((d) => `<option ${d === "Overig" ? "selected" : ""}>${C.esc(d)}</option>`).join("")}</select>
-        <button class="btn">+</button>
+      <form class="row mp-xform" id="xForm" style="margin-top:8px">
+        <input class="input" id="xName" placeholder="bv. tandpasta, 2 l cola zero" autocomplete="off" maxlength="120" aria-label="Wat wil je toevoegen?">
+        <select class="input" id="xDept" aria-label="Afdeling">${DEPTS.map((d) => `<option ${d === "Overig" ? "selected" : ""}>${C.esc(d)}</option>`).join("")}</select>
+        <button class="btn">Toevoegen</button>
       </form>
     </section>
     ${w?.list_recipes?.length ? `<section class="panel"><h3>Extra recepten op je lijst</h3>${w.list_recipes.map((l) => {

@@ -62,8 +62,18 @@ const monday = (iso) => { const d = new Date(iso + "T12:00:00Z"); const wd = (d.
 export async function renderCoachCalendar(ctx, el, start) {
   C = ctx;
   const from = start || monday(C.today());
-  const list = await C.rpc("get_coach_week", { p_from: from }).catch(() => []);
   const days = Array.from({ length: 7 }, (_, i) => C.addDays(from, i));
+  // Naast het plan ook wat je echt deed: een dag met een training is geen "rust"
+  const [list, cal] = await Promise.all([
+    C.rpc("get_coach_week", { p_from: from }).catch(() => []),
+    from <= C.today() ? C.rpc("get_calendar", { p_from: from, p_to: days[6] < C.today() ? days[6] : C.today() }).catch(() => []) : [],
+  ]);
+  const done = new Map((cal || []).map((c) => [c.day, c]));
+  const doneMark = (d) => {
+    const c = done.get(d); if (!c || d > C.today()) return "";
+    const what = [c.strength > 0 ? "Kracht" : "", c.cardio > 0 ? "Cardio" : ""].filter(Boolean);
+    return what.length ? `<span class="wdone">${what.join(" + ")} ✓</span>` : "";
+  };
   const fmtRange = (a, b) => new Intl.DateTimeFormat("nl-BE", { day: "numeric", month: "short", timeZone: "UTC" }).formatRange(new Date(a + "T12:00:00Z"), new Date(b + "T12:00:00Z"));
   el.innerHTML = `<section class="wcal">
     <header><button class="wnav" data-w="-7" aria-label="Vorige week">‹</button>
@@ -74,7 +84,7 @@ export async function renderCoachCalendar(ctx, el, start) {
       const dn = new Date(d + "T12:00:00Z");
       return `<div class="wday ${d === C.today() ? "today" : ""} ${d < C.today() ? "past" : ""}">
         <span class="wd">${["zo", "ma", "di", "wo", "do", "vr", "za"][dn.getUTCDay()]}</span><span class="dn">${dn.getUTCDate()}</span>
-        ${items.map((s) => `<button class="wpill ${KIND_CLS(s.kind)} ${s.status}" data-id="${s.id}">${C.esc(SHORT(s))}${s.status === "gedaan" ? " ✓" : ""}</button>`).join("") || `<span class="wrest">rust</span>`}
+        ${items.map((s) => `<button class="wpill ${KIND_CLS(s.kind)} ${s.status}" data-id="${s.id}">${C.esc(SHORT(s))}${s.status === "gedaan" ? " ✓" : ""}</button>`).join("") || doneMark(d) || `<span class="wrest">rust</span>`}
       </div>`;
     }).join("")}</div>
     ${list.length ? "" : `<p class="small muted" style="margin:10px 2px 0">Nog geen plan voor deze week. Je coach plant elke zondagavond de volgende week.</p>`}

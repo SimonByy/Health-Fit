@@ -1,14 +1,15 @@
 # Health Hub
 
-Persoonlijke health- en fitnessapp: één overzicht van **Apple Health** (inclusief Garmin-data die daarheen synct), **voeding** (via Apple Health) en **Hevy** (krachttraining), met een **AI-assistent** die vragen beantwoordt op basis van je eigen data.
+Persoonlijke health- en fitnessapp: één overzicht van **Garmin** (rechtstreeks, en optioneel via Apple Health), **voeding** (in de app gelogd, met weekmenu en boodschappenlijst) en **krachttraining** (in de app of uit Hevy), met een **AI-assistent** die vragen beantwoordt op basis van je eigen data.
 
 Installeerbaar op je iPhone als app (PWA), zonder App Store.
 
 ## Architectuur
 
 ```
-iPhone: Health Auto Export ──(elk uur, JSON)──► Supabase Edge Function  ingest-health ─┐
-Hevy API ◄──(elke 30 min, pg_cron)──── Supabase Edge Function  sync-hevy ──────────────┤
+Garmin Connect ──(geplande Claude-taak, 2× per dag + syncknop)──► health.ingest_garmin_raw ─┐
+iPhone: Opdrachten / Gezondheid-export ──► Supabase Edge Function  ingest-health ──────────┤
+Hevy: CSV-import in de app (of met Hevy Pro: Edge Function  sync-hevy) ────────────────────┤
                                                                                         ▼
                                                      PostgreSQL (Supabase)
                                                      ├─ health.*  ruwe + genormaliseerde data
@@ -16,12 +17,12 @@ Hevy API ◄──(elke 30 min, pg_cron)──── Supabase Edge Function  syn
                                                      └─ app.*     eigenaar, instellingen, chat, logs
                                                                                         ▲
 PWA (Vercel, map /web) ──── RPC-functies (alleen eigenaar) ─────────────────────────────┤
-        └── Vraag-tab ──► Edge Function  ask ──► Claude API (tool: run_sql, read-only rol ai_reader)
+        └── Vraag het (via Instellingen) ──► Edge Function  ask ──► Claude API (tool: run_sql, read-only rol ai_reader)
 ```
 
 | Onderdeel | Waar | Wat |
 |---|---|---|
-| `web/` | Vercel | De app: Vandaag, Training, Voeding, Trends, Vraag, Instellingen |
+| `web/` | Vercel | De app: Vandaag, Voeding, Training, Menu, Trends; via Instellingen ook Dagboek, Vraag het, Briefing en Koppelen |
 | `supabase/migrations/` | Supabase | Schema, views, beveiliging, cronjob |
 | `supabase/functions/ingest-health` | Supabase | Ontvangt Apple Health-exports (token-beveiligd) |
 | `supabase/functions/sync-hevy` | Supabase | Haalt Hevy-trainingen op (incrementeel, via events) |
@@ -29,6 +30,9 @@ PWA (Vercel, map /web) ──── RPC-functies (alleen eigenaar) ────�
 | `supabase/functions/notify` | Supabase | Pushmeldingen voor routines (pg_cron elke 5 min) |
 | `supabase/functions/rest-timer` | Supabase | Pushmelding als je rust tussen sets voorbij is (ook met scherm uit) |
 | `supabase/functions/food` | Supabase | Zoeken en barcodes opzoeken in Open Food Facts |
+| `supabase/functions/recipe-ai` | Supabase | Recept herkennen uit een foto, link of tekst voor het weekmenu (opslaan pas na bevestiging) |
+| `supabase/functions/shortcut` | Supabase | Endpoint voor iPhone-opdrachten: briefing voorlezen, snel een product loggen, Hevy-export doorsturen |
+| `tests/` | lokaal | Schermtests voor het weekmenu en de boodschappenlijst (`cd tests && npm i && npm test`) |
 
 ### Beveiliging
 
@@ -89,7 +93,7 @@ Hevy schrijft trainingen ook naar Apple Health. De app herkent dat (overlappende
 
 ## Ontwikkelen
 
-- Frontend: puur HTML/CSS/JS-modules, geen buildstap. Lokaal testen: `npx serve web` (inloggen werkt tegen de echte Supabase).
+- Frontend: puur HTML/CSS/JS-modules, geen buildstap. Lettertypes (Barlow) staan in `web/fonts/`, dus ook offline en zonder Google Fonts ziet de app er hetzelfde uit. Na een wijziging aan de app: verhoog `CACHE` in `web/sw.js`. Lokaal testen: `npx serve web` (inloggen werkt tegen de echte Supabase).
 - Database-wijzigingen: nieuw bestand in `supabase/migrations/` en uitvoeren in Supabase → SQL Editor.
 - Edge functions: `supabase functions deploy <naam> --no-verify-jwt` (de functies doen hun eigen authenticatie).
 
