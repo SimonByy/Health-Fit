@@ -977,10 +977,12 @@ body { background: var(--paper); }
 body::before {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(70% 38% at 12% -6%, rgba(91, 140, 255, .38), transparent 72%),
-    radial-gradient(60% 34% at 100% 4%, rgba(176, 124, 255, .30), transparent 70%),
-    radial-gradient(80% 40% at 50% 112%, rgba(46, 230, 166, .12), transparent 72%),
-    linear-gradient(180deg, #0C1834 0%, #0A1326 50%, #070E1F 100%);
+    radial-gradient(90% 50% at 0% 0%, rgba(91, 140, 255, .50), transparent 70%),
+    radial-gradient(75% 45% at 100% 8%, rgba(176, 124, 255, .42), transparent 70%),
+    radial-gradient(70% 40% at 100% 62%, rgba(176, 124, 255, .16), transparent 70%),
+    radial-gradient(80% 45% at 0% 78%, rgba(56, 189, 248, .12), transparent 70%),
+    radial-gradient(90% 40% at 50% 112%, rgba(46, 230, 166, .16), transparent 72%),
+    linear-gradient(180deg, #0D1A3A 0%, #0A1326 50%, #070E1F 100%);
 }
 .panel, .domain, .list, .empty, .mcard, .gauge, .sverdict, .lift, .wcal {
   background-color: rgba(17, 29, 54, .82);
