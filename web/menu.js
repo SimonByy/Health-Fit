@@ -153,7 +153,7 @@ function drawWeek(box) {
       <button class="btn" id="goRec">Naar mijn recepten</button></section>`;
     $("#goRec").onclick = () => { tab = "recepten"; draw(); };
     $("#copyPrev")?.addEventListener("click", async () => { try { weekSel = await C.rpc("mp_week_new", { p_copy_from: prev.id }); C.toast("Week gekopieerd. Pas aan wat je anders wilt."); reload(); } catch (e) { C.toast(e.message, 5000); } });
-    bindWeekPicker(box, w);
+    bindWeekPicker(box, w); mountWish(box);
     return;
   }
   const g = D.goals || {};
@@ -192,7 +192,7 @@ function drawWeek(box) {
               <span class="mp-mm"><b>${C.fmt(q * (n(r.kcal) || 0))} kcal</b> · E ${C.fmt(q * (n(r.protein) || 0))} · K ${C.fmt(q * (n(r.carbs) || 0))} · V ${C.fmt(q * (n(r.fat) || 0))}</span></div>
             <div class="mp-irow ${it.eaten ? "eaten" : ""}">${canEat ? `<label class="mp-eat" title="Gegeten"><input type="checkbox" data-eat="${it.id}" ${it.eaten ? "checked" : ""} aria-label="${C.esc(r.name)} gegeten"></label>` : ""}
               <button class="mp-item" data-item="${it.id}">
-                <span class="nm">${r.favorite ? "★ " : ""}${C.esc(r.name)}${q !== 1 ? ` <span class="muted">· ${C.fmt(q, 2)} portie</span>` : ""}${r.macros_checked ? "" : ` <span class="small muted">· geschat</span>`}</span>
+                <span class="nm">${r.favorite ? "★ " : ""}${C.esc(r.name)}${q !== 1 ? ` <span class="mp-q">× ${C.fmt(q, 2)}</span>` : ""}${r.macros_checked ? "" : ` <span class="small muted">· geschat</span>`}</span>
                 <span class="k">›</span></button></div></div>`; }).join("") || `<p class="muted small" style="margin:12px 0 0">Nog niets gepland.</p>`}
         ${free.length ? `<div class="chips mp-addslot">${free.map((sl) => `<button class="chip" data-addday="${d}" data-addslot="${sl}">+ ${SLOTS[sl]}</button>`).join("")}</div>` : ""}
       </section>`;
@@ -249,7 +249,7 @@ function drawWeek(box) {
     cb.checked ? prepDone.add(Number(cb.dataset.prep)) : prepDone.delete(Number(cb.dataset.prep));
     cb.closest(".mp-check").classList.toggle("done", cb.checked); prepSave(w.id, prepDone);
   }));
-  bindWeekPicker(box, w);
+  bindWeekPicker(box, w); mountWish(box);
   box.querySelectorAll(".mp-item").forEach((b) => (b.onclick = () => {
     const it = w.items.find((i) => i.id === Number(b.dataset.item));
     openRecipe(recById(it.recipe_id), { item: it });
@@ -437,7 +437,9 @@ function openRecipe(r, { item = null } = {}) {
       <p class="small muted" style="margin:2px 0 8px">${SLOTS[r.meal_type]}${r.status === "concept" ? " · concept" : ""} · ${r.macros_checked ? `<span class="ok-badge">✓ uitgerekend uit je producten</span>` : `<span class="warn-badge">geschat</span> <button class="linkbtn" id="fixMac">koppel de ingrediënten</button>`}</p>
       ${item ? `<section class="mp-box"><div class="row" style="justify-content:space-between">
           <span class="small"><b style="text-transform:capitalize">${C.esc(dshort(item.day))}</b> · ${SLOTS[item.slot].toLowerCase()}</span>
-          <span class="mp-step" aria-label="Porties in je menu"><button data-ip="-">−</button><b>${C.fmt(itemPortions, 2)}</b><button data-ip="+">+</button><span class="small muted">portie</span></span></div>
+          <span class="mp-step" aria-label="Porties in je menu"><button data-ip="-">−</button><b>${C.fmt(itemPortions, 2)}</b><button data-ip="+">+</button><span class="small muted">${itemPortions === 1 ? "portie" : "porties"}</span></span></div>
+          <div class="mp-stepset"><span class="small muted">Porties aanpassen per</span>${[[0.25, "¼"], [0.5, "½"], [1, "hele"]].map(([v, l]) =>
+            `<button class="chip ${Number(r.portion_step || 0.25) === v ? "on" : ""}" data-pstep="${v}">${l}</button>`).join("")}</div>
           <div class="mp-acts">
             <button class="mp-act" id="swap"><span>⇄</span>Wisselen</button>
             ${item.day <= D.today ? `<button class="mp-act ${item.eaten ? "on" : ""}" id="eat"><span>${item.eaten ? "✓" : "○"}</span>${item.eaten ? "Gegeten" : "Gegeten?"}</button>` : ""}
@@ -494,8 +496,15 @@ function openRecipe(r, { item = null } = {}) {
     card.querySelectorAll("[data-p]").forEach((b) => (b.onclick = () => {
       portions = Math.max(1, Math.min(12, portions + (b.dataset.p === "+" ? 1 : -1))); render();
     }));
+    card.querySelectorAll("[data-pstep]").forEach((b) => (b.onclick = async () => {
+      try { await C.rpc("mp_set_portion_step", { p_recipe_id: r.id, p_step: Number(b.dataset.pstep) }); r.portion_step = Number(b.dataset.pstep);
+        if (item) { const stp = r.portion_step; itemPortions = Math.max(stp, Math.round(itemPortions / stp) * stp); item.portions = itemPortions; }
+        C.toast(r.portion_step === 1 ? "Dit gerecht plan je voortaan alleen in hele porties" : "Aangepast"); render(); reload(); }
+      catch (e) { C.toast(e.message, 4000); }
+    }));
     card.querySelectorAll("[data-ip]").forEach((b) => (b.onclick = async () => {
-      const nv = Math.max(0.5, Math.min(3, itemPortions + (b.dataset.ip === "+" ? 0.25 : -0.25)));
+      const stp = Number(r.portion_step) || 0.25;
+      const nv = Math.max(stp, Math.min(3, Math.round((itemPortions + (b.dataset.ip === "+" ? stp : -stp)) / stp) * stp));
       if (nv === itemPortions) return;
       try { await C.rpc("mp_item_set", { p_item_id: item.id, p_recipe_id: r.id, p_portions: nv }); itemPortions = nv; item.portions = nv; render(); reload(); }
       catch (e) { C.toast(e.message, 4000); }
@@ -983,4 +992,50 @@ function openPreview(rec) {
   enterSubmits(card, "#pSave");
   card.querySelector("#pSave").onclick = (e) => save(e, false);
   card.querySelector("#pLog").onclick = (e) => save(e, true);
+}
+
+
+// ---------- Wens voor het menu: typen of inspreken ----------
+async function mountWish(box) {
+  const anchor = box.firstElementChild;
+  const html = `<section class="wishbar" id="wish">
+    <div class="wish-row">
+      <input id="wishIn" class="input" placeholder="Wat wil je eten? bv. “volgende week eens curry”" enterkeyhint="send" autocomplete="off">
+      <button class="wish-mic" id="wishMic" type="button" aria-label="Inspreken">🎙️</button>
+      <button class="wish-go" id="wishGo" type="button" aria-label="Versturen">➤</button>
+    </div>
+    <div id="wishList"></div></section>`;
+  if (anchor) anchor.insertAdjacentHTML("afterend", html); else box.insertAdjacentHTML("afterbegin", html);
+  const inp = box.querySelector("#wishIn"), list = box.querySelector("#wishList");
+  const show = async () => {
+    const W = await C.rpc("menu_wishes_get", { p_limit: 4 }).catch(() => []);
+    const recent = W.filter((x) => x.status !== "klaar" || Date.now() - new Date(x.processed_at || x.created_at) < 3 * 864e5);
+    list.innerHTML = recent.map((x) => `<div class="wish-it ${x.status}"><span class="wish-q">“${C.esc(x.text)}”</span>
+      <span class="wish-a">${x.status === "klaar" ? C.esc(x.answer || "Verwerkt.") : x.status === "fout" ? C.esc(x.answer || "Lukte niet.") : "Claude past je menu binnen het uur aan…"}</span></div>`).join("");
+  };
+  const send = async () => {
+    const t = inp.value.trim(); if (!t) { inp.focus(); return; }
+    box.querySelector("#wishGo").disabled = true;
+    try { await C.rpc("menu_wish_add", { p_text: t }); inp.value = ""; C.toast("Doorgegeven. Claude past je menu binnen het uur aan, je krijgt een melding.", 5000); show(); }
+    catch (e) { C.toast(e.message, 4000); }
+    box.querySelector("#wishGo").disabled = false;
+  };
+  box.querySelector("#wishGo").onclick = send;
+  inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); send(); } };
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const mic = box.querySelector("#wishMic");
+  if (!SR) { mic.onclick = () => { inp.focus(); C.toast("Tik op het microfoontje van je toetsenbord om in te spreken.", 4000); }; }
+  else {
+    let rec = null;
+    mic.onclick = () => {
+      if (rec) { rec.stop(); return; }
+      rec = new SR(); rec.lang = "nl-BE"; rec.interimResults = true; rec.continuous = false;
+      const base = inp.value ? inp.value + " " : "";
+      rec.onresult = (e) => { inp.value = base + [...e.results].map((r) => r[0].transcript).join(" "); };
+      rec.onerror = () => { C.toast("Inspreken lukte niet. Gebruik het microfoontje van je toetsenbord.", 4000); };
+      rec.onend = () => { mic.classList.remove("on"); rec = null; inp.focus(); };
+      mic.classList.add("on"); rec.start();
+    };
+  }
+  show();
 }
