@@ -3,6 +3,12 @@
 // maaltijden kopiëren, vaste maaltijden en recepten.
 let C;
 export const MEALS = ["Ontbijt", "Lunch", "Snack", "Avondeten", "Laat"];
+// Gekleurde eiwit / koolhydraten / vet, kort
+const r0 = (v) => (v == null || Number.isNaN(Number(v)) ? null : Math.round(Number(v)));
+export function pkv(p, c, f) {
+  const x = (v, cls, l) => (r0(v) == null ? "" : `<i class="${cls}" title="${l === "E" ? "eiwit" : l === "K" ? "koolhydraten" : "vet"}">${l} ${r0(v)}</i>`);
+  return `<span class="pkv">${x(p, "p", "E")}${x(c, "c", "K")}${x(f, "f", "V")}</span>`;
+}
 import { check, enterSubmits, readLabel } from "./formkit.js";
 const MACROS = [["kcal", "kcal", ""], ["protein", "Eiwit", "g"], ["carbs", "Koolh.", "g"], ["fat", "Vet", "g"]];
 
@@ -119,7 +125,7 @@ export function pickFood(ctx, onPick, { initial = "", grams = null } = {}) {
   return openAddFood(ctx, { day: todayIso(), onPick, initial, pickGrams: grams });
 }
 
-export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null, product = null, editRecipe: toEdit = null, onPick = null, initial = "", pickGrams = null } = {}) {
+export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null, product = null, editRecipe: toEdit = null, onPick = null, initial = "", pickGrams = null, recipeFrom = null } = {}) {
   C = ctx;
   const sheet = document.createElement("div");
   sheet.className = "sheet";
@@ -162,13 +168,15 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
   // Bovenaan één zoekveld dat alles doorzoekt: je menu, vaste producten, wat je vaak eet,
   // je recepten, je eigen producten en Open Food Facts. Elke rij: tik = hoeveelheid kiezen, + = meteen toevoegen.
   let local = [], remote = [], seq = 0, remoteState = "";
-  let Q = null; // snelle data: { products, frequent, recipes, presets, yesterday, menu }
+  let src = "mijn";          // "mijn" = mijn voedingsmiddelen, "off" = Open Food Facts
+  let sub = "vaak";          // vaak | samen | fav | rec
+  let Q = null; // snelle data: { products, frequent, recipes, presets, yesterday, menu, combos, myRecipes }
   const REG = new Map();
   const SLOT = { Ontbijt: "ontbijt", Lunch: "lunch", Snack: "snack", Avondeten: "avond", Laat: "avondsnack" };
   const mealLabel = (m) => (m === "Laat" ? "Avondsnack" : m);
   async function loadQuick() {
     if (Q) return Q;
-    const [qa, presets, yest, menu] = await Promise.all([
+    const [qa, presets, yest, menu, combos, mine] = await Promise.all([
       C.rpc("get_quick_add").catch(() => ({})),
       C.rpc("get_meal_presets").catch(() => []),
       C.rpc("get_food_log", { p_day: addDays(day, -1) }).catch(() => []),
@@ -176,8 +184,11 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
         const w = m.weeks?.find((x) => x.id === m.current_week_id);
         return (w?.items || []).filter((i) => i.day === day).map((i) => ({ ...i, r: m.recipes.find((r) => r.id === i.recipe_id) })).filter((i) => i.r);
       }).catch(() => []) : Promise.resolve([]),
+      C.rpc("get_meal_combos", { p_days: 60 }).catch(() => []),
+      C.rpc("get_foods", { p_query: null, p_limit: 80 }).catch(() => []),
     ]);
-    Q = { products: qa.products || [], frequent: qa.frequent || {}, recipes: qa.recipes || [], presets, yesterday: yest, menu };
+    Q = { products: qa.products || [], frequent: qa.frequent || {}, recipes: qa.recipes || [], presets, yesterday: yest, menu,
+      combos: combos || [], myRecipes: (mine || []).filter((f) => f.source === "recipe") };
     return Q;
   }
   const kc = (v) => (v == null ? "–" : C.fmt(v));
@@ -191,12 +202,13 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
       <button class="fi-add" type="button" aria-label="${C.esc(entry.title)} toevoegen">+</button></div>`;
   }
   const foodEntry = (p, extra = "") => {
-    const per = p.per100 || {}, g = p.serving_g || 100, kcal = per.kcal != null ? per.kcal * g / 100 : null;
+    const per = p.per100 || {}, g = p.serving_g || 100, f = (k) => (per[k] != null ? per[k] * g / 100 : null);
     return { kind: "food", food: p, title: p.name + (p.brand && !p.name.includes(p.brand) ? ` · ${p.brand}` : ""),
-      sub: `${p.serving_g ? C.esc(p.serving_label && p.serving_label !== "1 portie" ? p.serving_label : C.fmt(g) + " g") : "100 g"} · ${kc(kcal)} kcal${extra}` };
+      sub: `${p.serving_g ? C.esc(p.serving_label && p.serving_label !== "1 portie" ? p.serving_label : C.fmt(g) + " g") : "100 g"} · ${kc(f("kcal"))} kcal ${pkv(f("protein"), f("carbs"), f("fat"))}${extra}` };
   };
   const portionEntry = (x, q = 1, extra = "") => ({ kind: "portion", item: { name: x.name, kcal: Number(x.kcal) || 0, protein: Number(x.protein) || 0, carbs: Number(x.carbs) || 0, fat: Number(x.fat) || 0 }, q,
-    title: x.name, sub: `${q === 1 ? "1 portie" : C.fmt(q, 2) + " porties"} · ${kc(x.kcal * q)} kcal · ${C.fmt(x.protein * q)} g eiwit${extra}` });
+    title: x.name, sub: `${q === 1 ? "1 portie" : C.fmt(q, 2) + " porties"} · ${kc(x.kcal * q)} kcal ${pkv(x.protein * q, x.carbs * q, x.fat * q)}${extra}` });
+  const SUBS = [["vaak", "Vaak gegeten"], ["samen", "Vaak samen"], ["fav", "Favorieten"], ["rec", "Recepten"]];
 
   function search(initial = "") {
     scanner?.stop(); scanner = null;
@@ -205,14 +217,19 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
       ${picking ? "" : `<div class="chips meals" id="fMeal">${MEALS.map((m) => `<button class="chip ${m === meal ? "on" : ""}" data-m="${m}">${mealLabel(m)}</button>`).join("")}</div>`}
       <div class="searchrow">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        <input id="fQ" placeholder="Zoek in alles: product, recept, merk…" autocomplete="off" enterkeyhint="search" value="${C.esc(initial)}">
+        <input id="fQ" placeholder="Zoek een product of recept…" autocomplete="off" enterkeyhint="search" value="${C.esc(initial)}">
         <button class="scanbtn" id="fScan" type="button" aria-label="Barcode scannen">▥</button>
       </div>
-      <div class="actions">
+      <div class="srcseg" role="tablist" id="fSrc">
+        <button role="tab" data-src="mijn" aria-selected="${src === "mijn"}">Mijn voedingsmiddelen</button>
+        <button role="tab" data-src="off" aria-selected="${src === "off"}">Open Food Facts</button>
+      </div>
+      ${picking ? "" : `<div class="subtabs" id="fSub">${SUBS.map(([k, l]) => `<button class="${k === sub ? "on" : ""}" data-sub="${k}">${l}</button>`).join("")}</div>`}
+      <div id="fRes"></div>
+      <div class="actions add-actions">
         <button class="act" id="fCustom" type="button">📷 Nieuw product</button>
         ${picking ? "" : `<button class="act" id="fQuick" type="button">⚡ Snel kcal</button><button class="act" id="fRecipe" type="button">🍲 Recept maken</button>`}
       </div>
-      <div id="fRes"></div>
     </div>`;
     wire();
     sheet.querySelector("#fMeal")?.addEventListener("click", (e) => {
@@ -221,18 +238,24 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
       sheet.querySelectorAll("#fMeal .chip").forEach((c) => c.classList.toggle("on", c === b));
       list();
     });
+    const setSrc = (v) => { src = v; sheet.querySelectorAll("#fSrc button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.src === v)));
+      const st = sheet.querySelector("#fSub"); if (st) st.hidden = v !== "mijn"; q.oninput(); };
+    sheet.querySelector("#fSrc").onclick = (e) => { const b = e.target.closest("button"); if (b) setSrc(b.dataset.src); };
+    sheet.querySelector("#fSub")?.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return;
+      sub = b.dataset.sub; sheet.querySelectorAll("#fSub button").forEach((x) => x.classList.toggle("on", x === b)); list(); });
     const q = sheet.querySelector("#fQ");
+    sheet._setSrc = setSrc;
     let t1, t2;
     q.oninput = () => {
       clearTimeout(t1); clearTimeout(t2);
       const term = q.value.trim();
       const my = ++seq;
-      t1 = setTimeout(async () => { local = await C.rpc("get_foods", { p_query: term || null, p_limit: term ? 20 : 12 }).catch(() => []); if (my === seq) list(); }, 120);
-      remote = []; remoteState = term.length >= 3 ? "loading" : "";
-      if (term.length >= 3) t2 = setTimeout(async () => {
+      if (src === "mijn") t1 = setTimeout(async () => { local = await C.rpc("get_foods", { p_query: term || null, p_limit: term ? 30 : 15 }).catch(() => []); if (my === seq) list(); }, 120);
+      remote = []; remoteState = src === "off" && term.length >= 3 ? "loading" : "";
+      if (src === "off" && term.length >= 3) t2 = setTimeout(async () => {
         try { const r = await C.invoke("food", { q: term }); if (my === seq) { remote = r.products || []; remoteState = ""; list(); } }
         catch (e) { if (my === seq) { remoteState = "fout: " + e.message; list(); } }
-      }, 500);
+      }, 450);
       list();
     };
     q.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); sheet.querySelector(".fi-main")?.click(); } };
@@ -252,43 +275,77 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
     const term = sheet.querySelector("#fQ").value.trim().toLowerCase();
     const match = (s) => !term || String(s || "").toLowerCase().includes(term);
     const sec = (title, rows) => (rows.length ? `<div class="fi-h">${title}</div>${rows.join("")}` : "");
+    const empty = (t) => `<p class="muted fi-note">${t}</p>`;
     let html = "";
-    const shownFoods = new Set();
-    if (!picking && Q) {
-      const slot = SLOT[meal];
-      const menu = Q.menu.filter((i) => (term ? true : i.slot === slot) && match(i.r.name));
-      html += sec(term ? "Op je menu" : `Op je menu: ${mealLabel(meal).toLowerCase()}`, menu.map((i) => row(portionEntry(i.r, Number(i.portions) || 1))));
-      const y = Q.yesterday.filter((i) => i.meal === meal);
-      if (!term && y.length) {
-        const key = "k" + REG.size;
-        REG.set(key, { kind: "yesterday" });
-        html += `<div class="fi" data-key="${key}"><button class="fi-main" type="button"><b>⧉ ${C.esc(mealLabel(meal))} van gisteren</b><span>${C.esc(y.map((i) => i.name).join(", "))} · ${kc(y.reduce((s, i) => s + (Number(i.kcal) || 0), 0))} kcal</span></button><button class="fi-add" type="button" aria-label="Herhalen">+</button></div>`;
+
+    // ---- Open Food Facts ----
+    if (src === "off") {
+      const seen = new Set(local.map((p) => p.barcode).filter(Boolean));
+      const rem = remote.filter((p) => !p.barcode || !seen.has(p.barcode));
+      if (term.length < 3) html = empty("Typ minstens 3 letters om in Open Food Facts te zoeken, of scan de barcode met ▥.");
+      else {
+        html = sec("Open Food Facts", rem.map((p) => row(foodEntry(p))));
+        if (remoteState === "loading") html += empty("Zoeken in Open Food Facts…");
+        else if (remoteState) html += empty("Open Food Facts: " + C.esc(remoteState));
+        else if (!rem.length) html = empty("Niets gevonden. Scan de barcode of maak het product zelf aan met 📷 Nieuw product.");
       }
-      const freq = (Q.frequent[meal] || []).filter((f) => match(f.name)).slice(0, term ? 6 : 5);
-      html += sec(term ? "Vaak gegeten" : `Vaak bij ${mealLabel(meal).toLowerCase()}`, freq.map((f) => {
-        if (f.food_id && f.grams) { shownFoods.add(f.food_id); return row(foodEntry({ id: f.food_id, name: f.name, brand: f.brand, per100: per100From(f), serving_g: f.grams }, ` · ${f.n}×`)); }
-        return row(portionEntry(f, 1, ` · ${f.n}×`));
-      }));
-      const prods = Q.products.filter((p) => match(p.name) || match(p.brand));
-      prods.forEach((p) => shownFoods.add(p.id));
-      html += sec("Vaste producten", prods.map((p) => row(foodEntry(p))));
-      const recs = Q.recipes.filter((r) => (term ? match(r.name) : r.meal_type === slot));
-      html += sec("Recepten", recs.map((r) => row(portionEntry({ ...r, name: (r.favorite ? "★ " : "") + r.name }))));
-      const pres = Q.presets.filter((p) => match(p.name));
-      html += sec("Mijn maaltijden", pres.map((p) => { const key = "k" + REG.size; REG.set(key, { kind: "preset", preset: p });
-        return `<div class="fi" data-key="${key}"><button class="fi-main" type="button"><b>${C.esc(p.name)}</b><span>${C.esc(p.items.map((x) => x.name).join(", "))} · ${kc(p.kcal)} kcal</span></button><button class="fi-add" type="button" aria-label="Toevoegen">+</button></div>`; }));
+      box.innerHTML = html; return;
     }
-    const loc = (picking ? local.filter((p) => p.source !== "recipe") : local).filter((p) => !shownFoods.has(p.id));
-    const seen = new Set(local.map((p) => p.barcode).filter(Boolean));
-    const rem = remote.filter((p) => !p.barcode || !seen.has(p.barcode));
-    html += sec(term ? "Mijn producten" : "Recent", loc.map((p) => row(foodEntry(p))));
-    html += sec("Open Food Facts", rem.map((p) => row(foodEntry(p))));
-    if (remoteState === "loading") html += `<p class="muted small fi-note">Zoeken in Open Food Facts…</p>`;
-    else if (remoteState) html += `<p class="muted small fi-note">Open Food Facts: ${C.esc(remoteState)}</p>`;
-    if (!html) html = `<p class="muted fi-note">${term ? "Niets gevonden. Scan de barcode of tik op 📷 Nieuw product en fotografeer het etiket." : "Zoek een product of scan een barcode."}</p>`;
-    if (!picking && !term) html += `<button class="linkbtn" id="fManage" style="margin:14px 2px 0">Vaste producten beheren</button>`;
+
+    // ---- Mijn voedingsmiddelen ----
+    const shown = new Set();
+    const slot = SLOT[meal];
+    const foodRow = (p, extra) => { shown.add(p.id); return row(foodEntry(p, extra)); };
+    const freqRows = (arr) => arr.map((f) => (f.food_id && f.grams
+      ? foodRow({ id: f.food_id, name: f.name, brand: f.brand, per100: per100From(f), serving_g: f.grams }, ` · ${f.n}×`)
+      : row(portionEntry(f, 1, ` · ${f.n}×`))));
+    const comboRow = (c) => { const key = "k" + REG.size; REG.set(key, { kind: "combo", combo: c });
+      return `<div class="fi" data-key="${key}"><button class="fi-main" type="button"><b>${C.esc(c.names.join(" + "))}</b><span>${c.times}× samen · ${kc(c.kcal)} kcal · ${C.fmt(c.protein)} g eiwit</span></button><button class="fi-add" type="button" aria-label="Alles toevoegen">+</button></div>`; };
+    const presetRow = (p) => { const key = "k" + REG.size; REG.set(key, { kind: "preset", preset: p });
+      return `<div class="fi" data-key="${key}"><button class="fi-main" type="button"><b>${C.esc(p.name)}</b><span>${C.esc(p.items.map((x) => x.name).join(", "))} · ${kc(p.kcal)} kcal</span></button><button class="fi-add" type="button" aria-label="Toevoegen">+</button></div>`; };
+    const recRows = (arr) => arr.map((r) => row(portionEntry({ ...r, name: (r.favorite ? "★ " : "") + r.name })));
+
+    if (picking) {
+      html = sec(term ? "Mijn producten" : "Recent", local.filter((p) => p.source !== "recipe").map((p) => foodRow(p)));
+      if (!html) html = empty(term ? "Niet bij je eigen producten. Kijk bij Open Food Facts of maak het aan met 📷 Nieuw product." : "Zoek een product of scan een barcode.");
+    } else if (!Q) {
+      html = `<div class="skeleton" style="height:90px"></div>`;
+    } else if (term) {
+      html += sec("Op je menu", Q.menu.filter((i) => match(i.r.name)).map((i) => row(portionEntry(i.r, Number(i.portions) || 1))));
+      html += sec("Favorieten", Q.products.filter((p) => match(p.name) || match(p.brand)).map((p) => foodRow(p)));
+      html += sec("Recepten", recRows(Q.recipes.filter((r) => match(r.name))) .concat(Q.myRecipes.filter((p) => match(p.name) && !shown.has(p.id)).map((p) => foodRow(p))));
+      html += sec("Vaak gegeten", freqRows(Object.values(Q.frequent).flat().filter((f, i, a) => match(f.name) && a.findIndex((x) => x.name === f.name) === i).slice(0, 6).filter((f) => !shown.has(f.food_id))));
+      html += sec("Mijn producten", local.filter((p) => p.source !== "recipe" && !shown.has(p.id)).map((p) => foodRow(p)));
+      html += `<button class="offbtn" id="fToOff">Zoek “${C.esc(term)}” in Open Food Facts ›</button>`;
+      if (!html.includes('class="fi"')) html = empty("Niet gevonden bij je eigen voedingsmiddelen.") + html;
+    } else if (sub === "vaak") {
+      html += sec(`Op je menu: ${mealLabel(meal).toLowerCase()}`, Q.menu.filter((i) => i.slot === slot).map((i) => row(portionEntry(i.r, Number(i.portions) || 1))));
+      const y = Q.yesterday.filter((i) => i.meal === meal);
+      if (y.length) { const key = "k" + REG.size; REG.set(key, { kind: "yesterday" });
+        html += `<div class="fi-h">Gisteren</div><div class="fi" data-key="${key}"><button class="fi-main" type="button"><b>⧉ ${C.esc(mealLabel(meal))} van gisteren</b><span>${C.esc(y.map((i) => i.name).join(", "))} · ${kc(y.reduce((s, i) => s + (Number(i.kcal) || 0), 0))} kcal</span></button><button class="fi-add" type="button" aria-label="Herhalen">+</button></div>`; }
+      html += sec(`Vaak bij ${mealLabel(meal).toLowerCase()}`, freqRows((Q.frequent[meal] || []).slice(0, 8)));
+      html += sec("Recent", local.filter((p) => p.source !== "recipe" && !shown.has(p.id)).slice(0, 10).map((p) => foodRow(p)));
+      if (!html) html = empty("Nog niets. Zoek een product of scan een barcode.");
+    } else if (sub === "samen") {
+      const cs = [...Q.combos].sort((a, b) => (b.meal === meal) - (a.meal === meal));
+      html += sec("Vaak samen gegeten", cs.map(comboRow));
+      html += sec("Mijn maaltijden", Q.presets.map(presetRow));
+      if (!html) html = empty("Hier verschijnen combinaties die je minstens twee keer samen at, bv. je vaste ontbijt. Je kan ook voeding selecteren in je dagoverzicht en bewaren als maaltijd.");
+    } else if (sub === "fav") {
+      html += sec("Favoriete producten", Q.products.map((p) => foodRow(p)));
+      html += sec("Favoriete recepten", recRows(Q.recipes.filter((r) => r.favorite)));
+      if (!html) html = empty("Nog geen favorieten.");
+      html += `<button class="linkbtn" id="fManage" style="margin:14px 2px 0">Favorieten beheren</button>`;
+    } else if (sub === "rec") {
+      const mine = Q.recipes.filter((r) => r.meal_type === slot), rest = Q.recipes.filter((r) => r.meal_type !== slot);
+      html += sec(`Voor ${mealLabel(meal).toLowerCase()}`, recRows(mine));
+      html += sec("Mijn recepten", Q.myRecipes.map((p) => foodRow(p)));
+      html += sec("Andere recepten", recRows(rest));
+      if (!html) html = empty("Nog geen recepten. Tik op 🍲 Recept maken.");
+    }
     box.innerHTML = html;
     box.querySelector("#fManage")?.addEventListener("click", manage);
+    box.querySelector("#fToOff")?.addEventListener("click", () => sheet._setSrc("off"));
   }
 
   async function onRowClick(e) {
@@ -311,6 +368,11 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
       rowEl.classList.add("busy");
       const ids = await C.rpc("copy_meal", { p_from: addDays(day, -1), p_meal: meal, p_to: day, p_to_meal: meal });
       close(); undoMany(ids, `${mealLabel(meal)} van gisteren toegevoegd`, after); after?.(); return;
+    }
+    if (en.kind === "combo") {
+      rowEl.classList.add("busy");
+      const ids = await C.rpc("copy_meal", { p_from: en.combo.last_day, p_meal: en.combo.meal, p_to: day, p_to_meal: meal });
+      close(); undoMany(ids, `${en.combo.names.length} producten toegevoegd`, after); after?.(); return;
     }
     if (en.kind === "preset") {
       rowEl.classList.add("busy");
@@ -361,13 +423,13 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
     };
   }
 
-  // Vaste producten aan/uit zetten
+  // Favorieten (vroeger: vaste producten) aan/uit zetten
   async function manage() {
     const recent = (await C.rpc("get_foods", { p_query: null, p_limit: 40 }).catch(() => [])).filter((f) => f.source !== "recipe");
     const ids = new Set((Q?.products || []).map((p) => p.id));
     const all = [...(Q?.products || []), ...recent.filter((f) => !ids.has(f.id))];
-    sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Vaste producten">
-      ${head("Vaste producten", true)}
+    sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Favorieten">
+      ${head("Favorieten", true)}
       <p class="hint small" style="margin:8px 0">Vink aan wat bovenaan moet staan om met één tik toe te voegen.</p>
       ${all.map((f) => `<label class="mp-check"><input type="checkbox" data-id="${f.id}" ${ids.has(f.id) ? "checked" : ""}>
         <span class="t">${C.esc(f.name)}${f.brand ? ` <span class="muted">(${C.esc(f.brand)})</span>` : ""}${f.serving_g ? ` <span class="small muted">· ${C.fmt(f.serving_g)} g</span>` : ""}</span></label>`).join("")}</div>`;
@@ -634,6 +696,7 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
   }
 
   if (onPick) search(initial);
+  else if (recipeFrom) { recipe = { name: "", servings: 1, total_g: "", ingredients: recipeFrom }; recipeEditor(); }
   else if (start === "recipe") { recipe = { name: "", servings: 1, total_g: "", ingredients: [] }; recipeEditor(); }
   else if (toEdit) editRecipe(toEdit);
   else if (product) amount(product);

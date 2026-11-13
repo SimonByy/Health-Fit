@@ -426,6 +426,7 @@ async function renderToday() {
       <a class="todayfuel" href="#/voeding" id="todayFuel"></a>
       ${brief?.text ? `<a class="panel lk-cta brief-cta" href="#/briefing"><span><b>▶ Ochtendbriefing</b><br><span class="small muted">Laten voorlezen en antwoorden</span></span><span aria-hidden="true">›</span></a>` : ""}
       ${isToday ? `<div id="coachToday"></div>` : ""}
+      <div id="todayTimeline"></div>
       <section class="domain" style="--c:${DOMAIN.move}">
         <h2>Beweging</h2>
         ${statRow({ name: "Stappen", value: t.steps, goal: g.steps, avg: a.steps, color: DOMAIN.move })}
@@ -507,6 +508,7 @@ async function renderToday() {
   $("#addWater")?.addEventListener("click", () => quickLog("dietary_water", 500, "500 ml water gelogd", reload));
   $("#addCaff")?.addEventListener("click", () => quickLog("dietary_caffeine", 50, "50 mg cafeïne gelogd", reload));
   $("#logWeight")?.addEventListener("click", () => openWeightForm(d.last_weight?.kg));
+  import("./timeline.js").then((T) => { const el = $("#todayTimeline"); if (el) T.renderTimeline(ctx, el, state.day); }).catch(() => {});
   import("./ready.js").then((R) => {
     const el = $("#todayReady"); if (!el) return;
     readyRefresh = () => { const cur = $("#todayReady"); if (cur) R.renderReadiness(ctx, cur, state.day); };
