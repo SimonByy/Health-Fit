@@ -996,7 +996,7 @@ body::before {
 .fb-goal-ic { font-size: 26px; }
 .fb-goal b { display: block; font-size: 15px; }
 .fb-goal span { font-size: 13px; color: var(--muted); }
-.fb-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px 0 10px; margin-bottom: 2px; position: sticky; top: 0; z-index: 2; background: var(--paper); }
+.fb-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 4px 0 10px; margin-bottom: 2px; }
 .fb-chips::-webkit-scrollbar { display: none; }
 .fb-chip { flex: 0 0 auto; display: inline-flex; gap: 6px; align-items: center; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line);
   background: var(--surface); color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; text-transform: capitalize; }
@@ -1031,3 +1031,4 @@ body::before {
 @keyframes fbpulse { 50% { opacity: .3; } }
 @media (prefers-reduced-motion: reduce) { .fb-wait .dot { animation: none; } }
 .fb-week h3 { margin: 0 0 8px; }
+.fb-swipe > .fb-card { flex: 0 0 100%; scroll-snap-align: start; margin: 0; min-width: 0; }
