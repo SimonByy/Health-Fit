@@ -10,8 +10,15 @@ export async function geminiLoop(opts: {
 }): Promise<{ text: string; actions: { tool: string; purpose?: string; rows?: number; error?: string }[] }> {
   const contents: any[] = [...(opts.history ?? []), { role: "user", parts: opts.userParts }];
   const actions: { tool: string; purpose?: string; rows?: number; error?: string }[] = [];
+  let retries = 0;
+  // Bij drukte (503) of time-out naar het volgende model
+  const models = [...new Set([opts.model, "gemini-3.8-flash", "gemini-3.5-flash", "gemini-flash-lite-latest"])];
+  let mi = 0;
   for (let step = 0; step < (opts.maxSteps ?? 16); step++) {
-    const res = await fetch(`${BASE}/${opts.model}:generateContent`, {
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}/${models[mi]}:generateContent`, {
+      signal: AbortSignal.timeout(30000),
       method: "POST",
       headers: { "content-type": "application/json", "x-goog-api-key": opts.apiKey },
       body: JSON.stringify({
@@ -20,10 +27,18 @@ export async function geminiLoop(opts: {
         tools: opts.tools.length ? [{ functionDeclarations: opts.tools }] : undefined,
         generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
       }),
-    });
+      });
+    } catch (e) {
+      if (++retries > 4 || mi >= models.length - 1) throw new Error(`Gemini time-out (${models[mi]}): ${e}`);
+      mi++; step--; continue;
+    }
+    if (res.status === 503 && mi < models.length - 1) { await res.body?.cancel(); mi++; step--; continue; }
     if (res.status === 429 || res.status === 503) {
-      // druk of limiet: even wachten en opnieuw
-      await new Promise((r) => setTimeout(r, 4000 + step * 2000));
+      // druk of limiet: kort wachten en opnieuw, maar niet eindeloos
+      const body = (await res.text()).slice(0, 400);
+      if (++retries > 3 || /limit: 0|PerDay/i.test(body)) throw new Error(`Gemini ${res.status}: ${body}`);
+      await new Promise((r) => setTimeout(r, 5000 * retries));
+      step--;
       continue;
     }
     if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 400)}`);

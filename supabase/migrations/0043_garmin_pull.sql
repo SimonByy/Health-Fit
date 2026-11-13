@@ -91,6 +91,7 @@ create or replace function app.sync_request_kick()
 begin
   if new.source = 'garmin' then perform app.garmin_pull_kick(); end if;
   return new;
+exception when others then return new;
 end $$;
 drop trigger if exists sync_requests_kick on app.sync_requests;
 create trigger sync_requests_kick after insert on app.sync_requests

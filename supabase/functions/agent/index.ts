@@ -133,7 +133,14 @@ Deno.serve(async (req) => {
   let body: any = {};
   try { body = await req.json(); } catch { /* leeg = alles */ }
   const todo: { kind: string; id: number }[] = body.kind && body.id ? [{ kind: body.kind, id: Number(body.id) }] : await rpc("internal_agent_pending");
-  const results = [];
-  for (const t of todo.slice(0, 6)) if (TASK[t.kind]) results.push(await process(t.kind, t.id));
-  return json({ results });
+  const work = (async () => {
+    const results = [];
+    for (const t of todo.slice(0, 6)) if (TASK[t.kind]) results.push(await process(t.kind, t.id));
+    console.log(JSON.stringify(results));
+    return results;
+  })();
+  // De databank wacht niet (pg_net time-out 2 s): op de achtergrond verder werken.
+  const rt = (globalThis as any).EdgeRuntime;
+  if (rt?.waitUntil && !body.wait) { rt.waitUntil(work); return json({ accepted: todo.length }, 202); }
+  return json({ results: await work });
 });
