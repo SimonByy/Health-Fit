@@ -1,5 +1,5 @@
 // Service worker: app-shell offline, pushmeldingen. Data (Supabase) wordt nooit gecachet.
-const CACHE = "health-hub-v40";
+const CACHE = "health-hub-v41";
 const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/config.js", "/healthimport.js", "/workout.js", "/food.js", "/more.js", "/link.js", "/menu.js", "/briefing.js", "/coach.js", "/nutrition.js", "/strength.js", "/formkit.js", "/ready.js", "/feedback.js", "/timeline.js", "/assistant.js", "/manifest.webmanifest", "/icons/icon-192.png",
   "/fonts/barlow-latin-400-normal.woff2", "/fonts/barlow-latin-500-normal.woff2", "/fonts/barlow-latin-600-normal.woff2",
   "/fonts/barlow-condensed-latin-500-normal.woff2", "/fonts/barlow-condensed-latin-600-normal.woff2", "/fonts/barlow-condensed-latin-700-normal.woff2"];
@@ -30,13 +30,17 @@ self.addEventListener("fetch", (e) => {
 self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { title: "Health Hub", body: e.data?.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || "Health Hub", {
-    body: d.body || "",
-    icon: "/icons/icon-192.png",
-    badge: "/icons/icon-192.png",
-    tag: d.tag || undefined,
-    data: { url: d.url || "/#/vandaag" },
-  }));
+  e.waitUntil(Promise.all([
+    self.registration.showNotification(d.title || "Health Hub", {
+      body: d.body || "",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      tag: d.tag || undefined,
+      data: { url: d.url || "/#/vandaag" },
+    }),
+    // open app-vensters meteen laten verversen: er is iets veranderd
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((ws) => ws.forEach((w) => w.postMessage({ type: "refresh" }))),
+  ]));
 });
 
 self.addEventListener("notificationclick", (e) => {
@@ -47,7 +51,9 @@ self.addEventListener("notificationclick", (e) => {
     for (const w of wins) {
       if (new URL(w.url).origin === self.location.origin) {
         await w.focus();
-        return w.navigate(target);
+        // zelfde scherm al open? navigate doet dan niets: laat de app zelf openen en verversen
+        w.postMessage({ type: "open", url: target });
+        return;
       }
     }
     return self.clients.openWindow(target);

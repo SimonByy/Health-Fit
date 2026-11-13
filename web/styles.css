@@ -1140,3 +1140,10 @@ body:has(#tabbar[hidden]) .ai-fab, body.ai-open .ai-fab, body:has(.sheet) .ai-fa
 .ai-conv-del { flex: none; width: 44px; background: none; border: 0; color: var(--faint); font-size: 22px; cursor: pointer; }
 .ai-conv-del:hover { color: var(--bad); }
 .msg.pending .thinking { margin: 0; }
+
+/* ---------- v18: niet gegeten ---------- */
+.mi.skip .mi-t, .mi.skip .mi-k { opacity: .45; }
+.mi.skip .mi-t { color: var(--muted); }
+.selbar { flex-wrap: wrap; }
+.selbar button[hidden] { display: none; }
+.selbar button.ok { color: var(--good); }

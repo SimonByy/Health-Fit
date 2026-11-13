@@ -1475,6 +1475,28 @@ $("#syncBtn").onclick = async () => {
 window.addEventListener("hashchange", () => { if (!$("#tabbar").hidden) route(); });
 sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT" && !$("#tabbar").hidden) renderLogin(); });
 
+// Altijd actuele data: verversen bij een pushmelding, bij het openen van een melding en bij terugkeren naar de app
+let lastRoute = Date.now();
+function freshen(force = false) {
+  if ($("#tabbar").hidden) return;
+  const busy = document.querySelector(".sheet, .ai-sheet, .composer, #selBar:not([hidden])") || (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName));
+  if (busy && !force) return;
+  if (!force && Date.now() - lastRoute < 4000) return;
+  lastRoute = Date.now();
+  const y = window.scrollY;
+  route().then(() => { if (!force) window.scrollTo(0, y); });
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") freshen(); });
+window.addEventListener("pageshow", (e) => { if (e.persisted) freshen(); });
+navigator.serviceWorker?.addEventListener("message", (e) => {
+  const m = e.data || {};
+  if (m.type === "refresh") freshen();
+  if (m.type === "open" && m.url) {
+    const h = new URL(m.url).hash || "#/vandaag";
+    if (location.hash === h) freshen(true); else location.hash = h;
+  }
+});
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 }
