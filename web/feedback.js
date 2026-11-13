@@ -43,7 +43,7 @@ function stats(t) {
 }
 
 function feedbackHtml(f, t) {
-  if (!f) return `<div class="fb-wait"><span class="dot"></span>Claude kijkt deze training na en geeft binnen het uur feedback.</div>`;
+  if (!f) return `<div class="fb-wait"><span class="dot"></span>Je coach bekijkt deze training. De feedback verschijnt hier binnen een paar minuten.</div>`;
   const list = (cls, title, txt) => { const p = points(txt); return p.length ? `<div class="fb-list ${cls}"><h4>${title}</h4><ul>${p.map((x) => `<li>${C.esc(x)}</li>`).join("")}</ul></div>` : ""; };
   return `${f.summary ? `<p class="fb-sum">${C.esc(f.summary)}</p>` : ""}
     ${list("good", "Goed", f.good)}

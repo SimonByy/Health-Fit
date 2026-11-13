@@ -1,6 +1,6 @@
 // Directe AI-agent (Gemini) voor Health Hub.
 // Wordt meteen aangeroepen door de databank (pg_net) bij een nieuwe menuwens, screenshot, briefing-antwoord,
-// recept of menu-herberekening. Lukt het niet, dan blijft het item op 'nieuw' en doet de uurlijkse Claude-taak het.
+// recept, menu-herberekening of training (feedback). Lukt het niet, dan doet de uurlijkse Claude-taak het.
 // POST {kind, id}  of  {}  (= alles wat openstaat). Geen login nodig: de functie verwerkt alleen openstaande items.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { geminiLoop, type Tool } from "./gemini.ts";
@@ -20,7 +20,7 @@ async function rpc<T = any>(fn: string, args: Record<string, unknown> = {}): Pro
 const TOOLS: Tool[] = [
   { name: "sql_read", description: "Eén read-only SELECT/WITH-query op de databank (schemas app, ai, health). Max 200 rijen als JSON. Filter en aggregeer.",
     parameters: { type: "object", properties: { query: { type: "string" }, purpose: { type: "string" } }, required: ["query"] } },
-  { name: "sql_write", description: "Eén INSERT of UPDATE op app.mp_week_items, app.mp_recipes, app.mp_weeks, app.menu_wishes, app.capture_inbox, app.briefing_replies, app.recipe_inbox, app.menu_rebalance, app.push_outbox, app.coach_sessions, app.store_products of app.foods; of select public.log_food(...)/log_entry(...)/save_food(...)/mp_set_portion_step(...)/copy_food_items(...)/void_food(...). Gebruik RETURNING om id's terug te krijgen. Nooit DELETE.",
+  { name: "sql_write", description: "Eén INSERT of UPDATE op app.mp_week_items, app.mp_recipes, app.mp_weeks, app.menu_wishes, app.capture_inbox, app.briefing_replies, app.recipe_inbox, app.menu_rebalance, app.push_outbox, app.coach_sessions, app.store_products, app.foods of app.coach_feedback; of select public.log_food(...)/log_entry(...)/save_food(...)/mp_set_portion_step(...)/copy_food_items(...)/void_food(...). Gebruik RETURNING om id's terug te krijgen. Nooit DELETE.",
     parameters: { type: "object", properties: { statement: { type: "string" }, purpose: { type: "string" } }, required: ["statement"] } },
 ];
 const run = async (name: string, a: any) => {
@@ -48,6 +48,7 @@ DATABANK (lees met sql_read, schrijf met sql_write):
 - app.food_log(id, day, meal Ontbijt|Lunch|Snack|Avondeten|Laat, name, grams, kcal, protein, carbs, fat, voided)
 - app.store_products(name, store, status ok|niet_beschikbaar, product, replacement)
 - app.coach_sessions(day, kind, title, start_local, details, status gepland|gedaan|overgeslagen, note)
+- app.coach_feedback(kind training|week, day, ref, sport, title, summary, good, improve, focus, stats jsonb), uniek per (kind, day, ref)
 - app.push_outbox(title, body, url): een melding naar zijn gsm.
 - ai.daily_summary(day, steps, resting_hr, hrv_ms, sleep_h, weight_kg, kcal_in, protein_g, ...), ai.workouts, ai.strength_workouts, ai.strength_sets, ai.recovery_daily.
 - Functies: select public.log_food('{"day":"YYYY-MM-DD","meal":"Lunch","name":"..","kcal":..,"protein":..,"carbs":..,"fat":..}'::jsonb) of met {"grams":..,"food":{"id":"<uuid>"}}; select public.log_entry('weight_body_mass', <kg>, now()); select public.save_food('{"name":..,"brand":..,"per100":{...},"serving_g":..,"source":"label"}'::jsonb).
@@ -61,7 +62,7 @@ REGELS
 - Stuur zelf GEEN push; dat doet de app met je eindantwoord.
 
 EINDANTWOORD: alleen één JSON-object, zonder uitleg ervoor of erna:
-{"ok": true|false, "message": "<1–3 zinnen voor Simon, wat je deed of je antwoord>", "title": "<korte titel voor de melding>", "url": "<scherm: /#/menu/week, /#/menu/recepten, /#/voeding, /#/vandaag, /#/training, /#/briefing>", "kind": "<voor screenshots: recept|gewicht|etiket|voeding|training|agenda|overig>", "recipe_id": <id of null>}
+{"ok": true|false, "message": "<1–3 zinnen voor Simon, wat je deed of je antwoord>", "title": "<korte titel voor de melding>", "url": "<scherm: /#/menu/week, /#/menu/recepten, /#/voeding, /#/vandaag, /#/training, /#/briefing, /#/feedback>", "kind": "<voor screenshots: recept|gewicht|etiket|voeding|training|agenda|overig>", "recipe_id": <id of null>}
 ok=false alleen als je het echt niet kon (dan neemt Claude het later over).`;
 }
 
@@ -77,6 +78,11 @@ Lees de briefing (select text from app.briefings where day = '${r.day}'), zijn p
     ? `NIEUW RECEPT VOOR ZIJN MENU (hij tikte op "Nieuw recept laten voorstellen"):\n${r.text}\nBedenk een NIEUW recept voor die maaltijd dat hij nog niet heeft, met producten van AH België of Okay, ongeveer dezelfde kcal en minstens evenveel eiwit, mealprep-baar. Echte voedingswaarden per ingrediënt (uit app.foods of algemeen bekende etiketwaarden van AH-huismerkproducten); twijfel je, maak het dan als 'concept'. Insert in app.mp_recipes (status, favorite false, note 'Voorgesteld door Gemini', portion_step) en zet het op de items uit de tekst (bestaan ze niet meer: zelfde dag en maaltijd in de huidige week). recipe_id = het nieuwe id; url /#/menu/week.`
     : `RECEPT INGESTUURD: "${r.text ?? ""}"${r.image_path ? " (foto bij dit bericht)" : ""}
 Maak het recept in app.mp_recipes: meal_type, servings, portion_step, ingrediënten PER PORTIE als jsonb [{"name","amount","unit","dept","pantry"}], stappen in je eigen woorden, bewaring, en macro's per portie met echte waarden (anders status 'concept' zonder macro's). Begint de tekst met "Concept #<id> uitwerken": werk dat bestaande recept uit (update). recipe_id = het id; url /#/menu/recepten.`),
+  feedback: (r) => `NIEUWE TRAINING (${r.sport}), ref '${r.ref}'. Geef Simon feedback als zijn personal coach.
+Lees de training: ${r.sport === "kracht" ? "ai.strength_workouts where id::text = ref, en de sets in ai.strength_sets (filter op die workout; kijk eerst welke kolommen er zijn)" : "ai.workouts where id = ref (duur, afstand, avg_hr, max_hr, pace)"}. Vergelijk met de vorige 3–5 gelijkaardige trainingen. Lees ook zijn geplande sessie van die dag in app.coach_sessions.
+Context: hoofddoel halve marathon zomer 2027; de komende weken vooral zone 2 (138–152 bpm); runs zijn één open run zonder intervallen.
+Schrijf: insert into app.coach_feedback (kind, day, ref, sport, title, summary, good, improve, focus, stats) values ('training', <dag>, '<ref>', '<run|loopband|kracht|cardio>', <titel>, <1–3 zinnen>, <wat goed ging, punten gescheiden door " · ">, <wat beter kan>, <één focus voor de volgende keer>, <jsonb met 3–6 kerncijfers als {"label": "waarde"}>) on conflict (kind, day, ref) do nothing.
+Staat er die dag een geplande coach_session van hetzelfde soort met status 'gepland': zet ze op 'gedaan'. Eerlijk en concreet, met cijfers, geen overdreven lof. message = 1 zin samenvatting; title = "Feedback: <training>"; url /#/feedback.`,
   rebalance: (r) => `MENU BIJSTUREN: Simon paste recept ${r.recipe_id} aan (macro's van ${JSON.stringify(r.old_macros)} naar ${JSON.stringify(r.new_macros)}). Zoek de dagen vanaf vandaag waarop dat recept gepland staat en stuur elke volle dag bij naar 1900–2100 kcal en ≥150 g eiwit: andere items (niet dat recept, niet gegeten) in veelvouden van hun portion_step, of voeg een snack/avondsnack toe met een bestaand recept. Zo weinig mogelijk wijzigingen. message = wat je deed per dag, kort; url /#/menu/week.`,
 };
 
@@ -103,8 +109,8 @@ function parseFinal(text: string) {
   try { return JSON.parse(m[0]); } catch { return { ok: true, message: text.slice(0, 600) }; }
 }
 
-const DEFAULT_URL: Record<string, string> = { wish: "/#/menu/week", capture: "/#/vandaag", reply: "/#/briefing", recipe: "/#/menu/recepten", rebalance: "/#/menu/week" };
-const DEFAULT_TITLE: Record<string, string> = { wish: "Menu aangepast", capture: "Verwerkt", reply: "Antwoord op je briefing", recipe: "Recept klaar", rebalance: "Menu bijgestuurd" };
+const DEFAULT_URL: Record<string, string> = { feedback: "/#/feedback", wish: "/#/menu/week", capture: "/#/vandaag", reply: "/#/briefing", recipe: "/#/menu/recepten", rebalance: "/#/menu/week" };
+const DEFAULT_TITLE: Record<string, string> = { feedback: "Feedback op je training", wish: "Menu aangepast", capture: "Verwerkt", reply: "Antwoord op je briefing", recipe: "Recept klaar", rebalance: "Menu bijgestuurd" };
 
 async function process(kind: string, id: number) {
   const row = await rpc("internal_agent_claim", { p_kind: kind, p_id: id });

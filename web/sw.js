@@ -1,6 +1,6 @@
 // Service worker: app-shell offline, pushmeldingen. Data (Supabase) wordt nooit gecachet.
-const CACHE = "health-hub-v39";
-const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/config.js", "/healthimport.js", "/workout.js", "/food.js", "/more.js", "/link.js", "/menu.js", "/briefing.js", "/coach.js", "/nutrition.js", "/strength.js", "/formkit.js", "/ready.js", "/feedback.js", "/timeline.js", "/manifest.webmanifest", "/icons/icon-192.png",
+const CACHE = "health-hub-v40";
+const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/config.js", "/healthimport.js", "/workout.js", "/food.js", "/more.js", "/link.js", "/menu.js", "/briefing.js", "/coach.js", "/nutrition.js", "/strength.js", "/formkit.js", "/ready.js", "/feedback.js", "/timeline.js", "/assistant.js", "/manifest.webmanifest", "/icons/icon-192.png",
   "/fonts/barlow-latin-400-normal.woff2", "/fonts/barlow-latin-500-normal.woff2", "/fonts/barlow-latin-600-normal.woff2",
   "/fonts/barlow-condensed-latin-500-normal.woff2", "/fonts/barlow-condensed-latin-600-normal.woff2", "/fonts/barlow-condensed-latin-700-normal.woff2"];
 

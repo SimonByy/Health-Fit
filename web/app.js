@@ -106,12 +106,13 @@ function showError(err) {
 }
 
 // Gedeelde helpers voor de modules training (workout.js) en voeding (food.js)
-const ctx = { sb, rpc, invoke, toast, fmt, esc, view, today, addDays, shortDate, mountChart, SUPABASE_URL, md: (s) => md(s),
+const ctx = { sb, rpc, invoke, toast, fmt, esc, view, today, addDays, shortDate, mountChart, SUPABASE_URL, md: (s) => md(s), refresh: () => route(),
   importAppleHealth: (...a) => importAppleHealth(...a),
   importHevy: (...a) => importHevyFile(...a), renderMuscles: (...a) => renderMuscles(...a) };
 const workoutMod = () => import("./workout.js");
 const foodMod = () => import("./food.js");
 const moreMod = () => import("./more.js");
+const aiMod = () => import("./assistant.js");
 // Datumknop in de dagnavigatie: opent de agenda
 const calBtn = (label) => `<button class="label calbtn" id="calBtn" aria-label="Kies een dag in de agenda"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 7h16v13H4zM4 11h16M8 3v4M16 3v4"/></svg>${esc(label.charAt(0).toUpperCase() + label.slice(1))}</button>`;
 async function bindCal(current, onPick) {
@@ -1118,7 +1119,7 @@ async function renderSettings() {
   view.innerHTML = `
     <nav class="quicklinks" aria-label="Meer">
       <a href="#/dagboek"><b>Dagboek</b><span>Inspreken of typen</span></a>
-      <a href="#/vraag"><b>Vraag het</b><span>AI over je data</span></a>
+      <a href="#/vraag"><b>Coach</b><span>AI-chat (ook via ✦ rechtsonder)</span></a>
       <a href="#/briefing"><b>Briefing</b><span>Je ochtendoverzicht</span></a>
       <a href="#/koppelen"><b>Koppelen</b><span>Garmin en Gezondheid</span></a>
     </nav>
@@ -1421,7 +1422,7 @@ const ROUTES = {
   training: async () => (await import("./strength.js")).renderStrength(ctx),
   voeding: async () => (await import("./nutrition.js")).renderNutrition(ctx, state),
   trends: renderTrends,
-  vraag: renderAsk,
+  vraag: async () => { history.replaceState(null, "", "#/vandaag"); navStack[navStack.length - 1] = "#/vandaag"; route(); (await aiMod()).openAssistant(ctx); },
   instellingen: renderSettings,
   dagboek: renderJournal,
   koppelen: async () => (await import("./link.js")).renderLink(ctx),
@@ -1441,6 +1442,7 @@ async function boot() {
   }
   $("#topbar").hidden = false;
   $("#tabbar").hidden = false;
+  aiMod().then((m) => m.mountAssistant(ctx)).catch(() => {});
   route();
 }
 
@@ -1454,11 +1456,20 @@ $("#syncBtn").onclick = async () => {
   const b = $("#syncBtn");
   if (b.classList.contains("spin")) return;
   b.classList.add("spin");
+  toast("Garmin ophalen…", 2500);
   try {
     await rpc("request_garmin_sync");
-    toast("Garmin-sync gevraagd. Binnen het uur staan je nieuwste waarden erin, je krijgt een melding.", 5000);
+    // De app haalt het meteen zelf op; wachten tot het klaar is (meestal 2–5 s)
+    let ok = false;
+    for (let i = 0; i < 12 && !ok; i++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const r = await rpc("get_readiness", {}).catch(() => null);
+      ok = r && r.sync && !r.sync.pending;
+    }
+    toast(ok ? "Garmin bijgewerkt ✓" : "Garmin reageert traag. Je data komt binnen enkele minuten binnen.", 3500);
+    if (ok) route();
   } catch (e) { toast(e.message, 5000); }
-  setTimeout(() => b.classList.remove("spin"), 1500);
+  b.classList.remove("spin");
   if (typeof readyRefresh === "function") readyRefresh();
 };
 window.addEventListener("hashchange", () => { if (!$("#tabbar").hidden) route(); });

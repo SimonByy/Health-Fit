@@ -74,7 +74,7 @@ export async function renderBriefing(ctx) {
   }
   const replies = await C.rpc("briefing_replies_get", { p_day: B.day || C.today() }).catch(() => []);
   const extra = replies.flatMap((r) => [{ role: "user", content: r.text },
-    { role: "assistant", content: r.answer || (r.status === "fout" ? "Dit kon ik niet beantwoorden." : "Ontvangen. Je krijgt binnen het uur antwoord met een melding."), pending: !r.answer }]);
+    { role: "assistant", content: r.answer || (r.status === "fout" ? "Dit kon ik niet beantwoorden." : "Even denken…"), pending: !r.answer }]);
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   C.view.innerHTML = `
     <section class="panel briefing">
@@ -94,7 +94,7 @@ export async function renderBriefing(ctx) {
         ${SR ? `<button class="btn secondary mic" id="bMic" type="button" aria-pressed="false"><span class="dot"></span><span>Inspreken</span></button>` : ""}
         <button class="btn" id="bSend" style="flex:1">Antwoorden</button>
       </div>
-      <p class="small muted" style="margin:8px 0 0">Na het voorlezen start de microfoon vanzelf. Claude beantwoordt het binnen het uur en stuurt je een melding.</p>
+      <p class="small muted" style="margin:8px 0 0">Na het voorlezen start de microfoon vanzelf. Je antwoord komt hier binnen een minuut en wordt voorgelezen.</p>
     </section>`;
   const play = $("#bPlay");
   play.onclick = () => speak(B.text, play);
@@ -105,11 +105,37 @@ export async function renderBriefing(ctx) {
   if ("speechSynthesis" in window) { fillVoices(); speechSynthesis.onvoiceschanged = fillVoices; } else $(".voice-row")?.remove();
   $("#bMic")?.addEventListener("click", startMic);
   $("#bSend").onclick = send;
+  if (extra.some((m) => m.pending)) waitAnswer();
   // Via de melding geopend? Meteen proberen voor te lezen (iOS vraagt soms toch een tik).
   if (/autoplay/.test(location.hash) || sessionStorage.getItem("hh_brief_played") !== B.day) {
     sessionStorage.setItem("hh_brief_played", B.day);
     setTimeout(() => { try { speak(B.text, play); } catch { /* tik nodig */ } }, 400);
   }
+}
+
+// Antwoord live ophalen (de AI-agent verwerkt het meteen) en het nieuwe antwoord voorlezen
+const bubbles = (rs) => rs.flatMap((r) => [`<div class="msg user">${C.esc(r.text)}</div>`,
+  r.answer ? `<div class="msg assistant">${C.md(r.answer)}</div>`
+    : `<div class="msg assistant pending">${r.status === "fout" ? "Dit kon ik niet beantwoorden." : `<p class="thinking"><i></i>Even denken…</p>`}</div>`]).join("");
+let waiting = false;
+async function waitAnswer() {
+  if (waiting) return; waiting = true;
+  try {
+    for (let i = 0; i < 45; i++) {
+      await new Promise((r) => setTimeout(r, 4000));
+      const box = $("#bChat"); if (!box) return;
+      const rs = await C.rpc("briefing_replies_get", { p_day: B.day || C.today() }).catch(() => null);
+      if (!rs) continue;
+      const before = box.querySelectorAll(".msg.assistant.pending").length;
+      const open = rs.filter((r) => !r.answer && r.status !== "fout").length;
+      if (open < before) {
+        box.innerHTML = bubbles(rs);
+        const last = [...rs].reverse().find((r) => r.answer);
+        if (last && "speechSynthesis" in window) { speaking = false; try { speak(last.answer, null); } catch { /* */ } }
+      }
+      if (!open) return;
+    }
+  } finally { waiting = false; }
 }
 
 async function send() {
@@ -122,7 +148,8 @@ async function send() {
   try {
     await C.rpc("briefing_reply_add", { p_text: msg });
     C.rpc("save_journal", { p_day: C.today(), p_text: `Antwoord op ochtendbriefing: ${msg}`, p_append: true }).catch(() => {});
-    box.insertAdjacentHTML("beforeend", `<div class="msg user">${C.esc(msg)}</div><div class="msg assistant pending"><p>Ontvangen. Je krijgt binnen het uur antwoord met een melding.</p></div>`);
+    box.insertAdjacentHTML("beforeend", `<div class="msg user">${C.esc(msg)}</div><div class="msg assistant pending"><p class="thinking"><i></i>Even denken…</p></div>`);
+    waitAnswer();
   } catch (e) {
     ta.value = msg;
     C.toast(`Niet verstuurd: ${e.message}`, 5000);

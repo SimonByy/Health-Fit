@@ -518,7 +518,7 @@ function openRecipe(r, { item = null } = {}) {
       e.target.disabled = true;
       try {
         await C.rpc("recipe_inbox_add", { p_text: `Concept #${r.id} uitwerken: ${r.name}\n${r.description || ""}`, p_image_path: null });
-        e.target.textContent = "✓ Claude werkt het binnen het uur uit";
+        e.target.textContent = "✓ Wordt nu uitgewerkt, je krijgt een melding";
       } catch (err) { e.target.disabled = false; C.toast(err.message, 5000); }
     });
     card.querySelector("#cook")?.addEventListener("click", () => { close(); openCook(r, portions); });
@@ -600,7 +600,7 @@ function openSwap(item) {
     <div class="sub-h" style="margin-top:4px">Op welke dagen?</div>
     <div class="mp-days">${dayItems.map((i) => { const r = recById(i.recipe_id); return `<label class="mp-check"><input type="checkbox" data-day="${i.id}" ${i.id === item.id ? "checked" : ""}>
       <span class="t"><b style="text-transform:capitalize">${C.esc(dshort(i.day))}</b> <span class="small muted">· ${C.esc(r?.name || "")}</span></span></label>`; }).join("")}</div>
-    <button class="newidea" id="newIdea"><span>✨</span><span><b>Nieuw recept laten voorstellen</b><br><span class="small">Claude bedenkt iets nieuws dat in je macro's past en zet het op je menu. Binnen het uur, met een melding.</span></span></button>
+    <button class="newidea" id="newIdea"><span>✨</span><span><b>Nieuw recept laten voorstellen</b><br><span class="small">De AI bedenkt iets nieuws dat in je macro's past en zet het op je menu. Binnen een minuut, met een melding.</span></span></button>
     <input class="input" id="ideaHint" placeholder="Wens? Bv. iets met zalm, of snel klaar (optioneel)" style="margin:8px 0 10px">
     <div class="sub-h" style="margin-top:4px">Of kies een bestaand recept</div>
     ${opts.map((r) => `<button class="pk-item" data-r="${r.id}"><span><b>${r.favorite ? "★ " : ""}${C.esc(r.name)}</b><br>
@@ -840,7 +840,7 @@ async function openEdit(r0, onSaved) {
         Object.assign(r0, saved || {});
         close();
         const pend = !isNew && r.id ? await C.rpc("menu_rebalance_pending", { p_recipe_id: r.id }).catch(() => false) : false;
-        C.toast(isNew ? "Recept bewaard" : pend ? "Recept aangepast. Claude stuurt de rest van je menudagen binnen het uur bij, je krijgt een melding." : "Recept aangepast", pend ? 6000 : 2500);
+        C.toast(isNew ? "Recept bewaard" : pend ? "Recept aangepast. De rest van je menudagen wordt nu bijgestuurd, je krijgt zo een melding." : "Recept aangepast", pend ? 6000 : 2500);
         await onSaved?.(saved); reload();
       } catch (err) { e.target.disabled = false; C.toast(err.message, 5000); }
     };
@@ -893,7 +893,7 @@ async function imageToBlob(file, max = 1280) {
   } finally { URL.revokeObjectURL(url); }
 }
 
-// Recept toevoegen: foto en/of tekst gaan naar de inbox. Een geplande Claude-taak (elk uur)
+// Recept toevoegen: foto en/of tekst gaan naar de inbox. De AI-agent verwerkt het meteen (Claude-taak elk uur als vangnet)
 // werkt ze uit tot een volledig recept en stuurt een melding. Geen API-kosten.
 function openAdd() {
   const { card, close } = sheetShell("Recept toevoegen");
@@ -906,7 +906,7 @@ function openAdd() {
       <textarea class="input" id="aText" rows="3" placeholder="bv. kip curry met rijst voor 3 dagen, of plak een link"></textarea></div>
     <select class="input" id="aType" style="margin-bottom:10px"><option value="">Maaltijd: laat Claude kiezen</option>${Object.entries(SLOTS).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
     <button class="btn" id="aSend" style="width:100%">Versturen</button>
-    <p class="small muted" id="aMsg" style="margin:8px 0 0">Claude werkt het binnen het uur uit (tussen 8u en 23u) met ingrediënten, stappen en macro's, en zet het met ★ bij je recepten. Je krijgt een melding.</p>
+    <p class="small muted" id="aMsg" style="margin:8px 0 0">Binnen een minuut staat het bij je recepten, met ingrediënten, stappen en macro's. Je krijgt een melding.</p>
     <div id="aInbox"></div>`;
   card.querySelector("[data-close]").onclick = () => { if (preview) URL.revokeObjectURL(preview); close(); };
   const msg = card.querySelector("#aMsg");
@@ -935,7 +935,7 @@ function openAdd() {
       const text = [type ? `Maaltijd: ${SLOTS[type].toLowerCase()}` : "", t].filter(Boolean).join("\n") || null;
       await C.rpc("recipe_inbox_add", { p_text: text, p_image_path: path });
       if (preview) URL.revokeObjectURL(preview);
-      close(); C.toast("Verstuurd. Claude zet het binnen het uur bij je recepten.", 5000);
+      close(); C.toast("Verstuurd. Binnen een minuut staat het bij je recepten.", 5000);
     } catch (err) { e.target.disabled = false; msg.textContent = "Versturen lukte niet: " + (err.message || err); }
   };
   // Wat staat er nog in de wachtrij?
@@ -1011,12 +1011,23 @@ async function mountWish(box) {
     const W = await C.rpc("menu_wishes_get", { p_limit: 4 }).catch(() => []);
     const recent = W.filter((x) => x.status !== "klaar" || Date.now() - new Date(x.processed_at || x.created_at) < 3 * 864e5);
     list.innerHTML = recent.map((x) => `<div class="wish-it ${x.status}"><span class="wish-q">“${C.esc(x.text)}”</span>
-      <span class="wish-a">${x.status === "klaar" ? C.esc(x.answer || "Verwerkt.") : x.status === "fout" ? C.esc(x.answer || "Lukte niet.") : "Claude past je menu binnen het uur aan…"}</span></div>`).join("");
+      <span class="wish-a">${x.status === "klaar" ? C.esc(x.answer || "Verwerkt.") : x.status === "fout" ? C.esc(x.answer || "Lukte niet.") : "Bezig met aanpassen…"}</span></div>`).join("");
+  };
+  // live volgen tot de AI klaar is (max 3 min), daarna de week opnieuw tonen
+  let polling = false;
+  const poll = async () => {
+    if (polling) return; polling = true;
+    for (let i = 0; i < 36 && document.body.contains(list); i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const W = await C.rpc("menu_wishes_get", { p_limit: 4 }).catch(() => []);
+      if (!W.some((x) => x.status === "nieuw" || x.status === "bezig")) { await show(); window.dispatchEvent(new HashChangeEvent("hashchange")); break; }
+    }
+    polling = false;
   };
   const send = async () => {
     const t = inp.value.trim(); if (!t) { inp.focus(); return; }
     box.querySelector("#wishGo").disabled = true;
-    try { await C.rpc("menu_wish_add", { p_text: t }); inp.value = ""; C.toast("Doorgegeven. Claude past je menu binnen het uur aan, je krijgt een melding.", 5000); show(); }
+    try { await C.rpc("menu_wish_add", { p_text: t }); inp.value = ""; C.toast("Doorgegeven. Je menu wordt nu aangepast, binnen een minuut klaar.", 4000); show(); poll(); }
     catch (e) { C.toast(e.message, 4000); }
     box.querySelector("#wishGo").disabled = false;
   };

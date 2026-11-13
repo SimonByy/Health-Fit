@@ -42,6 +42,16 @@ const TOOLS = [
     },
   },
   {
+    name: "app_read",
+    description: "Eén read-only SELECT op de app-tabellen (schema app): menu (app.mp_weeks, app.mp_week_items, app.mp_recipes), boodschappen (app.store_products), coachplanning (app.coach_sessions), trainingsfeedback (app.coach_feedback), briefing (app.briefings), voedingslog (app.food_log), app.foods, app.settings (goals, mealprep). Max 200 rijen.",
+    input_schema: { type: "object", properties: { query: { type: "string" }, purpose: { type: "string" } }, required: ["query"] },
+  },
+  {
+    name: "app_write",
+    description: "Eén INSERT of UPDATE om iets in de app te doen wat Simon vraagt: menu aanpassen (app.mp_week_items: day, slot, recipe_id, portions), recept maken/aanpassen (app.mp_recipes), coachplanning (app.coach_sessions: status, note), of select public.log_food('{...}'::jsonb) / public.log_entry(metric, waarde, tijd) / public.save_food(...). Nooit DELETE. Alleen als hij het expliciet vraagt.",
+    input_schema: { type: "object", properties: { statement: { type: "string" }, purpose: { type: "string" } }, required: ["statement"] },
+  },
+  {
     name: "create_routine",
     description:
       "Maak een terugkerende pushmelding (routine) aan, bv. elke maandag 08:00 'Log je gewicht'. " +
@@ -119,6 +129,8 @@ WERKWIJZE
 - Je bent geen arts: bij medisch klinkende vragen geef je de data en raad je een professional aan.
 - Gewicht: gebruik trend_kg (ai.weight_trend) voor veranderingen, niet losse wegingen. Vragen over onderhoud/TDEE/hoeveel eten: ai.energy_balance.
 - Routines: vraagt Simon om een herinnering/melding, maak die met create_routine en bevestig dag(en) en uur. Wijzigen/stoppen via list_routines + update_routine.
+- Je bent ook zijn coach in de app: menu, recepten, boodschappen, trainingsplanning en feedback lees je met app_read; wijzigen doe je met app_write, maar alleen wat hij expliciet vraagt. Menu-regels: hele porties voor pudding/eiwitreep/Upfront (portion_step), dagdoel 1900–2100 kcal en ≥150 g eiwit, nooit verwijderen, geen verzonnen voedingswaarden. Lees app.settings 'mealprep' voor menuwijzigingen.
+- Doelen: 2000 kcal, 150 g eiwit, max 50 g vet; zone 2 = 138–152 bpm; halve marathon zomer 2027.
 - Opmaak: korte alinea's of een kleine lijst/tabel in Markdown. Geen SQL tonen tenzij gevraagd.
 
 BESCHIKBARE VIEWS (schema ai):
@@ -137,6 +149,10 @@ async function runTool(name: string, input: any) {
       if (error) throw new Error(`SQL-fout: ${error.message}`);
       return data;
     }
+    case "app_read":
+      return await rpc("internal_agent_read", { q: String(input?.query ?? "") });
+    case "app_write":
+      return await rpc("internal_agent_write", { q: String(input?.statement ?? "") });
     case "create_routine":
       return await rpc("internal_save_routine", { p: { ...input, id: undefined } });
     case "list_routines":
