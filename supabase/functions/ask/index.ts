@@ -2,6 +2,9 @@
 // Tools: run_sql (read-only, rol ai_reader op schema ai), routines beheren, metingen loggen.
 // Modi: chat (ingelogde eigenaar) en weekly_review (pg_cron via notify, x-cron-token).
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { geminiLoop } from "./gemini.ts";
+const GEMINI = Deno.env.get("GEMINI_API_KEY") ?? "";
+const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-flash-latest";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -147,7 +150,19 @@ async function runTool(name: string, input: any) {
   }
 }
 
+// Gemini (gratis laag) als die sleutel er is; anders Claude
+async function converseGemini(schema: string, messages: any[]) {
+  const tools = TOOLS.map((t) => ({ name: t.name, description: t.description, parameters: t.input_schema }));
+  const last = messages[messages.length - 1];
+  const history = messages.slice(0, -1).filter((m) => typeof m.content === "string")
+    .map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
+  const { text, actions } = await geminiLoop({ apiKey: GEMINI, model: GEMINI_MODEL, system: systemPrompt(schema), tools,
+    run: (n, a) => runTool(n, a), userParts: [{ text: String(last.content) }], history });
+  return { answer: text, actions };
+}
+
 async function converse(apiKey: string, model: string, schema: string, messages: any[]) {
+  if (GEMINI) return converseGemini(schema, messages);
   const actions: { tool: string; purpose?: string; rows?: number; error?: string; summary?: string }[] = [];
   for (let step = 0; step < 10; step++) {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -212,9 +227,9 @@ Deno.serve(async (req) => {
     if (!(await rpc<boolean>("internal_is_owner", { p_uid: u.user.id }))) return json({ error: "Geen toegang" }, 403);
   }
 
-  const apiKey = await rpc<string | null>("internal_get_secret", { p_name: "anthropic_api_key" });
-  if (!apiKey) return json({ error: "Geen Claude API-key ingesteld (Instellingen in de app)" }, 400);
-  const model = ((await rpc<string | null>("internal_get_setting", { p_key: "ai_model" })) as string) || "claude-sonnet-5-5";
+  const apiKey = GEMINI ? "" : await rpc<string | null>("internal_get_secret", { p_name: "anthropic_api_key" });
+  if (!GEMINI && !apiKey) return json({ error: "Geen AI-sleutel ingesteld" }, 400);
+  const model = GEMINI ? GEMINI_MODEL : ((await rpc<string | null>("internal_get_setting", { p_key: "ai_model" })) as string) || "claude-sonnet-5-5";
   const schema = await rpc<string>("ai_schema_doc");
 
   // --- weekoverzicht ---
