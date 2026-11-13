@@ -420,12 +420,12 @@ async function renderToday() {
         <details ${ins.read_at ? "" : "open"} id="insDet"><summary>${esc(ins.title)} <span class="muted small">${esc(shortDate(ins.created_at.slice(0, 10)))}</span></summary>
         <div class="md">${md(ins.content)}</div></details>
       </section>` : ""}
-    ${brief?.text ? `<a class="panel lk-cta" href="#/briefing"><span><b>▶ Ochtendbriefing</b><br><span class="small muted">Laten voorlezen en antwoorden</span></span><span aria-hidden="true">›</span></a>` : ""}
     ${mpToday.length ? `<a class="panel lk-cta" href="#/menu/week"><span><b>Vandaag op je menu</b><br><span class="small muted">${mpToday.map((i) => esc(i.r.name)).join(" · ")}</span></span><span aria-hidden="true">›</span></a>` : ""}
-    ${isToday ? `<div id="coachToday"></div>` : ""}
     <div class="board">
       <div id="todayReady"></div>
       <a class="todayfuel" href="#/voeding" id="todayFuel"></a>
+      ${brief?.text ? `<a class="panel lk-cta brief-cta" href="#/briefing"><span><b>▶ Ochtendbriefing</b><br><span class="small muted">Laten voorlezen en antwoorden</span></span><span aria-hidden="true">›</span></a>` : ""}
+      ${isToday ? `<div id="coachToday"></div>` : ""}
       <section class="domain" style="--c:${DOMAIN.move}">
         <h2>Beweging</h2>
         ${statRow({ name: "Stappen", value: t.steps, goal: g.steps, avg: a.steps, color: DOMAIN.move })}

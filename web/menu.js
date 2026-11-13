@@ -829,7 +829,10 @@ async function openEdit(r0, onSaved) {
           steps: r.steps, storage: r.storage || null, source_url: r.source_url || null, description: r.description || null,
           status: "klaar", favorite: r.favorite ?? true } });
         Object.assign(r0, saved || {});
-        close(); C.toast(isNew ? "Recept bewaard" : "Recept aangepast"); await onSaved?.(saved); reload();
+        close();
+        const pend = !isNew && r.id ? await C.rpc("menu_rebalance_pending", { p_recipe_id: r.id }).catch(() => false) : false;
+        C.toast(isNew ? "Recept bewaard" : pend ? "Recept aangepast. Claude stuurt de rest van je menudagen binnen het uur bij, je krijgt een melding." : "Recept aangepast", pend ? 6000 : 2500);
+        await onSaved?.(saved); reload();
       } catch (err) { e.target.disabled = false; C.toast(err.message, 5000); }
     };
   };

@@ -13,9 +13,16 @@ const plain = (s) => String(s || "")
   .replace(/\n{2,}/g, ". ")
   .replace(/\s+/g, " ").trim();
 
+// Beste Nederlandse stem: eigen keuze, anders Premium > Verbeterd/Enhanced > standaard (Vlaams eerst)
+function dutchVoices() {
+  const score = (v) => { const id = `${v.name} ${v.voiceURI}`.toLowerCase();
+    return (/premium/.test(id) ? 40 : /enhanced|verbeterd|neural|natural/.test(id) ? 20 : 0) + (v.lang === "nl-BE" ? 5 : 0) + (v.localService ? 1 : 0); };
+  return speechSynthesis.getVoices().filter((v) => v.lang?.toLowerCase().startsWith("nl")).sort((a, b) => score(b) - score(a));
+}
 function pickVoice() {
-  const vs = speechSynthesis.getVoices();
-  return vs.find((v) => v.lang === "nl-BE") || vs.find((v) => v.lang?.startsWith("nl")) || null;
+  const vs = dutchVoices();
+  let want = null; try { want = localStorage.getItem("hh_voice"); } catch { /* geen opslag */ }
+  return vs.find((v) => v.voiceURI === want) || vs[0] || null;
 }
 
 function speak(text, btn) {
@@ -76,6 +83,8 @@ export async function renderBriefing(ctx) {
         <button class="btn" id="bPlay" data-label="▶ Voorlezen" data-listen="1">▶ Voorlezen</button>
       </div>
       <div class="md" style="margin-top:10px">${C.md(B.text)}</div>
+      <div class="row voice-row" style="margin-top:10px;gap:8px"><label for="bVoice" class="small muted">Stem</label>
+        <select id="bVoice" class="input" style="flex:1;min-width:0"></select></div>
     </section>
     <div class="chat" id="bChat">${extra.map((m) => `<div class="msg ${m.role}${m.pending ? " pending" : ""}">${m.role === "user" ? C.esc(m.content) : C.md(m.content)}</div>`).join("")}</div>
     <section class="panel">
@@ -89,6 +98,11 @@ export async function renderBriefing(ctx) {
     </section>`;
   const play = $("#bPlay");
   play.onclick = () => speak(B.text, play);
+  const fillVoices = () => { const sel = $("#bVoice"); if (!sel) return; const vs = dutchVoices(); const cur = pickVoice();
+    sel.innerHTML = vs.length ? vs.map((v) => `<option value="${C.esc(v.voiceURI)}" ${cur && v.voiceURI === cur.voiceURI ? "selected" : ""}>${C.esc(v.name)} (${C.esc(v.lang)})</option>`).join("")
+      : `<option>Standaardstem</option>`;
+    sel.onchange = () => { try { localStorage.setItem("hh_voice", sel.value); } catch { /* */ } speechSynthesis.cancel(); speaking = false; speak("Hoi Simon, zo klink ik.", null); }; };
+  if ("speechSynthesis" in window) { fillVoices(); speechSynthesis.onvoiceschanged = fillVoices; } else $(".voice-row")?.remove();
   $("#bMic")?.addEventListener("click", startMic);
   $("#bSend").onclick = send;
   // Via de melding geopend? Meteen proberen voor te lezen (iOS vraagt soms toch een tik).

@@ -101,6 +101,14 @@ const text = (t: string, s = 200) => new Response(t, { status: s, headers: { "Co
 
 Deno.serve(async (req) => {
   const u = new URL(req.url);
+  // Afbeelding van een capture ophalen (voor Claude's inbox-taak): ?a=img&id=..&t=<token uit app.capture_inbox>
+  if (u.searchParams.get("a") === "img") {
+    const { data: path } = await admin.rpc("internal_capture_image", { p_id: Number(u.searchParams.get("id")), p_token: u.searchParams.get("t") || "" });
+    if (!path) return text("Niet gevonden", 404);
+    const { data: blob, error } = await admin.storage.from("captures").download(path as string);
+    if (error || !blob) return text("Niet gevonden", 404);
+    return new Response(blob, { headers: { "Content-Type": blob.type || "image/jpeg", "Cache-Control": "no-store" } });
+  }
   const k = u.searchParams.get("k") || req.headers.get("x-key") || "";
   const { data: ok } = await admin.rpc("internal_shortcut_key_ok", { p_key: k });
   if (!ok) return text("Geen toegang", 401);
@@ -140,6 +148,46 @@ Deno.serve(async (req) => {
       const { data, error } = await admin.rpc("internal_log_quick", { p_query: q.slice(0, 60), p_meal: meal });
       if (error) throw error;
       return text(data?.message || "Gelogd", data?.ok ? 200 : 404);
+    }
+    if (a === "capture") {
+      // Formulier met velden: image (bestand, optioneel), text (tekst uit de afbeelding), note (eigen uitleg)
+      let txt = "", note = "", file: File | null = null;
+      const ct = req.headers.get("content-type") || "";
+      if (ct.includes("multipart/form-data") || ct.includes("application/x-www-form-urlencoded")) {
+        const fd = await req.formData();
+        for (const [key, val] of fd.entries()) {
+          if (typeof val !== "string") { if (!file && val.size) file = val; }
+          else if (key === "note") note = val;
+          else if (key === "text") txt = val;
+        }
+      } else if (ct.includes("json")) {
+        const b = await req.json().catch(() => ({}));
+        txt = b.text || ""; note = b.note || "";
+      } else if (ct.startsWith("image/")) {
+        const buf = await req.arrayBuffer();
+        file = new File([buf], "capture", { type: ct });
+        txt = u.searchParams.get("text") || ""; note = u.searchParams.get("note") || "";
+      } else {
+        txt = await req.text();
+      }
+      if (!txt.trim() && !note.trim() && !file) return text("Niets ontvangen. Stuur een screenshot of tekst.", 400);
+      if (file && file.size > 15 * 1024 * 1024) return text("Afbeelding te groot (max 15 MB).", 413);
+      let path = "";
+      if (file) {
+        const ext = (file.type.split("/")[1] || "jpg").replace("jpeg", "jpg").replace(/[^a-z0-9]/g, "") || "jpg";
+        const day = new Date().toLocaleDateString("sv-SE", { timeZone: TZ });
+        path = `${day}/${crypto.randomUUID()}.${ext}`;
+        const { error } = await admin.storage.from("captures").upload(path, file, { contentType: file.type || "image/jpeg", upsert: false });
+        if (error) throw error;
+      }
+      const { error } = await admin.rpc("internal_capture_add", { p_text: txt, p_note: note, p_image_path: path });
+      if (error) throw error;
+      return text("Verstuurd naar Health Hub. Claude verwerkt het binnen het uur, je krijgt een melding.");
+    }
+    if (a === "wake") {
+      const { data, error } = await admin.rpc("internal_wake", { p_source: u.searchParams.get("src") || "wekker" });
+      if (error) throw error;
+      return text(data?.briefing_ready ? "Je briefing staat klaar." : "Goeiemorgen! Je briefing wordt nu gemaakt, je krijgt zo een melding.");
     }
     return text("Onbekende actie", 400);
   } catch (e) {
