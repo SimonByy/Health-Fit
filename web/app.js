@@ -249,8 +249,8 @@ function drawChart(el, { points, color, type = "bar", unit = "", dec = 0, goal =
 // Router
 // ======================================================================
 const state = { day: today(), nutDay: today(), trendDays: 30, trainTab: "workouts", conversation: null };
-const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training", koppelen: "Koppelen", menu: "Menu", briefing: "Briefing" };
-const ACCENT = { workout: "--strength", dagboek: "--sleep", vandaag: "--move", training: "--strength", voeding: "--fuel", trends: "--heart", vraag: "--sleep", menu: "--fuel", briefing: "--sleep" };
+const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training", koppelen: "Koppelen", menu: "Menu", briefing: "Briefing", feedback: "Feedback" };
+const ACCENT = { workout: "--strength", dagboek: "--sleep", vandaag: "--move", training: "--strength", voeding: "--fuel", trends: "--heart", vraag: "--sleep", menu: "--fuel", briefing: "--sleep", feedback: "--heart" };
 
 const SUBPAGES = new Set(["instellingen", "dagboek", "koppelen", "briefing", "vraag", "workout"]);
 const navStack = [location.hash]; // eigen spoor van bezochte schermen: bepaalt of "terug" ergens naartoe kan
@@ -1425,6 +1425,7 @@ const ROUTES = {
   koppelen: async () => (await import("./link.js")).renderLink(ctx),
   menu: async (p) => (await import("./menu.js")).renderMenu(ctx, p),
   briefing: async () => (await import("./briefing.js")).renderBriefing(ctx),
+  feedback: async () => (await import("./feedback.js")).renderFeedback(ctx),
 };
 
 async function boot() {
