@@ -1088,3 +1088,14 @@ body::before {
 .mp-stepset { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 8px 0 4px; }
 .mp-stepset .chip { padding: 4px 10px; }
 .mp-q { font-family: var(--font-num); font-weight: 600; color: var(--g1); }
+
+/* v16: maaltijden in-/uitklappen, altijd selecteren */
+.mcard .mtoggle { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.mcard .mchev { display: inline-block; font-size: 22px; line-height: 1; color: var(--faint); transform: rotate(90deg); transition: transform .18s ease; width: 14px; }
+.mcard.shut .mchev { transform: rotate(0deg); }
+.mcard.shut .mbody { display: none; }
+.mcard .mbody > .mi:first-child, .mcard .mbody > .mplan:first-child { margin-top: 4px; }
+@media (prefers-reduced-motion: reduce) { .mcard .mchev { transition: none; } }
+.mi.selmode { grid-template-columns: 28px 1fr auto; }
+button.mi-cb { padding: 0; background: transparent; cursor: pointer; }
+.selbar button.ghost { flex: 0 0 44px; color: var(--muted); }

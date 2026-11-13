@@ -2,7 +2,9 @@
 // Bovenaan de brandstofmeter (kcal over + macro's), daaronder per maaltijd
 // wat je at en de dingen die je daar meestal eet als knoppen.
 import { mealForNow, openAddFood, openEditFood, renderRecipes, pkv, MEALS } from "./food.js";
-let selecting = false;
+const OPEN_KEY = "hh_meal_closed";
+const closedMeals = (() => { try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || "[]")); } catch { return new Set(); } })();
+const saveClosed = () => { try { localStorage.setItem(OPEN_KEY, JSON.stringify([...closedMeals])); } catch { /* */ } };
 const sel = new Set();
 
 let C;
@@ -84,20 +86,24 @@ export async function renderNutrition(ctx, state) {
     const list = all.filter((i) => !planLogIds.has(i.id));   // gelogd via het menu: staat al als afgevinkte planning
     const kc = all.reduce((s, i) => s + (Number(i.kcal) || 0), 0);
     const plan = planFor(m);
-    return `<section class="mcard ${m === now && isToday ? "now" : ""}" data-meal="${m}">
-      <header><h2>${LABEL[m] || m}</h2><span class="mk">${all.length ? `${C.fmt(kc)} kcal` : ""}</span>
+    const shut = closedMeals.has(m);
+    return `<section class="mcard ${m === now && isToday ? "now" : ""} ${shut ? "shut" : ""}" data-meal="${m}">
+      <header><button class="mtoggle" type="button" aria-expanded="${!shut}"><span class="mchev" aria-hidden="true">›</span><h2>${LABEL[m] || m}</h2>
+        <span class="mk">${all.length ? `${C.fmt(kc)} kcal${shut ? ` · ${all.length} ${all.length === 1 ? "item" : "items"}` : ""}` : ""}</span></button>
         <button class="madd" data-add="${m}" aria-label="Iets toevoegen aan ${(LABEL[m] || m).toLowerCase()}">+</button></header>
-      ${(selecting ? [] : plan).map((p) => { const q = Number(p.portions) || 1; return `<label class="mplan ${p.eaten ? "eaten" : ""}">
+      <div class="mbody">
+      ${plan.map((p) => { const q = Number(p.portions) || 1; return `<label class="mplan ${p.eaten ? "eaten" : ""}">
           <input type="checkbox" data-plan="${p.id}" ${p.eaten ? "checked" : ""}>
           <span class="mi-t">${C.esc(p.r.name)}<small>${p.eaten ? "gegeten · " : "gepland · "}${q !== 1 ? `${C.fmt(q, 2)} porties ` : ""}${pkv((Number(p.r.protein) || 0) * q, (Number(p.r.carbs) || 0) * q, (Number(p.r.fat) || 0) * q)}</small></span>
           <span class="mi-k">${C.fmt((Number(p.r.kcal) || 0) * q)}</span></label>`; }).join("")}
-      ${(selecting ? all : list).map((i) => `<div class="mi ${selecting ? "selmode" : ""} ${sel.has(i.id) ? "sel" : ""}" data-id="${i.id}">
-          ${selecting ? `<span class="mi-cb" aria-hidden="true"></span>` : ""}
-          <button class="mi-t" type="button" aria-label="${C.esc(i.name)} ${selecting ? "selecteren" : "aanpassen"}">${C.esc(i.name)}<small>${i.grams != null ? `${C.fmt(i.grams)} g ` : ""}${pkv(i.protein, i.carbs, i.fat)}</small></button>
+      ${list.map((i) => `<div class="mi selmode ${sel.has(i.id) ? "sel" : ""}" data-id="${i.id}">
+          <button class="mi-cb" type="button" role="checkbox" aria-checked="${sel.has(i.id)}" aria-label="${C.esc(i.name)} selecteren"></button>
+          <button class="mi-t" type="button" aria-label="${C.esc(i.name)} aanpassen">${C.esc(i.name)}<small>${i.grams != null ? `${C.fmt(i.grams)} g ` : ""}${pkv(i.protein, i.carbs, i.fat)}</small></button>
           <span class="mi-k">${C.fmt(i.kcal)}</span>
-          ${selecting ? "" : `<button class="mi-x" aria-label="${C.esc(i.name)} verwijderen">×</button>`}</div>`).join("")}
-      ${selecting ? "" : sugg[m].length && (!list.length || (isToday && m === now) || sugg[m].some((x) => x.pair)) ? `<div class="sugg">${sugg[m].some((x) => x.pair) && all.length ? `<span class="sugg-h">Vaak samen met wat je al at:</span>` : ""}${sugg[m].map((s, k) => `<button class="sg ${s.pair ? "pair" : ""}" data-sg="${k}"><span>${s.pair ? "＋ " : ""}${C.esc(short(s.name))}</span><small>${C.fmt(s.kcal)}</small></button>`).join("")}</div>`
+          </div>`).join("")}
+      ${sugg[m].length && (!list.length || (isToday && m === now) || sugg[m].some((x) => x.pair)) ? `<div class="sugg">${sugg[m].some((x) => x.pair) && all.length ? `<span class="sugg-h">Vaak samen met wat je al at:</span>` : ""}${sugg[m].map((s, k) => `<button class="sg ${s.pair ? "pair" : ""}" data-sg="${k}"><span>${s.pair ? "＋ " : ""}${C.esc(short(s.name))}</span><small>${C.fmt(s.kcal)}</small></button>`).join("")}</div>`
         : !list.length && !plan.length ? `<p class="mempty">Nog niets. Tik op + om iets toe te voegen.</p>` : ""}
+      </div>
     </section>`;
   };
 
@@ -111,10 +117,9 @@ export async function renderNutrition(ctx, state) {
     ${gauge(C, tot)}
     ${menu.length ? (() => { const e = menu.filter((i) => i.eaten).length; return `<div class="mp-planbar"><span class="small">Weekmenu: <b>${e} van ${menu.length}</b> gegeten</span>
       ${e < menu.length ? `<button class="chip" id="eatAll">✓ Rest afvinken</button>` : `<span class="small ok-badge">✓ alles gelogd</span>`}</div>`; })() : ""}
-    ${items.length ? `<div class="selbar-top"><button class="chip ${selecting ? "on" : ""}" id="selToggle">${selecting ? "✕ Klaar met selecteren" : "☑ Selecteren"}</button>${selecting ? `<span class="small muted">Tik op wat je wil kopiëren, bundelen of verwijderen.</span>` : ""}</div>` : ""}
     ${meals.map(mealCard).join("")}
-    ${selecting ? `<div class="selbar" id="selBar"><span id="selN"></span>
-      <button id="selCopy">Kopieer naar…</button><button id="selRecipe">Maak recept</button><button id="selDel" class="danger">Verwijder</button></div>` : ""}
+    <div class="selbar" id="selBar" hidden><span id="selN"></span>
+      <button id="selCopy">Kopieer naar…</button><button id="selRecipe">Maak recept</button><button id="selDel" class="danger">Verwijder</button><button id="selClear" class="ghost" aria-label="Selectie wissen">✕</button></div>
     <button class="searchbar big" id="search"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Zoek iets om toe te voegen…</button>
     ${wk.length ? `<h2 class="section-title">Afgelopen 7 dagen</h2>
     <section class="panel weekfood">
@@ -143,16 +148,16 @@ export async function renderNutrition(ctx, state) {
   C.view.querySelector("#search").onclick = () => openAddFood(C, { day, meal: isToday ? now : "Lunch", after: reload });
   // ---- selecteren: kopiëren, recept/maaltijd maken, verwijderen ----
   const updSel = () => { const b = C.view.querySelector("#selN"); if (!b) return;
-    b.textContent = sel.size ? `${sel.size} geselecteerd` : "Niets geselecteerd";
-    C.view.querySelectorAll("#selBar button").forEach((x) => (x.disabled = !sel.size)); };
-  C.view.querySelector("#selToggle")?.addEventListener("click", () => { selecting = !selecting; sel.clear(); reload(); });
+    b.textContent = `${sel.size} geselecteerd`;
+    C.view.querySelector("#selBar").hidden = !sel.size; };
+  C.view.querySelector("#selClear").onclick = () => { sel.clear(); C.view.querySelectorAll(".mi.sel").forEach((r) => { r.classList.remove("sel"); r.querySelector(".mi-cb")?.setAttribute("aria-checked", "false"); }); updSel(); };
   updSel();
   const chosen = () => items.filter((i) => sel.has(i.id));
   C.view.querySelector("#selDel")?.addEventListener("click", async () => {
     const ids = [...sel]; if (!ids.length) return;
     await C.rpc("void_food_many", { p_ids: ids });
     const back = chosen();
-    selecting = false; sel.clear(); reload();
+    sel.clear(); reload();
     C.toast(`${ids.length} verwijderd`, 6000, { label: "Ongedaan maken", run: async () => {
       for (const it of back) {
         const p = it.food_id && it.grams ? { day: it.day, meal: it.meal, grams: it.grams, food: { id: it.food_id } }
@@ -161,8 +166,8 @@ export async function renderNutrition(ctx, state) {
       }
       reload(); } });
   });
-  C.view.querySelector("#selCopy")?.addEventListener("click", () => copySheet(chosen(), day, () => { selecting = false; sel.clear(); reload(); }));
-  C.view.querySelector("#selRecipe")?.addEventListener("click", () => makeRecipe(chosen(), day, () => { selecting = false; sel.clear(); reload(); }));
+  C.view.querySelector("#selCopy")?.addEventListener("click", () => copySheet(chosen(), day, () => { sel.clear(); reload(); }));
+  C.view.querySelector("#selRecipe")?.addEventListener("click", () => makeRecipe(chosen(), day, () => { sel.clear(); reload(); }));
   C.view.querySelector("details.panel").addEventListener("toggle", (e) => {
     if (e.target.open && !e.target.dataset.loaded) { e.target.dataset.loaded = 1; renderRecipes(C, day, C.view.querySelector("#recipes"), reload); }
   });
@@ -194,11 +199,17 @@ export async function renderNutrition(ctx, state) {
       try { await C.rpc("mp_item_eaten", { p_item_id: p.id, p_eaten: cb.checked }); reload(); }
       catch (e) { cb.checked = !cb.checked; cb.disabled = false; C.toast(e.message, 5000); }
     }));
-    card.querySelectorAll(".mi .mi-t").forEach((b) => (b.onclick = () => {
+    card.querySelector(".mtoggle").onclick = () => {
+      const shut = !card.classList.contains("shut");
+      card.classList.toggle("shut", shut); card.querySelector(".mtoggle").setAttribute("aria-expanded", String(!shut));
+      shut ? closedMeals.add(meal) : closedMeals.delete(meal); saveClosed();
+    };
+    card.querySelectorAll(".mi .mi-cb").forEach((b) => (b.onclick = () => {
       const row = b.closest(".mi"), id = row.dataset.id;
-      if (selecting) { sel.has(id) ? sel.delete(id) : sel.add(id); row.classList.toggle("sel", sel.has(id)); updSel(); return; }
-      openEditFood(C, items.find((i) => i.id === id), reload);
+      sel.has(id) ? sel.delete(id) : sel.add(id);
+      row.classList.toggle("sel", sel.has(id)); b.setAttribute("aria-checked", String(sel.has(id))); updSel();
     }));
+    card.querySelectorAll(".mi .mi-t").forEach((b) => (b.onclick = () => openEditFood(C, items.find((i) => i.id === b.closest(".mi").dataset.id), reload)));
     card.querySelectorAll(".mi-x").forEach((b) => (b.onclick = async () => {
       const it = items.find((i) => i.id === b.closest(".mi").dataset.id);
       await C.rpc("void_food", { p_id: it.id });
