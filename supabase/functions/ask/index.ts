@@ -290,6 +290,17 @@ Deno.serve(async (req) => {
   return await als.run(await makeCtx(uid), () => handle(body, isCron));
 });
 
+
+// AI-limiet per gebruiker en plan (free/premium; admin onbeperkt)
+async function take(feature: string): Promise<Response | null> {
+  const q = await rpc<any>("internal_ai_take", { p_feature: feature }).catch(() => ({ ok: true }));
+  if (q?.ok) return null;
+  const msg = q?.plan === "free"
+    ? "Je gratis AI-vragen voor vandaag zijn op. Met Premium kan je meer vragen."
+    : "Je hebt je AI-limiet voor vandaag bereikt. Morgen kan je weer verder.";
+  return json({ error: msg, quota: q }, 429);
+}
+
 async function handle(body: any, isCron: boolean): Promise<Response> {
   if (!GEMINIK() && !(await rpc<string | null>("internal_get_secret", { p_name: "anthropic_api_key" }).catch(() => null)))
     return json({ error: "Vul eerst je eigen gratis Gemini-sleutel in bij Instellingen (aistudio.google.com/apikey)." }, 400);
@@ -313,6 +324,7 @@ async function handle(body: any, isCron: boolean): Promise<Response> {
          from (select * from app.foods where not coalesce(archived, false) and recipe is null and per100 ? 'kcal' order by use_count desc nulls last limit 80) f) as producten` });
     const c = ctx?.[0] ?? {};
     if (!c.maaltijd) return json({ ideas: [] });
+    const lim = await take("pair"); if (lim) return lim;
     const sys = `Je stelt voor wat lekker past bij een maaltijd van ${N()} (fitness, ${meal.toLowerCase()}). Kies ALLEEN uit de lijst 'producten' (gebruik hun id), 2 of 3 ideeën die smaakmatig echt passen bij wat hij al heeft (bv. bij scampi: rijst of pasta, groenten, een saus), met een realistische hoeveelheid in gram die in zijn resterende budget past (doelen min vandaag). Antwoord met ALLEEN JSON: {"ideas":[{"id":"<uuid uit de lijst>","gram":<getal>,"waarom":"<max 6 woorden>"}]}`;
     try {
       const { text } = await geminiLoop({ apiKey: GEMINIK(), model: GEMINI_MODEL, system: sys, tools: [], json: true, maxSteps: 2,
@@ -346,6 +358,8 @@ async function handle(body: any, isCron: boolean): Promise<Response> {
   // --- chat ---
   const message = (body.message ?? "").trim();
   if (!message) return json({ error: "Lege vraag" }, 400);
+  if (message.length > 1500) return json({ error: "Je vraag is te lang (max. 1500 tekens)." }, 400);
+  const lim = await take("chat"); if (lim) return lim;
   const conversationId = body.conversation_id || crypto.randomUUID();
   const history = await rpc<{ role: string; content: string }[]>("internal_chat_history", { p_conversation: conversationId, p_limit: 16 });
   const messages: any[] = [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: message }];
