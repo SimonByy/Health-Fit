@@ -5,7 +5,7 @@
 // - Past zich aan: een training die je echt deed (Garmin, Hevy, logger) vinkt de sessie af, ook als je ze een dag
 //   eerder of later deed; wat je miste kan je met één tik inhalen of overslaan.
 import * as RP from "./runplan.js";
-let C;
+let C, TARGETS = {};
 const WDL = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"];
 const WDS = ["ma", "di", "wo", "do", "vr", "za", "zo"];
 const CARDIO = [["lopen", "Lopen"], ["loopband", "Loopband"], ["fietsen", "Fietsen"], ["zwemmen", "Zwemmen"], ["roeien", "Roeien"], ["wandelen", "Stevig wandelen"], ["crosstrainer", "Crosstrainer"]];
@@ -22,6 +22,7 @@ const slotDetails = (x, R) => {
     : x.intensity === "tempo" ? "10 min inlopen · 15–20 min stevig maar gecontroleerd · uitlopen"
     : x.intensity === "lang" ? "Rustig tempo, je kan nog praten · langer dan je andere sessies"
     : x.intensity === "rustig" ? "Heel rustig, voor herstel" : "Rustig tempo, je kan nog praten · zone 2";
+  if (x.routine_id && TARGETS[x.routine_id]) return TARGETS[x.routine_id];
   const r = (R.routines || []).find((y) => y.id === x.routine_id);
   return r ? (r.exercises || []).map((e) => `${e.title}${e.sets ? ` ${e.sets} sets` : ""}`).join(" · ") : null;
 };
@@ -85,6 +86,7 @@ export async function renderPlanner(ctx, start) {
   const premium = document.body.dataset.plan !== "free";
   const [p, R, stats] = await Promise.all([loadPrefs(), C.rpc("get_workout_routines").catch(() => ({ folders: [], routines: [] })),
     premium ? C.rpc("get_run_stats").catch(() => ({})) : {}]);
+  TARGETS = premium ? p.targets || {} : {};
   const rp = premium && p.run_plan?.date && p.run_plan.date >= today ? p.run_plan : null;
   const plan = rp ? RP.buildRunPlan(rp, stats, today) : null;
   const pw = plan?.weeks.find((w) => w.start === from) || null;
@@ -105,9 +107,9 @@ export async function renderPlanner(ctx, start) {
     const runs = (pw?.sessions || []).filter((x) => x.dow === i).map((x) => ({ cat: "cardio", cardio_type: "lopen", intensity: x.type, duration: x.min,
       title: x.title, details: RP.sessionDetails(x, stats), runplan: true }));
     const want = own.length ? [] : [...(p.template[i] || []).filter((x) => !(rp && isRun(x))), ...runs];
-    const have = auto.map((s) => sig(catOf(s), s.title, s.duration_min)).sort().join(";");
+    const have = auto.map((s) => sig(catOf(s), s.title, s.duration_min) + "|" + (s.details || "")).sort().join(";");
     const tOf = (x) => (x.runplan ? x.title : slotTitle(x, R));
-    const need = want.map((x) => sig(x.cat, tOf(x), x.duration)).sort().join(";");
+    const need = want.map((x) => sig(x.cat, tOf(x), x.duration) + "|" + ((x.runplan ? x.details : slotDetails(x, R)) || "")).sort().join(";");
     if (have === need) continue;
     for (const s of auto) await C.rpc("save_coach_session", { p: { id: s.id, delete: true } });
     for (const x of want) await C.rpc("save_coach_session", { p: { day: d, category: x.cat, title: tOf(x), routine_id: x.routine_id || "",
@@ -295,7 +297,8 @@ function renderRunPlan(p, rp, plan, stats, from, after) {
     box.querySelector("#rMake").onclick = async () => {
       const date = box.querySelector("#rDate").value; if (!date) return C.toast("Kies de datum van je wedstrijd");
       p.run_plan = { race: box.querySelector("#rRace").value, date, runs_per_week: Number(box.querySelector("#rN").value),
-        long_day: Number(box.querySelector("#rL").value), target_time: box.querySelector("#rT").value.trim() || null, created: C.today(), adjust: {} };
+        long_day: Number(box.querySelector("#rL").value), target_time: box.querySelector("#rT").value.trim() || null, created: C.today(), adjust: {},
+        base_week_min: stats.avg_week_min_4w || 0, base_long_min: stats.longest_min_4w || 0 };
       const race = RP.RACES.find((r) => r[0] === p.run_plan.race);
       if (!p.goals.some((g) => g.kind === "uithouding")) p.goals.push({ title: race[1], kind: "uithouding", date: date.slice(0, 7) });
       await savePrefs(p); C.toast("Loopplan gemaakt"); after();

@@ -25,14 +25,14 @@ export const PHASE_TXT = {
 // Bouwt alle weken van nu tot de wedstrijd
 export function buildRunPlan(rp, stats, today) {
   const race = RACES.find((r) => r[0] === rp.race) || RACES[2];
-  const start = monday(today), raceDay = rp.date;
+  const start = monday(rp.created || today), raceDay = rp.date;
   const n = Math.max(2, Math.round((new Date(monday(raceDay) + "T12:00:00Z") - new Date(start + "T12:00:00Z")) / (7 * 864e5)) + 1);
   const runs = Math.min(5, Math.max(2, rp.runs_per_week || 3));
   const longDay = rp.long_day ?? 6;
   const days = pickDays(runs, longDay, rp.days);
-  let long = Math.max(25, stats.longest_min_4w || 0, 20);
+  let long = Math.max(25, rp.base_long_min ?? stats.longest_min_4w ?? 0);
   const peakLong = race[3];
-  let weekly = Math.max(runs * 20, stats.avg_week_min_4w || 0);
+  let weekly = Math.max(runs * 20, rp.base_week_min ?? stats.avg_week_min_4w ?? 0);
   const weeks = [];
   for (let i = 0; i < n; i++) {
     const phase = phaseOf(i, n);

@@ -1,0 +1,4 @@
+-- 0066: public.get_run_stats() — runs (laatste 8 weken), weekomvang, langste run, tempo.
+-- 0067: internal_set_setting, internal_is_premium, internal_save_week_feedback (service_role),
+--       app.coach_kick() + cron 'coach-weekly' (zondag 18:15 UTC) voor de Gemini-coach (edge function 'coach').
+-- Volledige SQL: supabase_migrations.schema_migrations.
