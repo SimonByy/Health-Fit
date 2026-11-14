@@ -395,7 +395,12 @@ export async function renderWorkout(ctx) {
         ${rec.map((r) => `<div class="meal"><span><b>${C.esc(r.exercise)}</b><br><span class="small muted">${C.esc(r.kind)}</span></span>
           <span class="k">${C.fmt(r.value, 1)} kg<br><span class="small muted">was ${C.fmt(r.previous, 1)}</span></span></div>`).join("")}</section>` : ""}
       <section class="panel" id="tplBox"><div class="skeleton" style="height:60px"></div></section>
+      <button class="btn secondary" id="wShare" style="display:block;width:100%;margin-bottom:10px">Delen als afbeelding</button>
       <a class="btn" href="#/training" style="display:block;text-align:center;text-decoration:none">Klaar</a>`;
+    document.getElementById("wShare").onclick = async (ev) => {
+      const b = ev.currentTarget; b.disabled = true;
+      try { await (await import("./share.js")).shareWorkout(C, done, s, rec); } finally { b.disabled = false; }
+    };
     import("./routines.js").then((R) => R.saveAsRoutine(C, done, document.getElementById("tplBox")));
   }
 }

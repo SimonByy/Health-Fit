@@ -1,0 +1,5 @@
+-- 0072 (+b,c,d): get_week_report(p_from) (weekrapport), get_weight_series(p_days) (doelgewicht + ETA),
+--   voorraad bij gewoontes: app.habits.stock/stock_set_at/per_dose/stock_alert_days/stock_unit, app.habit_stock_left(h),
+--   set_habit_stock(...), get_habits geeft stock_left terug, app.stock_nudge() + cron 'stock-nudge' (dagelijks 10:05),
+--   app.week_report_kick() + cron 'week-report' (zondag 20:00) → melding naar /#/week.
+-- Volledige SQL staat in supabase_migrations.schema_migrations.

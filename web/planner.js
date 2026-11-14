@@ -336,6 +336,17 @@ function renderRunPlan(p, rp, plan, stats, from, after) {
     <h4 class="sub-h">Deze week · ${cur.total} min lopen</h4>
     ${cur.sessions.map((s) => `<div class="meal"><span><b>${C.esc(s.title)}</b><br><span class="small muted">${RP.WDL[s.dow]} · ${C.esc(RP.sessionDetails(s, stats))}</span></span><span class="k">${s.min}′</span></div>`).join("")}
     ${cur.note ? `<p class="small" style="margin:8px 0 0"><b>Coach:</b> ${C.esc(cur.note)}</p>` : ""}
+    ${(() => {
+      const pr = RP.predictRace(stats.runs, plan.race[2]); if (!pr) return "";
+      const goal = RP.parseTime(rp.target_time);
+      const rng = ([a, b]) => `${RP.fmtPace(a)}–${RP.fmtPace(b)}`;
+      return `<h4 class="sub-h">Voorspelling</h4>
+        <p style="margin:0">Als je vandaag een ${C.esc(plan.race[1].toLowerCase())} loopt: <b>± ${RP.fmtTime(pr.sec)}</b> (${RP.fmtPace(pr.sec / plan.race[2])} /km).</p>
+        ${goal ? `<p class="small" style="margin:4px 0 0">Doeltijd ${RP.fmtTime(goal)} = ${RP.fmtPace(goal / plan.race[2])} /km · ${goal >= pr.sec ? "haalbaar met wat je nu loopt" : `nog ${RP.fmtTime(pr.sec - goal)} sneller dan nu`}.</p>` : ""}
+        <p class="small muted" style="margin:4px 0 8px">Berekend uit je snelste recente run (${C.fmt(pr.from.km, 1)} km in ${C.fmt(pr.from.min)} min, ${C.esc(fmtD(pr.from.day))}). Alleen rustige runs of run-walks geven een voorzichtige schatting.</p>
+        <div class="rp-paces small"><span><b>Rustig</b> ${rng(pr.paces.rustig)} /km</span><span><b>Tempo</b> ${rng(pr.paces.tempo)} /km</span><span><b>Interval</b> ${rng(pr.paces.interval)} /km</span></div>
+        <p class="small muted" style="margin:6px 0 0">Richttempo's; je hartslagzones gaan voor bij de rustige runs.</p>`;
+    })()}
     <details style="margin-top:10px"><summary class="small">Je runs van de laatste weken</summary>
       <table class="nutrients small">${(stats.runs || []).slice(0, 8).map((r) => `<tr><td>${C.esc(fmtD(r.day))}</td><td>${C.fmt(r.km, 1)} km · ${C.fmt(r.min)} min</td><td>${r.hr ? `${r.hr} bpm` : ""}</td></tr>`).join("") || "<tr><td>Nog geen runs.</td></tr>"}</table></details>
   </section>`;

@@ -300,10 +300,10 @@ function drawChart(el, { points, color, type = "bar", unit = "", dec = 0, goal =
 // Router
 // ======================================================================
 const state = { day: today(), nutDay: today(), trendDays: 30, trainTab: "workouts", conversation: null };
-const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training", planner: "Planner", koppelen: "Koppelen", menu: "Menu", briefing: "Briefing", feedback: "Feedback" };
+const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training", planner: "Planner", koppelen: "Koppelen", menu: "Menu", briefing: "Briefing", feedback: "Feedback", week: "Weekrapport" };
 const ACCENT = { workout: "--strength", planner: "--strength", dagboek: "--sleep", vandaag: "--move", training: "--strength", voeding: "--fuel", trends: "--heart", vraag: "--sleep", menu: "--fuel", briefing: "--sleep", feedback: "--heart" };
 
-const SUBPAGES = new Set(["instellingen", "dagboek", "koppelen", "briefing", "vraag", "workout", "planner"]);
+const SUBPAGES = new Set(["instellingen", "dagboek", "koppelen", "briefing", "vraag", "workout", "planner", "week"]);
 const navStack = [location.hash]; // eigen spoor van bezochte schermen: bepaalt of "terug" ergens naartoe kan
 async function route() {
   let [name, param] = (location.hash.replace(/^#\/?/, "") || "vandaag").split("/");
@@ -474,6 +474,7 @@ async function renderToday() {
         <details ${ins.read_at ? "" : "open"} id="insDet"><summary>${esc(ins.title)} <span class="muted small">${esc(shortDate(ins.created_at.slice(0, 10)))}</span></summary>
         <div class="md">${md(ins.content)}</div></details>
       </section>` : ""}
+    ${isToday && [0, 1].includes(new Date(state.day + "T12:00:00Z").getUTCDay()) ? `<a class="panel lk-cta" href="#/week"><span><b>Je week in cijfers</b><br><span class="small muted">Training, slaap, voeding en gewicht tegenover de week ervoor</span></span><span aria-hidden="true">›</span></a>` : ""}
     ${mpToday.length ? `<a class="panel lk-cta" href="#/menu/week"><span><b>Vandaag op je menu</b><br><span class="small muted">${mpToday.map((i) => esc(i.r.name)).join(" · ")}</span></span><span aria-hidden="true">›</span></a>` : ""}
     <div class="board">
       <div id="todayReady"></div>
@@ -1176,6 +1177,7 @@ async function renderSettings() {
   view.innerHTML = `
     <nav class="quicklinks" aria-label="Meer">
       <a href="#/dagboek"><b>Dagboek</b><span>Inspreken of typen</span></a>
+      <a href="#/week"><b>Weekrapport</b><span>Je week in cijfers</span></a>
       <a href="#/vraag" data-premium><b>Coach</b><span>AI-chat (ook via ✦ rechtsonder)</span></a>
       <a href="#/briefing" data-premium><b>Briefing</b><span>Je ochtendoverzicht</span></a>
       <a href="#/koppelen"><b>Koppelen</b><span>Garmin en Gezondheid</span></a>
@@ -1224,7 +1226,7 @@ async function renderSettings() {
     <details class="set-group"><summary>Doelen</summary><div class="set-body">
       <a class="btn secondary" href="#/planner" style="display:block;text-align:center;text-decoration:none;margin-bottom:12px">Trainingsdoelen, voorkeurdagen en weekplan</a>
       <div class="goals">
-        ${[["steps", "Stappen per dag"], ["active_kcal", "Actieve kcal"], ["sleep_h", "Slaap (uren)"], ["kcal_in", "Calorieën (kcal)"], ["protein_g", "Eiwit (g)"], ["carbs_g", "Koolhydraten (g)"], ["fat_g", "Vet (g)"], ["fiber_g", "Vezels (g)"], ["water_ml", "Water (ml)"], ["caffeine_mg", "Cafeïne max (mg)"]]
+        ${[["steps", "Stappen per dag"], ["active_kcal", "Actieve kcal"], ["sleep_h", "Slaap (uren)"], ["kcal_in", "Calorieën (kcal)"], ["protein_g", "Eiwit (g)"], ["carbs_g", "Koolhydraten (g)"], ["fat_g", "Vet (g)"], ["fiber_g", "Vezels (g)"], ["water_ml", "Water (ml)"], ["caffeine_mg", "Cafeïne max (mg)"], ["weight_kg", "Doelgewicht (kg)"]]
           .map(([k, l]) => `<div class="field"><label for="g_${k}">${l}</label><input class="input" inputmode="decimal" id="g_${k}" value="${esc(goals[k] ?? "")}"></div>`).join("")}
       </div>
       <button class="btn" id="saveGoals">Doelen opslaan</button>
@@ -1475,7 +1477,7 @@ async function renderSettings() {
   });
   $("#saveGoals").onclick = async () => {
     const out = {};
-    for (const k of ["steps", "active_kcal", "sleep_h", "kcal_in", "protein_g", "carbs_g", "fat_g", "fiber_g", "water_ml", "caffeine_mg"]) {
+    for (const k of ["steps", "active_kcal", "sleep_h", "kcal_in", "protein_g", "carbs_g", "fat_g", "fiber_g", "water_ml", "caffeine_mg", "weight_kg"]) {
       const v = num(String($("#g_" + k).value).replace(",", "."));
       if (v !== null) out[k] = v;
     }
@@ -1596,6 +1598,7 @@ const ROUTES = {
   menu: async (p) => (await import("./menu.js")).renderMenu(ctx, p),
   briefing: async () => (await import("./briefing.js")).renderBriefing(ctx),
   feedback: async () => (await import("./feedback.js")).renderFeedback(ctx),
+  week: async (p) => (await import("./week.js")).renderWeek(ctx, p),
 };
 
 async function boot() {

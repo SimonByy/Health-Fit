@@ -61,6 +61,11 @@ export function openCalendar(C, { current, onPick }) {
 // ---------------- gewoontes ----------------
 const HABIT_IDEAS = [["Creatine", "💊"], ["Vitamine D", "☀️"], ["Stretchen", "🧘"], ["10.000 stappen", "🚶"], ["Geen alcohol", "🚫"], ["Lezen", "📖"]];
 
+// Voorraad: dagen over = porties over / porties per dag
+const daysLeft = (h) => (h.stock_left == null ? null : Math.floor(Number(h.stock_left) / (Number(h.per_dose) || 1)));
+const stockLow = (h) => daysLeft(h) != null && daysLeft(h) <= (h.stock_alert_days || 7);
+const stockTxt = (h) => (daysLeft(h) <= 0 ? "op" : `nog ${daysLeft(h)} d`);
+
 export async function renderHabits(C, day, box) {
   const list = await C.rpc("get_habits", { p_day: day });
   if (!list.length) {
@@ -74,7 +79,7 @@ export async function renderHabits(C, day, box) {
   }
   box.innerHTML = `<div class="habits">${list.map((h) => `<button class="habit ${h.done ? "on" : ""}" data-id="${h.id}" aria-pressed="${h.done}">
       <span class="he">${C.esc(h.emoji || "✓")}</span><span class="hn">${C.esc(h.name)}</span>
-      <span class="hs">${h.streak >= 2 ? `🔥 ${h.streak}` : `${h.last7}/7`}</span></button>`).join("")}</div>
+      <span class="hs">${stockLow(h) ? `<span class="warn">${stockTxt(h)}</span>` : h.streak >= 2 ? `🔥 ${h.streak}` : `${h.last7}/7`}</span></button>`).join("")}</div>
     <a class="small muted" href="#/instellingen" style="display:inline-block;margin:6px 0 12px">Gewoontes beheren</a>`;
   box.querySelectorAll(".habit").forEach((b) => (b.onclick = async () => {
     b.classList.toggle("on");
@@ -87,11 +92,12 @@ export async function renderHabitSettings(C, box) {
   const list = await C.rpc("get_habits", { p_day: C.today() });
   box.innerHTML = `${list.map((h) => `<div class="habit-set" data-id="${h.id}">
       <div class="hs-main"><div class="t">${C.esc(h.emoji || "")} ${C.esc(h.name)}</div>
-        <div class="m">${h.last7}/7 deze week${h.streak >= 2 ? ` · reeks ${h.streak} dagen` : ""}</div></div>
+        <div class="m">${h.last7}/7 deze week${h.streak >= 2 ? ` · reeks ${h.streak} dagen` : ""}${daysLeft(h) != null ? ` · <span class="${stockLow(h) ? "warn" : ""}">voorraad ${daysLeft(h) <= 0 ? "op" : `± ${daysLeft(h)} dagen`}</span>` : ""}</div></div>
       <label class="switch" title="Herinnering"><input type="checkbox" data-remind ${h.remind ? "checked" : ""} aria-label="Herinnering voor ${C.esc(h.name)}"><span></span></label>
       <button class="icon-btn" data-del aria-label="${C.esc(h.name)} verwijderen">✕</button>
       <div class="hs-time" ${h.remind ? "" : "hidden"}><span class="small muted">Herinner me om</span>
         <input class="input" type="time" data-time value="${C.esc(h.remind_time || "19:00")}" aria-label="Uur"></div>
+      <button class="link-btn small" data-stock>${h.stock_left == null ? "Voorraad bijhouden" : "Voorraad aanpassen"}</button>
     </div>`).join("") || `<p class="muted small">Nog geen gewoontes.</p>`}
     <form class="row" id="hf" style="margin-top:10px">
       <input class="input" id="hE" placeholder="🙂" aria-label="Emoji" style="max-width:64px;flex:none;text-align:center">
@@ -113,6 +119,30 @@ export async function renderHabitSettings(C, box) {
   box.querySelectorAll("[data-time]").forEach((t) => (t.onchange = async () => {
     await C.rpc("save_habit", { p: { id: idOf(t), remind_time: t.value } });
     C.toast(`Herinnering om ${t.value}`);
+  }));
+  box.querySelectorAll("[data-stock]").forEach((b) => (b.onclick = () => {
+    const h = list.find((x) => x.id === idOf(b));
+    const { card, close } = sheetEl("Voorraad");
+    card.innerHTML = `<div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h3 style="margin:0">Voorraad: ${C.esc(h.name)}</h3><button class="icon-btn" id="sClose" aria-label="Sluiten">✕</button></div>
+      <p class="hint" style="margin-top:8px">Vul in hoeveel je nu in huis hebt. Elke keer dat je afvinkt, gaat er één portie af. Je krijgt een melding als het bijna op is.</p>
+      <div class="grid2">
+        <div class="field"><label for="sQ">Porties in huis</label><input class="input" id="sQ" inputmode="decimal" value="${h.stock_left ?? ""}" placeholder="bv. 60"></div>
+        <div class="field"><label for="sU">Eenheid (optioneel)</label><input class="input" id="sU" value="${C.esc(h.stock_unit || "")}" placeholder="bv. scoops"></div>
+        <div class="field"><label for="sP">Porties per keer</label><input class="input" id="sP" inputmode="decimal" value="${h.per_dose ?? 1}"></div>
+        <div class="field"><label for="sA">Melding bij (dagen over)</label><input class="input" id="sA" inputmode="numeric" value="${h.stock_alert_days ?? 7}"></div>
+      </div>
+      <p class="small muted">Tip creatine: een pot van 500 g met 5 g per dag = 100 porties.</p>
+      <div class="row" style="margin-top:10px"><button class="btn" id="sSave">Opslaan</button>${h.stock_left != null ? `<button class="btn ghost" id="sOff">Niet meer bijhouden</button>` : ""}</div>`;
+    const num = (id) => { const v = card.querySelector(id).value.replace(",", ".").trim(); return v === "" ? null : Number(v); };
+    card.querySelector("#sClose").onclick = close;
+    const save = async (stock) => {
+      try {
+        await C.rpc("set_habit_stock", { p_id: h.id, p_stock: stock, p_per_dose: num("#sP") || 1, p_alert_days: num("#sA") || 7, p_unit: card.querySelector("#sU").value });
+        close(); C.toast(stock == null ? "Voorraad uit" : "Voorraad opgeslagen"); renderHabitSettings(C, box);
+      } catch (e) { C.toast(e.message, 5000); }
+    };
+    card.querySelector("#sSave").onclick = () => { const q = num("#sQ"); if (q == null || q < 0 || isNaN(q)) return C.toast("Vul het aantal porties in"); save(q); };
+    card.querySelector("#sOff")?.addEventListener("click", () => save(null));
   }));
   box.querySelector("#hf").onsubmit = async (e) => {
     e.preventDefault();

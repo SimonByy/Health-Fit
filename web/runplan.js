@@ -88,3 +88,21 @@ export function sessionDetails(s, stats) {
 }
 
 export { WDL, monday, addDays };
+
+// ---- Racevoorspelling (Riegel, T2 = T1 × (D2/D1)^1.06) en richttempo's ----
+export const fmtTime = (sec) => { sec = Math.round(sec); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`; };
+export const fmtPace = (secPerKm) => `${Math.floor(secPerKm / 60)}:${String(Math.round(secPerKm % 60)).padStart(2, "0")}`;
+export function parseTime(txt) {
+  const p = String(txt || "").trim().split(":").map(Number); if (!p.length || p.some(isNaN)) return null;
+  return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p.length === 2 ? p[0] * 3600 + p[1] * 60 : null;
+}
+export function predictRace(runs, km) {
+  const ok = (runs || []).filter((r) => Number(r.km) >= 2.5 && Number(r.min) > 0);
+  if (!ok.length) return null;
+  const best = ok.map((r) => ({ r, t: Number(r.min) * 60 * Math.pow(km / Number(r.km), 1.06) })).sort((a, b) => a.t - b.t)[0];
+  const t5 = Number(best.r.min) * 60 * Math.pow(5 / Number(best.r.km), 1.06);
+  const p5 = t5 / 5;  // seconden per km op 5 km
+  return { sec: best.t, from: best.r, paces: {
+    rustig: [p5 + 75, p5 + 120], tempo: [p5 + 20, p5 + 35], interval: [p5 - 5, p5 + 5] } };
+}
