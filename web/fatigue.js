@@ -1,73 +1,88 @@
-// Spiervermoeidheid: lichaamskaart voor- en achterkant. Kleur = hoe vermoeid een spiergroep nog is
-// (werksets van de laatste 7 dagen, uitdovend met een halfwaardetijd van ±36 uur). Tik op een spier voor de uitleg.
+// Spierbelasting: lichaamskaart voor- en achterkant in vier stijlen die de gebruiker zelf kiest.
+// Groen = klaar, oranje = half belast, rood = belast. Werksets van de laatste 7 dagen, uitdovend met een
+// halfwaardetijd van ±36 uur. Tik op een spier voor het waarom.
+import { BODY } from "./bodydata.js";
 let C;
-const NAMES = { chest: "Borst", lats: "Lats", upper_back: "Bovenrug", lower_back: "Onderrug", traps: "Trapezius", shoulders: "Schouders",
+const NAMES = { chest: "Borst", lats: "Lats", upper_back: "Bovenrug en lats", lower_back: "Onderrug", traps: "Trapezius", shoulders: "Schouders",
   biceps: "Biceps", triceps: "Triceps", forearms: "Onderarmen", quadriceps: "Quadriceps", hamstrings: "Hamstrings", glutes: "Bilspieren",
   calves: "Kuiten", abductors: "Abductoren", adductors: "Adductoren", abdominals: "Buikspieren" };
-
-// Eenvoudige, symmetrische vormen per spiergroep (viewBox 120 × 250 per figuur)
-const sym = (f) => [f(1), f(-1)];
-const mirror = (d) => d.replace(/(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g, (m, x, y) => `${120 - Number(x)} ${y}`);
-const P = (d) => [d, mirror(d)];
-const FRONT = {
-  shoulders: sym((s) => `<ellipse cx="${60 - s * 25}" cy="52" rx="9" ry="9"/>`),
-  chest: P("M59 46 L45 46 Q38 56 44 68 Q52 71 59 68 Z").map((d) => `<path d="${d}"/>`),
-  biceps: sym((s) => `<ellipse cx="${60 - s * 30}" cy="76" rx="5.5" ry="12"/>`),
-  forearms: sym((s) => `<ellipse cx="${60 - s * 33}" cy="104" rx="4.5" ry="13"/>`),
-  abdominals: [`<rect x="51" y="71" width="18" height="40" rx="6"/>`],
-  abductors: sym((s) => `<ellipse cx="${60 - s * 16}" cy="118" rx="5" ry="8"/>`),
-  adductors: sym((s) => `<ellipse cx="${60 - s * 5}" cy="138" rx="3.5" ry="14"/>`),
-  quadriceps: sym((s) => `<ellipse cx="${60 - s * 14}" cy="150" rx="8" ry="24"/>`),
-  calves: sym((s) => `<ellipse cx="${60 - s * 14}" cy="202" rx="5.5" ry="18"/>`),
-};
-const BACK = {
-  traps: [`<path d="M60 34 L46 47 L60 64 L74 47 Z"/>`],
-  shoulders: sym((s) => `<ellipse cx="${60 - s * 25}" cy="52" rx="9" ry="9"/>`),
-  upper_back: [`<path d="M50 60 L70 60 L69 82 L51 82 Z"/>`],
-  lats: P("M49 62 Q40 72 46 98 L53 94 L51 64 Z").map((d) => `<path d="${d}"/>`),
-  lower_back: [`<rect x="52" y="86" width="16" height="22" rx="4"/>`],
-  triceps: sym((s) => `<ellipse cx="${60 - s * 30}" cy="76" rx="5.5" ry="12"/>`),
-  forearms: sym((s) => `<ellipse cx="${60 - s * 33}" cy="104" rx="4.5" ry="13"/>`),
-  glutes: sym((s) => `<ellipse cx="${60 - s * 9}" cy="124" rx="9.5" ry="11"/>`),
-  hamstrings: sym((s) => `<ellipse cx="${60 - s * 13}" cy="158" rx="8" ry="22"/>`),
-  calves: sym((s) => `<ellipse cx="${60 - s * 14}" cy="203" rx="6.5" ry="18"/>`),
-};
-// Neutraal silhouet: hoofd, nek, romp, handen, voeten
-const BODY = `<circle cx="60" cy="17" r="11"/><rect x="55" y="27" width="10" height="9" rx="3"/>
-  <path d="M42 42 Q60 36 78 42 L80 112 Q60 122 40 112 Z"/>
-  <circle cx="27" cy="121" r="4.5"/><circle cx="93" cy="121" r="4.5"/>
-  <path d="M38 118 L59 124 L57 228 L42 228 Z"/><path d="M82 118 L61 124 L63 228 L78 228 Z"/>
-  <ellipse cx="47" cy="234" rx="8" ry="4"/><ellipse cx="73" cy="234" rx="8" ry="4"/>`;
-
-const shade = (pct) => pct == null || pct < 3 ? "#4A504B" : `color-mix(in srgb, var(--plate-red) ${Math.round(25 + pct * 0.75)}%, #4A504B)`;
-const fresh = (pct) => pct >= 70 ? "nog erg vermoeid" : pct >= 40 ? "vermoeid" : pct >= 15 ? "licht vermoeid" : "hersteld";
-// uren tot onder 25 % (halfwaardetijd 36 u)
+const STYLES = [["vlak", "Vlak"], ["lijnen", "Lijnen"], ["belast", "Alleen belast"], ["lijst", "Met lijst"]];
+const G = "#4E9F69", O = "#E08A3C", R = "#D6533F";
+const step = (p) => (p >= 55 ? R : p >= 25 ? O : G);
+const smooth = (p) => (p < 25 ? `color-mix(in srgb, ${O} ${Math.round((p / 25) * 100)}%, ${G})`
+  : `color-mix(in srgb, ${R} ${Math.round(Math.min(1, (p - 25) / 50) * 100)}%, ${O})`);
+const state = (p) => (p >= 55 ? "belast" : p >= 25 ? "half belast" : "klaar");
 const hoursTo25 = (pct) => (pct > 25 ? Math.ceil(36 * Math.log2(pct / 25)) : 0);
 
-function figure(map, by, x, label) {
-  const parts = Object.entries(map).map(([m, shapes]) => `<g class="fm" data-m="${m}" style="fill:${shade(by[m]?.pct)}" tabindex="0" role="button"
-      aria-label="${NAMES[m]}: ${by[m] ? by[m].pct + "%" : "hersteld"}">${shapes.join("")}</g>`).join("");
-  return `<g transform="translate(${x} 0)"><g class="fbody">${BODY}</g>${parts}
-    <text x="60" y="248" text-anchor="middle" class="flabel">${label}</text></g>`;
+let STYLE = null;
+async function getStyle() {
+  if (STYLE) return STYLE;
+  try { STYLE = localStorage.getItem("hh-fatigue-style"); } catch { /* */ }
+  const ui = await C.rpc("get_setting", { p_key: "ui" }).catch(() => null);
+  STYLE = ui?.fatigue_style || STYLE || "vlak";
+  return STYLE;
+}
+async function setStyle(s) {
+  STYLE = s;
+  try { localStorage.setItem("hh-fatigue-style", s); } catch { /* */ }
+  const ui = (await C.rpc("get_setting", { p_key: "ui" }).catch(() => null)) || {};
+  C.rpc("set_setting", { p_key: "ui", p_value: { ...ui, fatigue_style: s } }).catch(() => {});
+}
+
+function svg(pct, style) {
+  const fill = (m) => {
+    const p = pct(m);
+    if (!m) return style === "lijnen" ? `fill="none"` : `fill="#3B403C"`;
+    if (style === "lijnen") return `fill="${smooth(p)}" fill-opacity="${(0.25 + (p / 100) * 0.6).toFixed(2)}"`;
+    if (style === "belast") return p >= 25 ? `fill="${step(p)}" fill-opacity=".8"` : `fill="#454B46"`;
+    return `fill="${step(p)}" fill-opacity=".72"`;
+  };
+  const stroke = style === "lijnen" ? `stroke="var(--ink)" stroke-opacity=".55" stroke-width=".5"` : `stroke="var(--surface)" stroke-width=".6"`;
+  const fig = (side, x) => `<g transform="translate(${x} 0)">${BODY[side].map(([m, polys]) => polys.map((pt) =>
+    `<polygon points="${pt}" ${fill(m)} ${stroke}${m ? ` class="fm" data-m="${m}" tabindex="0" role="button" aria-label="${NAMES[m]}: ${pct(m)}%, ${state(pct(m))}"` : ""}/>`).join("")).join("")}</g>`;
+  return `<svg viewBox="0 0 210 205" class="fmap" role="img" aria-label="Lichaamskaart met belasting per spiergroep">${fig("front", 0)}${fig("back", 110)}</svg>`;
 }
 
 export async function renderFatigue(ctx, box) {
   C = ctx;
-  const rows = await C.rpc("get_muscle_fatigue").catch(() => []);
+  const [rows, style] = await Promise.all([C.rpc("get_muscle_fatigue").catch(() => []), getStyle()]);
   const by = Object.fromEntries(rows.map((r) => [r.muscle, r]));
-  const top = rows.filter((r) => r.pct >= 15).slice(0, 3);
+  // lats hebben in dit model geen eigen vlak: ze tellen mee bij de bovenrug
+  const pct = (m) => (m === "upper_back" ? Math.max(by.upper_back?.pct || 0, by.lats?.pct || 0) : by[m]?.pct || 0);
+  const top = rows.filter((r) => r.pct >= 25).slice(0, style === "lijst" ? 6 : 3);
+  const legend = `<div class="flegend small muted"><span><i style="background:${G}"></i>klaar</span><span><i style="background:${O}"></i>half belast</span><span><i style="background:${R}"></i>belast</span></div>`;
+  const map = svg(pct, style === "lijst" ? "vlak" : style);
   box.innerHTML = `<section class="panel fatigue">
-      <h3>Spiervermoeidheid</h3>
-      <p class="hint">${top.length ? `Het meest vermoeid: ${top.map((r) => `${NAMES[r.muscle] || r.muscle} ${r.pct}%`).join(", ")}. Tik op een spier voor het waarom.` : "Alles is hersteld. Tik op een spier voor details."}</p>
-      <svg viewBox="0 0 250 252" class="fmap" role="img" aria-label="Lichaamskaart met vermoeidheid per spiergroep">
-        ${figure(FRONT, by, 0, "voorkant")}${figure(BACK, by, 130, "achterkant")}
-      </svg>
-      <div class="flegend small muted"><span>hersteld</span><i></i><span>erg vermoeid</span></div>
+      <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h3 style="margin:0">Spierbelasting</h3>
+        <button class="btn ghost small" id="fStyle">Stijl</button></div>
+      ${style === "lijst"
+        ? `<div class="fl-wrap">${map}<ul class="fl-list">${(top.length ? top : rows.slice(0, 4)).map((r) => `<li data-m="${r.muscle}" tabindex="0" role="button"><span><i class="dot" style="background:${step(r.pct)}"></i>${NAMES[r.muscle] || r.muscle}</span><b>${r.pct}%</b></li>`).join("") || `<li class="muted">Alles is klaar.</li>`}</ul></div>`
+        : `<p class="hint" style="margin-top:6px">${top.length ? `Nog belast: ${top.map((r) => `${NAMES[r.muscle] || r.muscle} ${r.pct}%`).join(", ")}.` : "Alles is klaar om te trainen."} Tik op een spier voor het waarom.</p>${map}`}
+      ${legend}
     </section>`;
-  box.querySelectorAll(".fm").forEach((g) => {
-    const open = () => detail(g.dataset.m, by[g.dataset.m]);
-    g.addEventListener("click", open);
-    g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+  const open = (m) => detail(m, m === "upper_back" && (by.lats?.pct || 0) > (by.upper_back?.pct || 0) ? by.lats : by[m]);
+  box.querySelectorAll(".fm, .fl-list li[data-m]").forEach((el) => {
+    el.addEventListener("click", () => open(el.dataset.m));
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(el.dataset.m); } });
+  });
+  box.querySelector("#fStyle").onclick = () => chooseStyle(box);
+}
+
+function chooseStyle(box) {
+  const s = document.createElement("div");
+  s.className = "sheet";
+  const demo = (m) => ({ chest: 70, shoulders: 40, biceps: 35, upper_back: 30, triceps: 28, quadriceps: 15, hamstrings: 18 }[m] || 0);
+  s.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Stijl van de spierkaart">
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h3 style="margin:0">Stijl van de kaart</h3>
+      <button class="icon-btn" data-close aria-label="Sluiten">✕</button></div>
+    <div class="fstyles">${STYLES.map(([k, l]) => `<button class="fstyle ${k === STYLE ? "on" : ""}" data-s="${k}" aria-pressed="${k === STYLE}">
+      ${svg(demo, k === "lijst" ? "vlak" : k)}<span>${l}</span></button>`).join("")}</div>
+  </div>`;
+  document.body.appendChild(s);
+  s.addEventListener("click", async (e) => {
+    if (e.target === s || e.target.closest("[data-close]")) return s.remove();
+    const b = e.target.closest("[data-s]"); if (!b) return;
+    await setStyle(b.dataset.s); s.remove(); renderFatigue(C, box);
   });
 }
 
@@ -79,14 +94,14 @@ function detail(m, r) {
   const byDay = {};
   for (const w of r?.why || []) (byDay[w.day] ||= { workout: w.workout, items: [] }).items.push(w);
   s.innerHTML = `<div class="sheet-card" role="dialog" aria-label="${NAMES[m]}">
-    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h3 style="margin:0">${NAMES[m] || m}</h3>
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h3 style="margin:0">${NAMES[r?.muscle] || NAMES[m] || m}</h3>
       <button class="icon-btn" data-close aria-label="Sluiten">✕</button></div>
-    <p style="margin:10px 0 4px"><b class="num" style="font-size:34px">${pct}%</b> <span class="muted">${fresh(pct)}</span></p>
+    <p style="margin:10px 0 4px"><b class="num" style="font-size:34px;color:${step(pct)}">${pct}%</b> <span class="muted">${state(pct)}</span></p>
     <p class="small muted" style="margin:0 0 10px">${r ? `${r.sets_7d} werksets in 7 dagen · laatst ${r.hours_since < 36 ? `${r.hours_since} uur` : `${Math.round(r.hours_since / 24)} dagen`} geleden.` : "Geen werksets in de laatste 7 dagen."}
-      ${h ? ` Over ongeveer ${h < 30 ? `${h} uur` : `${Math.round(h / 24)} dagen`} is die spiergroep weer grotendeels hersteld.` : ""}</p>
+      ${h ? ` Over ongeveer ${h < 30 ? `${h} uur` : `${Math.round(h / 24)} dagen`} is die spiergroep weer klaar.` : ""}</p>
     ${Object.entries(byDay).map(([day, g]) => `<h4 class="sub-h">${C.esc(C.shortDate(day))} · ${C.esc(g.workout || "Training")}</h4>
       ${g.items.map((w) => `<div class="meal"><span>${C.esc(w.exercise)}</span><span class="k">${w.sets} set${w.sets > 1 ? "s" : ""}<br><span class="small muted">+${w.share}%</span></span></div>`).join("")}`).join("")}
-    <p class="small muted" style="margin-top:12px">Hoe het werkt: elke werkset telt mee en weegt na 36 uur nog maar half. Ongeveer 8 harde sets net gedaan = 100%. Het is een schatting op basis van je sets, geen meting.</p>
+    <p class="small muted" style="margin-top:12px">Hoe het werkt: elke werkset telt mee en weegt na 36 uur nog maar half. Ongeveer 8 harde sets net gedaan = 100%. Onder 25% = klaar, tot 55% = half belast, daarboven = belast. Het is een schatting op basis van je sets, geen meting.</p>
   </div>`;
   document.body.appendChild(s);
   s.addEventListener("click", (e) => { if (e.target === s || e.target.closest("[data-close]")) s.remove(); });
