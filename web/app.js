@@ -279,6 +279,8 @@ async function route() {
   window.scrollTo(0, 0);
   try {
     await fn(param);
+    if (["vandaag", "voeding", "training", "feedback", "menu", "trends"].includes(name))
+      import("./layout.js").then((L) => L.applyLayout(ctx, name + (param && name === "menu" ? "/" + param : ""), view)).catch(() => {});
   } catch (e) {
     console.error(e);
     showError(e);
@@ -428,6 +430,7 @@ async function renderToday() {
       <a class="todayfuel" href="#/voeding" id="todayFuel"></a>
       ${brief?.text ? `<a class="panel lk-cta brief-cta" href="#/briefing"><span><b>▶ Ochtendbriefing</b><br><span class="small muted">Laten voorlezen en antwoorden</span></span><span aria-hidden="true">›</span></a>` : ""}
       ${isToday ? `<div id="coachToday"></div>` : ""}
+      ${isToday ? `<div id="fatigueBox" data-block="spiervermoeidheid" data-block-title="Spiervermoeidheid"></div>` : ""}
       <div id="todayTimeline"></div>
       <section class="domain" style="--c:${DOMAIN.move}">
         <h2>Beweging</h2>
@@ -525,6 +528,8 @@ async function renderToday() {
     fab.onclick = async () => { const F = await foodMod(); F.openAddFood(ctx, { day: state.day, meal: F.mealForNow(), after: reload }); };
     view.appendChild(fab);
   }
+  if ($("#fatigueBox")) import("./fatigue.js").then((F) => F.renderFatigue(ctx, $("#fatigueBox"))).catch(() => {});
+  if (location.hash.startsWith("#/vandaag") || !location.hash || location.hash === "#/") import("./layout.js").then((L) => L.applyLayout(ctx, "vandaag", view)).catch(() => {});
   if ($("#coachToday")) import("./coach.js").then((m) => m.renderCoachToday(ctx, $("#coachToday"))).catch(() => {});
   $("#insDet")?.addEventListener("toggle", (e) => { if (e.target.open && !ins.read_at) rpc("mark_insight_read", { p_id: ins.id }).catch(() => {}); });
   if (ins && !ins.read_at && isToday) rpc("mark_insight_read", { p_id: ins.id }).catch(() => {});
