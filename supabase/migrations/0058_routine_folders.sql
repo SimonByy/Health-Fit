@@ -1,0 +1,4 @@
+-- 0058: trainingsroutines in mappen (app.workout_folders, workout_templates.folder_id/sort/note),
+-- limiet gratis 3 routines (plan_limits 'routines', app.routine_limit()), save_template met limiet,
+-- save_workout_folder, get_workout_routines, internal_save_program (AI-coach: map + routines in één keer).
+-- Functies eigendom van hh_app (RLS geldt). Volledige SQL: supabase_migrations.schema_migrations '0058_routine_folders'.
