@@ -85,17 +85,34 @@ export async function renderHabits(C, day, box) {
 
 export async function renderHabitSettings(C, box) {
   const list = await C.rpc("get_habits", { p_day: C.today() });
-  box.innerHTML = `${list.map((h) => `<div class="routine" data-id="${h.id}">
-      <div><div class="t">${C.esc(h.emoji || "")} ${C.esc(h.name)}</div><div class="m">${h.last7}/7 deze week${h.streak >= 2 ? ` · reeks ${h.streak} dagen` : ""}</div></div>
-      <button class="icon-btn" data-del aria-label="${C.esc(h.name)} verwijderen">✕</button></div>`).join("") || `<p class="muted small">Nog geen gewoontes.</p>`}
+  box.innerHTML = `${list.map((h) => `<div class="habit-set" data-id="${h.id}">
+      <div class="hs-main"><div class="t">${C.esc(h.emoji || "")} ${C.esc(h.name)}</div>
+        <div class="m">${h.last7}/7 deze week${h.streak >= 2 ? ` · reeks ${h.streak} dagen` : ""}</div></div>
+      <label class="switch" title="Herinnering"><input type="checkbox" data-remind ${h.remind ? "checked" : ""} aria-label="Herinnering voor ${C.esc(h.name)}"><span></span></label>
+      <button class="icon-btn" data-del aria-label="${C.esc(h.name)} verwijderen">✕</button>
+      <div class="hs-time" ${h.remind ? "" : "hidden"}><span class="small muted">Herinner me om</span>
+        <input class="input" type="time" data-time value="${C.esc(h.remind_time || "19:00")}" aria-label="Uur"></div>
+    </div>`).join("") || `<p class="muted small">Nog geen gewoontes.</p>`}
     <form class="row" id="hf" style="margin-top:10px">
       <input class="input" id="hE" placeholder="🙂" aria-label="Emoji" style="max-width:64px;flex:none;text-align:center">
       <input class="input" id="hN" placeholder="bv. Creatine 5 g" aria-label="Naam" required>
-      <button class="btn" type="submit">Toevoegen</button></form>`;
+      <button class="btn" type="submit">Toevoegen</button></form>
+    <p class="small muted" style="margin:8px 0 0">Met de schakelaar krijg je een melding op het gekozen uur, alleen als je het die dag nog niet afvinkte.</p>`;
+  const idOf = (el) => el.closest("[data-id]").dataset.id;
   box.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
     if (!confirm("Gewoonte verwijderen? Je geschiedenis blijft bewaard.")) return;
-    await C.rpc("save_habit", { p: { id: b.closest("[data-id]").dataset.id, archived: true } });
+    await C.rpc("save_habit", { p: { id: idOf(b), archived: true } });
     renderHabitSettings(C, box);
+  }));
+  box.querySelectorAll("[data-remind]").forEach((t) => (t.onchange = async () => {
+    const row = t.closest("[data-id]"); const time = row.querySelector("[data-time]").value || "19:00";
+    row.querySelector(".hs-time").hidden = !t.checked;
+    await C.rpc("save_habit", { p: { id: idOf(t), remind: t.checked, remind_time: time } });
+    C.toast(t.checked ? `Herinnering aan om ${time}` : "Herinnering uit");
+  }));
+  box.querySelectorAll("[data-time]").forEach((t) => (t.onchange = async () => {
+    await C.rpc("save_habit", { p: { id: idOf(t), remind_time: t.value } });
+    C.toast(`Herinnering om ${t.value}`);
   }));
   box.querySelector("#hf").onsubmit = async (e) => {
     e.preventDefault();

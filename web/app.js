@@ -1126,17 +1126,15 @@ async function renderSettings() {
       <a href="#/koppelen"><b>Koppelen</b><span>Garmin en Gezondheid</span></a>
     </nav>
 
-    <section class="panel">
-      <h3>Meldingen</h3>
+    <details class="set-group"><summary>Meldingen</summary><div class="set-body">
       <p class="hint">${pstate === "on" ? `<span class="ok">Aan op dit toestel</span>` : pstate === "denied" ? `<span class="warn">Geblokkeerd</span>: zet ze aan via iPhone-instellingen → Meldingen → Health Hub.` : pstate === "unsupported" ? `Zet de app eerst op je beginscherm en open hem daar; daarna kan je meldingen aanzetten.` : "Nog niet aangezet op dit toestel."}</p>
       <div class="row">
         ${pstate !== "on" ? `<button class="btn" id="pushOn" ${pstate === "unsupported" ? "disabled" : ""}>Meldingen aanzetten</button>` : ""}
         <button class="btn secondary" id="pushTest" ${pstate !== "on" ? "disabled" : ""}>Testmelding</button>
       </div>
-    </section>
+    </div></details>
 
-    <section class="panel">
-      <h3>Herinneringen</h3>
+    <details class="set-group"><summary>Herinneringen</summary><div class="set-body">
       <p class="hint">Terugkerende meldingen. Maak ze hier of vraag het aan de AI, bv. <i>"Stuur me elke maandag om 8u een melding om mijn gewicht te loggen."</i></p>
       <div id="routineList">${routines.length ? routines.map((r) => `
         <div class="routine" data-id="${r.id}">
@@ -1161,25 +1159,22 @@ async function renderSettings() {
           <button class="btn" type="submit">Herinnering toevoegen</button>
         </form>
       </details>
-    </section>
+    </div></details>
 
-    <section class="panel">
-      <h3>Gewoontes en supplementen</h3>
+    <details class="set-group"><summary>Gewoontes en supplementen</summary><div class="set-body">
       <p class="hint">Verschijnen op Vandaag om af te vinken, met je reeks. De AI kan ze ook zien.</p>
       <div id="habitSet"><div class="skeleton" style="height:30px"></div></div>
-    </section>
+    </div></details>
 
-    <section class="panel">
-      <h3>Doelen</h3>
+    <details class="set-group"><summary>Doelen</summary><div class="set-body">
       <div class="goals">
         ${[["steps", "Stappen per dag"], ["active_kcal", "Actieve kcal"], ["sleep_h", "Slaap (uren)"], ["kcal_in", "Calorieën (kcal)"], ["protein_g", "Eiwit (g)"], ["carbs_g", "Koolhydraten (g)"], ["fat_g", "Vet (g)"], ["fiber_g", "Vezels (g)"], ["water_ml", "Water (ml)"], ["caffeine_mg", "Cafeïne max (mg)"]]
           .map(([k, l]) => `<div class="field"><label for="g_${k}">${l}</label><input class="input" inputmode="decimal" id="g_${k}" value="${esc(goals[k] ?? "")}"></div>`).join("")}
       </div>
       <button class="btn" id="saveGoals">Doelen opslaan</button>
-    </section>
+    </div></details>
 
-    <section class="panel">
-      <h3>Garmin en Apple Health</h3>
+    <details class="set-group"><summary>Garmin en Apple Health</summary><div class="set-body">
       <p class="hint">Garmin (rechtstreeks): ${sync.garmin?.last_success ? `<span class="ok">bijgewerkt ${esc(timeAgo(sync.garmin.last_success))}</span>` : "nog niet gekoppeld"}${sync.garmin?.last_error ? ` · <span class="warn">laatste fout: ${esc(sync.garmin.last_error)}</span>` : ""}<br>
       Apple Health: ${sync.apple_health?.last_success ? `<span class="ok">laatst ontvangen ${esc(timeAgo(sync.apple_health.last_success))}</span>` : sync.garmin?.last_success ? "niet gekoppeld (optioneel, voor oudere historiek)" : `<span class="warn">nog niets ontvangen</span>`}</p>
       <a class="btn" href="#/koppelen" style="display:inline-block;text-decoration:none;margin-bottom:8px">Koppel-assistent openen (stap voor stap)</a>
@@ -1235,10 +1230,9 @@ async function renderSettings() {
         <p class="small">Alles wat naar Apple Health schrijft werkt: <b>Garmin</b> (Garmin Connect → Gekoppelde apps → Apple Health), <b>Apple Watch</b>, en apps zoals <b>Bevel</b>. <b>Fitbit</b> schrijft niet zelf naar Apple Health en heeft een brug-app nodig.</p>
       </details>
       <div class="row" style="margin-top:10px"><button class="btn ghost" id="rotTok">Nieuw token maken</button></div>
-    </section>
+    </div></details>
 
-    <section class="panel">
-      <h3>Hevy</h3>
+    <details class="set-group"><summary>Hevy</summary><div class="set-body">
       <p class="hint">Zonder Hevy Pro: exporteer in Hevy via <b>Profiel → Instellingen → Export &amp; Import Data → Export workouts</b> en importeer het CSV-bestand hier. Opnieuw importeren overschrijft niets dubbel. ${sync.hevy_csv ? `Laatste import ${esc(timeAgo(sync.hevy_csv.last_success))}.` : ""}</p>
       <label class="btn" style="display:inline-block;cursor:pointer">CSV importeren<input type="file" id="hevyCsv2" accept=".csv,text/csv" hidden></label>
       <details style="margin-top:12px"><summary>Heb je Hevy Pro? (automatische sync)</summary>
@@ -1250,10 +1244,9 @@ async function renderSettings() {
           <button class="btn ghost" id="syncFull">Alles opnieuw ophalen</button>
         </div>
       </details>
-    </section>
+    </div></details>
 
-    <section class="panel">
-      <h3>Abonnement</h3>
+    <details class="set-group"><summary>Abonnement</summary><div class="set-body">
       ${(() => { const pl = prof.plan || "free"; return pl === "admin"
         ? `<p class="hint"><span class="ok">Beheerder</span>: alles onbeperkt.</p>`
         : pl === "premium" ? `<p class="hint"><span class="ok">Premium</span>${prof.plan_until ? ` tot ${esc(dayLabel(String(prof.plan_until).slice(0, 10), { day: "numeric", month: "long", year: "numeric" }))}` : " (levenslang)"}.</p>`
@@ -1263,10 +1256,9 @@ async function renderSettings() {
           </div>
           <p class="small muted">Premium: tot 30 AI-vragen per dag, AI-feedback na elke training, ochtendbriefing met stem, weekmenu met boodschappenlijst en recepten met wat je nog hebt. Betalen kan binnenkort.</p>`; })()}
       <div id="quotaBox" class="small"></div>
-    </section>
+    </div></details>
 
-    <section class="panel">
-      <h3>AI-coach (Gemini)</h3>
+    <details class="set-group"><summary>AI-coach (Gemini)</summary><div class="set-body">
       <p class="hint">Tijdens de testfase gebruikt de coach je eigen gratis Gemini-sleutel. Maak er een op <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (inloggen met Google → <b>Create API key</b>) en plak ze hier.
         Status: ${s.secrets?.gemini_api_key ? `<span class="ok">ingesteld</span>` : prof.is_admin ? `<span class="ok">sleutel van de server</span>` : `<span class="warn">niet ingesteld</span>`}</p>
       <div class="row"><input class="input" type="password" id="gemKey" placeholder="${s.secrets?.gemini_api_key ? "•••••••• (opgeslagen)" : "AIza…"}" autocomplete="off">
@@ -1281,19 +1273,17 @@ async function renderSettings() {
             ${[["claude-sonnet-5-5", "Claude Sonnet 5.5"], ["claude-haiku-4-5-20251001", "Claude Haiku 4.5"], ["claude-opus-5-5", "Claude Opus 5.5"]]
               .map(([v, l]) => `<option value="${v}" ${v === model ? "selected" : ""}>${l}</option>`).join("")}
           </select></div></details>` : ""}
-    </section>
+    </div></details>
 
-    ${prof.is_admin ? `<section class="panel">
-      <h3>Beheer</h3>
+    ${prof.is_admin ? `<details class="set-group"><summary>Beheer</summary><div class="set-body">
       <p class="hint">Wie kan zich registreren en de app gebruiken.</p>
       <div class="field"><label for="accMode">Toegang</label>
         <select class="input" id="accMode"><option value="closed">Gesloten: alleen ik</option><option value="invite">Testers: alleen uitgenodigde e-mails</option><option value="open">Open: iedereen</option></select></div>
       <div class="row"><input class="input" type="email" id="invMail" placeholder="e-mail van een tester"><button class="btn secondary" id="invAdd">Uitnodigen</button></div>
       <div id="invList" class="small" style="margin-top:8px"></div>
-    </section>` : ""}
+    </div></details>` : ""}
 
-    <section class="panel">
-      <h3>Data</h3>
+    <details class="set-group"><summary>Data</summary><div class="set-body">
       <dl class="kv">
         <dt>Metingen (Garmin, Apple Health en zelf gelogd)</dt><dd>${fmt(c.samples)}</dd>
         <dt>Slaapnachten</dt><dd>${fmt(c.sleep_nights)}</dd>
@@ -1309,17 +1299,16 @@ async function renderSettings() {
         <table class="nutrients">${(s.log || []).map((l) => `<tr><td>${esc(l.source)} <span class="muted small">${esc(timeAgo(l.received_at))}</span></td>
           <td class="small">${l.error ? `<span class="warn">${esc(l.error)}</span>` : esc(Object.entries(l.stats || {}).map(([k, v]) => `${k}: ${v}`).join(", "))}</td></tr>`).join("")}</table>
       </details>
-    </section>
+    </div></details>
 
-    <section class="panel">
-      <h3>Account</h3>
+    <details class="set-group"><summary>Account</summary><div class="set-body">
       <p class="hint">Ingelogd als ${esc(user?.email)}${prof.display_name ? ` (${esc(prof.display_name)})` : ""}</p>
       <div class="row"><button class="btn ghost" id="logout">Uitloggen</button><button class="btn ghost" id="privacy">Privacyverklaring</button></div>
       ${prof.is_admin ? "" : `<details style="margin-top:12px"><summary>Account verwijderen</summary>
         <p class="small">Dit wist je account en <b>al je gegevens</b> definitief. Download eerst een back-up (Data) als je iets wil bewaren.</p>
         <div class="row"><input class="input" id="delConfirm" placeholder="typ VERWIJDER" autocomplete="off"><button class="btn danger" id="delAcc">Verwijderen</button></div>
       </details>`}
-    </section>`;
+    </div></details>`;
 
   // meldingen
   $("#pushOn")?.addEventListener("click", async () => {

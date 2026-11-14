@@ -13,17 +13,30 @@ const head = (t) => `<div class="row" style="justify-content:space-between;flex-
 
 export const SUGGEST_PROMPT = "Stel een trainingsroutine voor mij voor. Vraag eerst wat je moet weten (dagen per week, korte of lange sessies, doel, materiaal).";
 
+// Routine laten voorstellen door de coach = Premium
+async function suggestRoutine() {
+  const q = await C.rpc("get_ai_quota").catch(() => ({ plan: "free" }));
+  if (q.plan === "free") {
+    const s = sheetEl(`${head("Premium")}
+      <p style="margin:12px 0 6px">Een routine op maat laten maken door de coach zit in <b>Premium</b> (€5 per maand, €50 per jaar of €150 levenslang).</p>
+      <p class="small muted">Gratis kan je zelf een lege training starten en die na afloop als routine bewaren (tot 3 routines).</p>
+      <button class="btn" data-close style="width:100%;margin-top:10px">Oké</button>`, "Premium");
+    return s;
+  }
+  (await import("./assistant.js")).openAssistant(C, { question: SUGGEST_PROMPT });
+}
+
 export function openStartSheet(ctx) {
   C = ctx;
   const s = sheetEl(`${head("Training starten")}
     <div class="startw" style="margin-top:12px">
       <button class="tpl" data-a="empty"><span><b>Lege training</b><br><small>oefeningen kies je onderweg</small></span><span>＋</span></button>
       <button class="tpl" data-a="mine"><span><b>Mijn routines</b><br><small>je schema's, per map</small></span><span>›</span></button>
-      <button class="tpl" data-a="ai"><span><b>Stel een routine voor</b><br><small>de coach bouwt een schema op maat</small></span><span>✦</span></button>
+      <button class="tpl" data-a="ai"><span><b>Stel een routine voor</b><br><small>de coach bouwt een schema op maat · Premium</small></span><span>✦</span></button>
     </div>`, "Training starten");
   s.querySelector('[data-a="empty"]').onclick = async () => { s.remove(); (await import("./workout.js")).startWorkout(C); };
   s.querySelector('[data-a="mine"]').onclick = () => { s.remove(); openRoutines(C); };
-  s.querySelector('[data-a="ai"]').onclick = async () => { s.remove(); (await import("./assistant.js")).openAssistant(C, { question: SUGGEST_PROMPT }); };
+  s.querySelector('[data-a="ai"]').onclick = () => { s.remove(); suggestRoutine(); };
 }
 
 export async function openRoutines(ctx) {
@@ -67,7 +80,7 @@ export async function openRoutines(ctx) {
       const name = prompt("Naam van de map, bv. Push Pull Legs");
       if (name?.trim()) { await C.rpc("save_workout_folder", { p: { name: name.trim() } }); draw(); }
     };
-    body.querySelector("#rtAi").onclick = async () => { s.remove(); (await import("./assistant.js")).openAssistant(C, { question: SUGGEST_PROMPT }); };
+    body.querySelector("#rtAi").onclick = () => { s.remove(); suggestRoutine(); };
   };
   draw().catch((e) => { body.innerHTML = `<p class="warn">${C.esc(e.message)}</p>`; });
 }
