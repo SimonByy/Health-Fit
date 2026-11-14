@@ -1,7 +1,7 @@
-// Verstuurt pushmeldingen voor routines (elke 5 min aangeroepen door pg_cron).
+// Verstuurt pushmeldingen voor routines (elke 5 min aangeroepen door pg_cron), per gebruiker.
 // - kind 'notify'        : gewone melding (bv. "Log je gewicht")
 // - kind 'weekly_review' : laat de AI een weekoverzicht maken en meldt dat het klaarstaat
-// Ook: POST {"test": true} door de ingelogde eigenaar = testmelding.
+// Ook: POST {"test": true} door de ingelogde gebruiker = testmelding.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as webpush from "jsr:@negrel/webpush@0.5.0";
 
@@ -14,10 +14,17 @@ const cors = {
 };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 
-async function rpc<T = unknown>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
-  const { data, error } = await admin.rpc(fn, args);
+async function rpc<T = unknown>(fn: string, args: Record<string, unknown> = {}, user?: string): Promise<T> {
+  const { data, error } = await (user ? asUser(user) : admin).rpc(fn, args);
   if (error) throw new Error(`${fn}: ${error.message}`);
   return data as T;
+}
+// Alles per gebruiker: de databank leest de gebruiker uit de header x-hh-user (alleen geldig met de service-sleutel).
+const clients = new Map<string, any>();
+function asUser(uid: string) {
+  if (!clients.has(uid)) clients.set(uid, createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    { auth: { persistSession: false }, global: { headers: { "x-hh-user": uid } } }));
+  return clients.get(uid);
 }
 
 let appServer: webpush.ApplicationServer | null = null;
@@ -29,8 +36,8 @@ async function server() {
   return appServer;
 }
 
-async function pushAll(payload: { title: string; body?: string; url?: string; tag?: string }) {
-  const subs = await rpc<any[]>("internal_push_targets");
+async function pushAll(user: string, payload: { title: string; body?: string; url?: string; tag?: string }) {
+  const subs = await rpc<any[]>("internal_push_targets", {}, user);
   const srv = await server();
   let sent = 0;
   for (const s of subs) {
@@ -46,11 +53,11 @@ async function pushAll(payload: { title: string; body?: string; url?: string; ta
   return { sent, targets: subs.length };
 }
 
-async function weeklyReview(cronToken: string) {
+async function weeklyReview(cronToken: string, user: string) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-cron-token": cronToken },
-    body: JSON.stringify({ mode: "weekly_review" }),
+    body: JSON.stringify({ mode: "weekly_review", user_id: user }),
   });
   const out = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(out.error || `ask ${res.status}`);
@@ -64,39 +71,45 @@ Deno.serve(async (req) => {
   let body: any = {};
   try { body = await req.json(); } catch { /* leeg */ }
 
-  // testmelding door de eigenaar
+  // testmelding door de gebruiker
   if (!headerToken) {
     const jwt = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
     const { data } = jwt ? await admin.auth.getUser(jwt) : { data: { user: null } };
     if (!data.user || !(await rpc<boolean>("internal_is_owner", { p_uid: data.user.id }))) return json({ error: "Geen toegang" }, 401);
     if (!body.test) return json({ error: "Onbekende actie" }, 400);
     try {
-      return json({ ok: true, ...(await pushAll({ title: "Health Hub", body: "Meldingen werken 👍", url: "/#/vandaag", tag: "test" })) });
+      return json({ ok: true, ...(await pushAll(data.user.id, { title: "Health Hub", body: "Meldingen werken 👍", url: "/#/vandaag", tag: "test" })) });
     } catch (e) {
       return json({ ok: false, error: String(e) }, 500);
     }
   }
   if (headerToken !== cronToken) return json({ error: "Geen toegang" }, 401);
 
-  const due = await rpc<any[]>("internal_claim_due_routines");
+  const users = await rpc<string[]>("internal_push_users");
   const results = [];
-  for (const r of due) {
-    try {
-      if (r.kind === "weekly_review") {
-        await weeklyReview(cronToken);
-        results.push({ id: r.id, ...(await pushAll({ title: r.title, body: r.body || "Je weekoverzicht staat klaar", url: "/#/vandaag", tag: "review" })) });
-      } else {
-        results.push({ id: r.id, ...(await pushAll({ title: r.title, body: r.body || "", url: r.url, tag: r.id })) });
+  let nDue = 0, nOut = 0;
+  for (const u of users) {
+    const due = await rpc<any[]>("internal_claim_due_routines", {}, u).catch(() => []);
+    nDue += due.length;
+    for (const r of due) {
+      try {
+        if (r.kind === "weekly_review") {
+          await weeklyReview(cronToken, u);
+          results.push({ id: r.id, ...(await pushAll(u, { title: r.title, body: r.body || "Je weekoverzicht staat klaar", url: "/#/vandaag", tag: "review" })) });
+        } else {
+          results.push({ id: r.id, ...(await pushAll(u, { title: r.title, body: r.body || "", url: r.url, tag: r.id })) });
+        }
+      } catch (e) {
+        results.push({ id: r.id, error: String(e).slice(0, 300) });
       }
-    } catch (e) {
-      results.push({ id: r.id, error: String(e).slice(0, 300) });
+    }
+    // Losse meldingen (bv. "recept staat klaar") van deze gebruiker
+    const outbox = await rpc<any[]>("internal_claim_outbox", {}, u).catch(() => []);
+    nOut += (outbox || []).length;
+    for (const m of outbox || []) {
+      try { results.push({ outbox: m.id, ...(await pushAll(u, { title: m.title, body: m.body || "", url: m.url || "/#/vandaag", tag: "outbox-" + m.id })) }); }
+      catch (e) { results.push({ outbox: m.id, error: String(e).slice(0, 300) }); }
     }
   }
-  // Losse meldingen (bv. "recept staat klaar"), geschreven door geplande taken
-  const outbox = await rpc<any[]>("internal_claim_outbox").catch(() => []);
-  for (const m of outbox || []) {
-    try { results.push({ outbox: m.id, ...(await pushAll({ title: m.title, body: m.body || "", url: m.url || "/#/vandaag", tag: "outbox-" + m.id })) }); }
-    catch (e) { results.push({ outbox: m.id, error: String(e).slice(0, 300) }); }
-  }
-  return json({ ok: true, due: due.length, outbox: (outbox || []).length, results });
+  return json({ ok: true, users: users.length, due: nDue, outbox: nOut, results });
 });
