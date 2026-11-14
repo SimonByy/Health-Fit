@@ -1472,3 +1472,16 @@ body:has(.fab) .ai-fab { bottom: calc(var(--tabbar-h) + var(--safe-b) + 90px); w
 .fstyle { background: var(--paper); border: 1.5px solid var(--line); border-radius: 10px; padding: 10px 8px; color: var(--ink); cursor: pointer; display: grid; gap: 6px; }
 .fstyle.on { border-color: var(--ink); }
 .fstyle span { font-size: 13.5px; font-weight: 600; }
+.goals-card .goal-list { display: grid; gap: 2px; margin-top: 8px; }
+.goals-card .goal { display: flex; flex-direction: column; padding: 8px 0; border-top: 1px solid var(--line); }
+.goals-card .goal:first-child { border-top: 0; }
+.pl-sum { display: flex; justify-content: center; gap: 22px; margin-top: 10px; color: var(--muted); font-size: 14px; }
+.pl-sum b { font-family: var(--font-num); font-stretch: 75%; font-size: 22px; color: var(--ink); margin-right: 4px; }
+.pl-missed { display: grid; gap: 8px; border-left: 3px solid var(--plate-yellow) !important; }
+.tpl-rows { display: grid; gap: 6px; }
+.tpl-row { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; color: var(--ink); cursor: pointer; text-align: left; }
+.tpl-d { font-weight: 700; color: var(--muted); }
+.tpl-s { display: flex; flex-wrap: wrap; gap: 6px; }
+.tpl-chip { font-size: 12.5px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); }
+.tpl-chip.kracht { border-color: var(--plate-red); color: #F0A090; } .tpl-chip.cardio { border-color: var(--plate-green); color: #9FD0AE; }
+.tpl-add > summary { list-style: none; } .tpl-add > summary::-webkit-details-marker { display: none; }

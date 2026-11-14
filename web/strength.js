@@ -29,7 +29,8 @@ function spark(series, w = 120, h = 34) {
 
 export async function renderStrength(ctx) {
   C = ctx;
-  C.view.innerHTML = `<div id="coachWeek"></div><div class="skeleton"></div>`;
+  C.view.innerHTML = `<div id="goalsBox"></div><div id="coachWeek"></div><div class="skeleton"></div>`;
+  import("./planner.js").then((P) => P.renderGoals(ctx, C.view.querySelector("#goalsBox"), { compact: true })).catch(() => {});
   import("./coach.js").then((m) => m.renderCoachCalendar(ctx, C.view.querySelector("#coachWeek"))).catch(() => {});
   const [o, records, W] = await Promise.all([
     C.rpc("get_strength_overview", { p_weeks: 12 }), C.rpc("get_records").catch(() => []), import("./workout.js")]);

@@ -9,7 +9,7 @@ function titleOf(el) {
   const h = el.querySelector("h2, h3, summary, b");
   return (h?.textContent || "").replace(/[▶›]/g, "").trim().slice(0, 50);
 }
-const ID_TITLES = { todayReady: "Readiness en Body Battery", todayFuel: "Calorieën en macro's", coachToday: "Plan van de coach (vandaag)", todayTimeline: "Tijdlijn", coachWeek: "Plan van je coach" };
+const ID_TITLES = { todayReady: "Readiness en Body Battery", todayFuel: "Calorieën en macro's", coachToday: "Plan van de coach (vandaag)", todayTimeline: "Tijdlijn", coachWeek: "Weekplan", goalsBox: "Mijn doelen", fatigueBox: "Spierbelasting" };
 
 function containerOf(view) {
   let c = view.querySelector("[data-blocks], .board") || view;
