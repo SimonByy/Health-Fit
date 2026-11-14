@@ -33,9 +33,12 @@ Deno.serve(async (req) => {
     url.searchParams.get("token") ??
     "";
 
-  const { data: expected, error: secErr } = await admin.rpc("internal_get_secret", { p_name: "ingest_token" });
-  if (secErr || !expected) return json({ error: "Server niet geconfigureerd" }, 500);
-  if (!provided || !timingSafeEqual(provided, expected as string)) return json({ error: "Ongeldig token" }, 401);
+  // het token bepaalt de gebruiker; daarna gaat alles via de header x-hh-user (alleen geldig met de service-sleutel)
+  if (provided.length < 16) return json({ error: "Ongeldig token" }, 401);
+  const { data: uid } = await admin.rpc("internal_user_by_secret", { p_name: "ingest_token", p_value: provided });
+  if (!uid) return json({ error: "Ongeldig token" }, 401);
+  const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    { auth: { persistSession: false }, global: { headers: { "x-hh-user": String(uid) } } });
 
   let payload: unknown;
   try {
@@ -53,9 +56,9 @@ Deno.serve(async (req) => {
     const { date, ...rest } = p;
     p = { date, values: rest };
   }
-  const { data, error } = await admin.rpc(isHae ? "ingest_health_export" : "ingest_daily_values", { p });
+  const { data, error } = await db.rpc(isHae ? "ingest_health_export" : "ingest_daily_values", { p });
   if (error) {
-    await admin.rpc("sync_state_set", {
+    await db.rpc("sync_state_set", {
       p_source: "apple_health", p_cursor: null, p_ok: false, p_items: 0, p_error: error.message,
     });
     return json({ error: error.message }, 500);

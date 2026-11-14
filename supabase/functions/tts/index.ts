@@ -1,11 +1,12 @@
-// Voorlezen met een Gemini-stem (gratis laag) in plaats van de iPhone-stem.
-// POST {text, voice?}            (ingelogde eigenaar of service-sleutel) -> {url}   audio (WAV) via een tijdelijke link
-// POST {briefing_day}            (databank, geen login) -> maakt de audio van de opgeslagen briefing vooraf klaar
-// POST {voice, save: true}       (eigenaar)            -> standaardstem bewaren
+// Voorlezen met een Gemini-stem (gratis laag) in plaats van de iPhone-stem. Per gebruiker, met diens eigen Gemini-sleutel.
+// POST {text, voice?}            (ingelogde gebruiker, of service-sleutel + user_id) -> {url}   audio (WAV) via een tijdelijke link
+// POST {briefing_day, user_id}   (databank met x-cron-token) -> maakt de audio van de opgeslagen briefing vooraf klaar
+// POST {voice, save: true}       (gebruiker)            -> standaardstem bewaren
 // Elke tekst wordt maar één keer omgezet: de audio wordt bewaard (bucket tts) en daarna hergebruikt.
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { AsyncLocalStorage } from "node:async_hooks";
 
-const KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
+const ENV_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -14,11 +15,22 @@ const cors = {
 };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 const BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-export const VOICES = ["Sulafat", "Achird", "Charon", "Kore", "Puck", "Aoede", "Algieba", "Gacrux", "Iapetus", "Schedar", "Vindemiatrix", "Orus"];
+const VOICES = ["Sulafat", "Achird", "Charon", "Kore", "Puck", "Aoede", "Algieba", "Gacrux", "Iapetus", "Schedar", "Vindemiatrix", "Orus"];
 const STYLE = "Vlaams-Nederlands, warm en rustig, als een persoonlijke coach die 's ochtends kort bijpraat; natuurlijk tempo";
 
+// Per gebruiker: de databank leest de gebruiker uit de header x-hh-user (alleen geldig met de service-sleutel).
+// elk verzoek krijgt een eigen object, zodat gelijktijdige verzoeken van verschillende gebruikers niet mengen
+const als = new AsyncLocalStorage<{ db: any; key: string }>();
+const st = () => als.getStore()!;
+const userDb = (uid: string) => createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  { auth: { persistSession: false }, global: { headers: { "x-hh-user": uid } } });
+async function useUser(uid: string) {
+  const s = st(); s.db = userDb(uid);
+  const legacy = (await admin.rpc("internal_legacy_user")).data;
+  s.key = (await s.db.rpc("internal_get_secret", { p_name: "gemini_api_key" })).data || (uid === legacy ? ENV_KEY : "");
+}
 async function rpc<T = any>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
-  const { data, error } = await admin.rpc(fn, args);
+  const { data, error } = await st().db.rpc(fn, args);
   if (error) throw new Error(`${fn}: ${error.message}`);
   return data as T;
 }
@@ -29,7 +41,7 @@ function plain(s: string) {
     .replace(/```[\s\S]*?```/g, "")
     .replace(/\[(.*?)\]\(.*?\)/g, "$1")
     .replace(/[*_#>`|]/g, "")
-    .replace(/\p{Extended_Pictographic}️?/gu, "")
+    .replace(/\p{Extended_Pictographic}\uFE0F?/gu, "")
     .replace(/\n{2,}/g, ". ")
     .replace(/\s+/g, " ").trim().slice(0, 4000);
 }
@@ -73,7 +85,7 @@ async function synth(text: string, voice: string): Promise<{ audio: Uint8Array; 
     try {
       res = await fetch(`${BASE}/${t.model}:generateContent`, {
         method: "POST", signal: AbortSignal.timeout(90000),
-        headers: { "content-type": "application/json", "x-goog-api-key": KEY }, body: JSON.stringify(t.body),
+        headers: { "content-type": "application/json", "x-goog-api-key": st().key }, body: JSON.stringify(t.body),
       });
     } catch (e) { errs.push(`${t.model}: ${e}`); continue; }
     try { await rpc("internal_ai_usage_add", { p_model: t.model, p_limited: res.status === 429 }); } catch { /* tellen mag niets breken */ }
@@ -111,15 +123,19 @@ async function audioFor(raw: string, want?: string) {
   return { path, url: data?.signedUrl, cached: false, voice, model };
 }
 
-Deno.serve(async (req) => {
+Deno.serve((req) => als.run({ db: admin, key: "" }, () => handle(req)));
+async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "POST" }, 405);
-  if (!KEY) return json({ error: "GEMINI_API_KEY ontbreekt" }, 500);
   let body: any = {};
   try { body = await req.json(); } catch { return json({ error: "Ongeldige body" }, 400); }
 
-  // Vooraf klaarzetten door de databank: alleen opgeslagen teksten, dus geen login nodig
+  // Vooraf klaarzetten door de databank (met cron-token en gebruiker)
   if (body.briefing_day || body.reply_id) {
+    const cron = (await admin.rpc("internal_get_secret", { p_name: "cron_token" })).data;
+    if (!cron || req.headers.get("x-cron-token") !== cron || !body.user_id) return json({ error: "Geen toegang" }, 401);
+    await useUser(String(body.user_id));
+    if (!st().key) return json({ ok: false, error: "Geen Gemini-sleutel" });
     const work = (async () => {
       try {
         const day = /^\d{4}-\d{2}-\d{2}$/.test(String(body.briefing_day ?? "")) ? body.briefing_day : null;
@@ -136,11 +152,16 @@ Deno.serve(async (req) => {
 
   const jwt = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!jwt) return json({ error: "Niet ingelogd" }, 401);
-  // andere edge functions (bv. de iPhone-opdracht) mogen met de service-sleutel
-  if (jwt !== Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) {
+  // andere edge functions (bv. de iPhone-opdracht) mogen met de service-sleutel, voor een opgegeven gebruiker
+  if (jwt === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) {
+    if (!body.user_id) return json({ error: "user_id ontbreekt" }, 400);
+    await useUser(String(body.user_id));
+  } else {
     const { data: u, error: ue } = await admin.auth.getUser(jwt);
-    if (ue || !u.user || !(await rpc<boolean>("internal_is_owner", { p_uid: u.user.id }))) return json({ error: "Geen toegang" }, 403);
+    if (ue || !u.user || !(await admin.rpc("internal_is_owner", { p_uid: u.user.id })).data) return json({ error: "Geen toegang" }, 403);
+    await useUser(u.user.id);
   }
+  if (!st().key && !body.list && !body.save) return json({ error: "Vul eerst je eigen gratis Gemini-sleutel in bij Instellingen." }, 400);
 
   if (body.list) return json({ voices: VOICES, voice: await getVoice() });
   if (body.save) {
@@ -152,4 +173,4 @@ Deno.serve(async (req) => {
     const r = await audioFor(String(body.text ?? ""), body.voice);
     return json({ url: r.url, cached: r.cached, voice: r.voice });
   } catch (e) { return json({ error: e instanceof Error ? e.message : String(e) }, 502); }
-});
+}

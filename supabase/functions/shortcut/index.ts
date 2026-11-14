@@ -1,4 +1,4 @@
-// Endpoint voor iPhone-opdrachten (Opdrachten-app). Beveiligd met een geheime sleutel (?k=...), alleen de sha256 staat in app.settings.
+// Endpoint voor iPhone-opdrachten (Opdrachten-app). De geheime sleutel (?k=...) bepaalt de gebruiker; alleen de sha256 staat in app.settings.
 // GET  ?a=briefing&k=...        -> platte tekst van de briefing van vandaag
 // GET  ?a=briefing_audio&k=...  -> de briefing van vandaag als audio (Gemini-stem), voor "Speel geluid af"
 // GET  ?a=log&q=kwark&k=...     -> logt 1 portie van een vast product en geeft een zin terug
@@ -111,22 +111,25 @@ Deno.serve(async (req) => {
     return new Response(blob, { headers: { "Content-Type": blob.type || "image/jpeg", "Cache-Control": "no-store" } });
   }
   const k = u.searchParams.get("k") || req.headers.get("x-key") || "";
-  const { data: ok } = await admin.rpc("internal_shortcut_key_ok", { p_key: k });
-  if (!ok) return text("Geen toegang", 401);
+  // de sleutel bepaalt de gebruiker; daarna gaat alles via de header x-hh-user (alleen geldig met de service-sleutel)
+  const { data: uid } = await admin.rpc("internal_user_by_shortcut_key", { p_key: k });
+  if (!uid) return text("Geen toegang", 401);
+  const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    { auth: { persistSession: false }, global: { headers: { "x-hh-user": String(uid) } } });
   const a = u.searchParams.get("a") || "briefing";
   try {
     if (a === "briefing") {
-      const { data, error } = await admin.rpc("internal_briefing_text", {});
+      const { data, error } = await db.rpc("internal_briefing_text", {});
       if (error) throw error;
-      return text(data || "Goeiemorgen Simon. Je briefing is nog niet klaar. Over een paar minuten krijg je een melding.");
+      return text(data || "Goeiemorgen! Je briefing is nog niet klaar. Over een paar minuten krijg je een melding.");
     }
     if (a === "briefing_audio") {
       const day = new Date().toLocaleDateString("sv-SE", { timeZone: TZ });
-      const { data: t } = await admin.rpc("internal_tts_text", { p_day: day, p_reply: null });
+      const { data: t } = await db.rpc("internal_tts_text", { p_day: day, p_reply: null });
       if (!t) return text("Je briefing is nog niet klaar.", 404);
       const SR = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
       const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tts`, {
-        method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${SR}` }, body: JSON.stringify({ text: t }),
+        method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${SR}` }, body: JSON.stringify({ text: t, user_id: uid }),
       });
       const j = await r.json().catch(() => ({}));
       if (!j.url) return text("Voorlezen lukt nu niet: " + String(j.error || r.status).slice(0, 120), 502);
@@ -150,7 +153,7 @@ Deno.serve(async (req) => {
       const since = new Date(Date.now() - 1000 * 60 * 60 * 24 * 120).toISOString();
       const recent = all.filter((w) => w.start_time >= since);
       for (let i = 0; i < recent.length; i += 40) {
-        const { error } = await admin.rpc("internal_import_hevy", { p: recent.slice(i, i + 40) });
+        const { error } = await db.rpc("internal_import_hevy", { p: recent.slice(i, i + 40) });
         if (error) throw error;
       }
       const last = recent.map((w) => w.start_time as string).sort().at(-1);
@@ -160,7 +163,7 @@ Deno.serve(async (req) => {
       const q = (u.searchParams.get("q") || "").trim();
       if (!q) return text("Zeg welk product", 400);
       const meal = u.searchParams.get("meal") || null;
-      const { data, error } = await admin.rpc("internal_log_quick", { p_query: q.slice(0, 60), p_meal: meal });
+      const { data, error } = await db.rpc("internal_log_quick", { p_query: q.slice(0, 60), p_meal: meal });
       if (error) throw error;
       return text(data?.message || "Gelogd", data?.ok ? 200 : 404);
     }
@@ -195,12 +198,12 @@ Deno.serve(async (req) => {
         const { error } = await admin.storage.from("captures").upload(path, file, { contentType: file.type || "image/jpeg", upsert: false });
         if (error) throw error;
       }
-      const { error } = await admin.rpc("internal_capture_add", { p_text: txt, p_note: note, p_image_path: path });
+      const { error } = await db.rpc("internal_capture_add", { p_text: txt, p_note: note, p_image_path: path });
       if (error) throw error;
       return text("Verstuurd naar Health Hub. Het wordt meteen verwerkt, je krijgt zo een melding.");
     }
     if (a === "wake") {
-      const { data, error } = await admin.rpc("internal_wake", { p_source: u.searchParams.get("src") || "wekker" });
+      const { data, error } = await db.rpc("internal_wake", { p_source: u.searchParams.get("src") || "wekker" });
       if (error) throw error;
       return text(data?.briefing_ready ? "Je briefing staat klaar." : "Goeiemorgen! Je briefing wordt nu gemaakt, je krijgt zo een melding.");
     }
