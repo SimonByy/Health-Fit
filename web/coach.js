@@ -1,7 +1,7 @@
 // Coach: trainingsplan dat Claude elke zondag maakt (gym + zone 2), ook in Google Calendar.
 // Vandaag-kaart en weekoverzicht in Training, met afvinken (gedaan / overgeslagen).
 let C;
-const ICON = { push: "🏋️", pull: "🏋️", legs: "🏋️", upper: "🏋️", lower: "🏋️", z2: "🏃", rust: "😴", anders: "•" };
+const ICON = {};
 const WD = ["zo", "ma", "di", "wo", "do", "vr", "za"];
 const hm = (t) => (t ? String(t).slice(0, 5) : "");
 const wd = (iso) => WD[new Date(iso + "T12:00:00Z").getUTCDay()];
@@ -10,16 +10,16 @@ function item(s, today) {
   const st = s.status;
   return `<div class="coach-item ${st}" data-id="${s.id}">
     <div class="row" style="justify-content:space-between;flex-wrap:nowrap;gap:8px">
-      <span><b>${ICON[s.kind] || "•"} ${C.esc(s.title)}</b>
+      <span><b>${C.esc(s.title.replace(/^[^\p{L}\d]+/u, ""))}</b>
         ${today ? "" : `<span class="small muted"> · ${wd(s.day)}</span>`}</span>
       <span class="small">${st === "gedaan" ? "✓" : st === "overgeslagen" ? "✕" : ""}</span>
     </div>
-    ${s.details ? `<details ${today ? "open" : ""}><summary class="small muted">Doelen en uitleg</summary>
+    ${s.details ? `<details><summary class="small muted">Oefeningen en doelen</summary>
       <ul class="mp-ul small">${s.details.split(/\s·\s|\n/).filter(Boolean).map((x) => `<li>${C.esc(x)}</li>`).join("")}</ul></details>` : ""}
     ${st === "gepland" && s.day <= C.today() ? `<div class="row" style="gap:8px;margin-top:6px">
       <button class="btn secondary" data-st="gedaan">✓ Gedaan</button>
       <button class="btn ghost" data-st="overgeslagen">Overgeslagen</button></div>` : ""}
-    ${s.note ? `<p class="small muted" style="margin:4px 0 0">📝 ${C.esc(s.note)}</p>` : ""}
+    ${s.note ? `<p class="small muted" style="margin:4px 0 0">${C.esc(s.note)}</p>` : ""}
   </div>`;
 }
 
@@ -28,7 +28,7 @@ function bind(el, rerender) {
     const id = Number(b.closest("[data-id]").dataset.id);
     const st = b.dataset.st;
     const note = st === "overgeslagen" ? (prompt("Waarom? (optioneel, helpt je coach)") || "") : "";
-    try { await C.rpc("set_coach_status", { p_id: id, p_status: st, p_note: note || null }); C.toast(st === "gedaan" ? "Sterk! 💪" : "Genoteerd"); rerender(); }
+    try { await C.rpc("set_coach_status", { p_id: id, p_status: st, p_note: note || null }); C.toast(st === "gedaan" ? "Goed gedaan" : "Genoteerd"); rerender(); }
     catch (e) { C.toast(e.message, 4000); }
   }));
 }
@@ -37,7 +37,9 @@ export async function renderCoachToday(ctx, el) {
   C = ctx;
   const list = (await C.rpc("get_coach_week", { p_from: C.today() }).catch(() => [])).filter((s) => s.day === C.today());
   if (!list.length) { el.innerHTML = ""; return; }
-  el.innerHTML = `<section class="panel"><h3 style="margin:0 0 6px">Training vandaag</h3>${list.map((s) => item(s, true)).join("")}</section>`;
+  const done = list.every((s) => s.status !== "gepland");
+  el.innerHTML = `<details class="set-group today-train" ${done ? "" : "open"}><summary><span>Training vandaag <span class="muted small">· ${list.map((s) => C.esc(s.title.replace(/^[^\p{L}\d]+/u, ""))).join(" + ")}${done ? " ✓" : ""}</span></span></summary>
+    <div class="set-body">${list.map((s) => item(s, true)).join("")}</div></details>`;
   bind(el, () => renderCoachToday(ctx, el));
 }
 
@@ -77,7 +79,7 @@ export async function renderCoachCalendar(ctx, el, start) {
   const fmtRange = (a, b) => new Intl.DateTimeFormat("nl-BE", { day: "numeric", month: "short", timeZone: "UTC" }).formatRange(new Date(a + "T12:00:00Z"), new Date(b + "T12:00:00Z"));
   el.innerHTML = `<section class="wcal">
     <header><button class="wnav" data-w="-7" aria-label="Vorige week">‹</button>
-      <div><h2>Plan van je coach</h2><span>${C.esc(fmtRange(days[0], days[6]))}</span></div>
+      <div><h2>Weekplan</h2><span>${C.esc(fmtRange(days[0], days[6]))}</span></div>
       <button class="wnav" data-w="7" aria-label="Volgende week">›</button></header>
     <div class="wgrid">${days.map((d) => {
       const items = list.filter((s) => s.day === d);
@@ -87,7 +89,7 @@ export async function renderCoachCalendar(ctx, el, start) {
         ${items.map((s) => `<button class="wpill ${KIND_CLS(s.kind)} ${s.status}" data-id="${s.id}">${C.esc(SHORT(s))}${s.status === "gedaan" ? " ✓" : ""}</button>`).join("") || doneMark(d) || `<span class="wrest">rust</span>`}
       </div>`;
     }).join("")}</div>
-    ${list.length ? "" : `<p class="small muted" style="margin:10px 2px 0">Nog geen plan voor deze week. Je coach plant elke zondagavond de volgende week.</p>`}
+    <a class="btn secondary" href="#/planner" style="display:block;text-align:center;text-decoration:none;margin-top:10px">${list.length ? "Planner openen" : "Week plannen"}</a>
   </section>`;
   el.querySelectorAll(".wnav").forEach((b) => (b.onclick = () => renderCoachCalendar(ctx, el, C.addDays(from, Number(b.dataset.w)))));
   el.querySelectorAll(".wpill").forEach((b) => (b.onclick = () => openSession(list.find((s) => String(s.id) === b.dataset.id), () => renderCoachCalendar(ctx, el, from))));
@@ -110,7 +112,7 @@ function openSession(s, rerender) {
       return m ? `<div class="sess-row"><span>${C.esc(m[1])}</span><b>${C.esc(m[2])}</b></div>` : `<div class="sess-row"><span>${C.esc(p)}</span></div>`;
     }).join("")}</div>` : ""}
     <p class="small muted" style="margin:12px 0 0">${isGym ? "Doel per oefening: gewicht × reps voor je 2 werksets." : "Hartslag tussen 138 en 152: daar draait het om, niet om het tempo."} Staat ook op je Garmin en in je agenda.</p>
-    ${s.note ? `<p class="small" style="margin:8px 0 0">📝 ${C.esc(s.note)}</p>` : ""}
+    ${s.note ? `<p class="small" style="margin:8px 0 0">${C.esc(s.note)}</p>` : ""}
     ${s.status === "gepland" && s.day <= C.today() ? `<div class="row" style="gap:8px;margin-top:14px">
       <button class="btn" data-st="gedaan" style="flex:1">✓ Gedaan</button>
       <button class="btn ghost" data-st="overgeslagen" style="flex:1">Overgeslagen</button></div>` : ""}
@@ -121,7 +123,7 @@ function openSession(s, rerender) {
   sheet.querySelectorAll("[data-st]").forEach((b) => (b.onclick = async () => {
     const st = b.dataset.st;
     const note = st === "overgeslagen" ? (prompt("Waarom? (optioneel, helpt je coach)") || "") : "";
-    try { await C.rpc("set_coach_status", { p_id: s.id, p_status: st, p_note: note || null }); C.toast(st === "gedaan" ? "Sterk! 💪" : "Genoteerd"); close(); rerender(); }
+    try { await C.rpc("set_coach_status", { p_id: s.id, p_status: st, p_note: note || null }); C.toast(st === "gedaan" ? "Goed gedaan" : "Genoteerd"); close(); rerender(); }
     catch (e) { C.toast(e.message, 4000); }
   }));
 }

@@ -251,10 +251,10 @@ function drawChart(el, { points, color, type = "bar", unit = "", dec = 0, goal =
 // Router
 // ======================================================================
 const state = { day: today(), nutDay: today(), trendDays: 30, trainTab: "workouts", conversation: null };
-const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training", koppelen: "Koppelen", menu: "Menu", briefing: "Briefing", feedback: "Feedback" };
-const ACCENT = { workout: "--strength", dagboek: "--sleep", vandaag: "--move", training: "--strength", voeding: "--fuel", trends: "--heart", vraag: "--sleep", menu: "--fuel", briefing: "--sleep", feedback: "--heart" };
+const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training", planner: "Planner", koppelen: "Koppelen", menu: "Menu", briefing: "Briefing", feedback: "Feedback" };
+const ACCENT = { workout: "--strength", planner: "--strength", dagboek: "--sleep", vandaag: "--move", training: "--strength", voeding: "--fuel", trends: "--heart", vraag: "--sleep", menu: "--fuel", briefing: "--sleep", feedback: "--heart" };
 
-const SUBPAGES = new Set(["instellingen", "dagboek", "koppelen", "briefing", "vraag", "workout"]);
+const SUBPAGES = new Set(["instellingen", "dagboek", "koppelen", "briefing", "vraag", "workout", "planner"]);
 const navStack = [location.hash]; // eigen spoor van bezochte schermen: bepaalt of "terug" ergens naartoe kan
 async function route() {
   let [name, param] = (location.hash.replace(/^#\/?/, "") || "vandaag").split("/");
@@ -267,7 +267,7 @@ async function route() {
   $("#backBtn").hidden = !sub;
   $("#settingsBtn").hidden = name === "instellingen";
   document.querySelectorAll(".tabbar a").forEach((a) => {
-    if (a.dataset.tab === (name === "workout" ? "training" : name)) {
+    if (a.dataset.tab === (name === "workout" || name === "planner" ? "training" : name)) {
       a.setAttribute("aria-current", "page");
       a.style.setProperty("--accent", `var(${ACCENT[name]})`);
     } else a.removeAttribute("aria-current");
@@ -1172,6 +1172,7 @@ async function renderSettings() {
     </div></details>
 
     <details class="set-group"><summary>Doelen</summary><div class="set-body">
+      <a class="btn secondary" href="#/planner" style="display:block;text-align:center;text-decoration:none;margin-bottom:12px">Trainingsdoelen, voorkeurdagen en weekplan</a>
       <div class="goals">
         ${[["steps", "Stappen per dag"], ["active_kcal", "Actieve kcal"], ["sleep_h", "Slaap (uren)"], ["kcal_in", "Calorieën (kcal)"], ["protein_g", "Eiwit (g)"], ["carbs_g", "Koolhydraten (g)"], ["fat_g", "Vet (g)"], ["fiber_g", "Vezels (g)"], ["water_ml", "Water (ml)"], ["caffeine_mg", "Cafeïne max (mg)"]]
           .map(([k, l]) => `<div class="field"><label for="g_${k}">${l}</label><input class="input" inputmode="decimal" id="g_${k}" value="${esc(goals[k] ?? "")}"></div>`).join("")}
@@ -1529,6 +1530,7 @@ const ROUTES = {
   vandaag: renderToday,
   training: async () => (await import("./strength.js")).renderStrength(ctx),
   workout: async () => (await workoutMod()).renderWorkout(ctx),
+  planner: async () => (await import("./planner.js")).renderPlanner(ctx),
   voeding: async () => (await import("./nutrition.js")).renderNutrition(ctx, state),
   trends: renderTrends,
   vraag: async () => { history.replaceState(null, "", "#/vandaag"); navStack[navStack.length - 1] = "#/vandaag"; route(); (await aiMod()).openAssistant(ctx); },
