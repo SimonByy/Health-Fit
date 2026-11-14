@@ -394,19 +394,9 @@ export async function renderWorkout(ctx) {
       ${rec.length ? `<section class="panel"><h3>🏆 Nieuwe records</h3>
         ${rec.map((r) => `<div class="meal"><span><b>${C.esc(r.exercise)}</b><br><span class="small muted">${C.esc(r.kind)}</span></span>
           <span class="k">${C.fmt(r.value, 1)} kg<br><span class="small muted">was ${C.fmt(r.previous, 1)}</span></span></div>`).join("")}</section>` : ""}
-      <section class="panel">
-        <h3>Als schema bewaren</h3>
-        <p class="hint">Start deze training later opnieuw met dezelfde oefeningen.</p>
-        <div class="row"><input class="input" id="tplName" value="${C.esc(done.title)}" aria-label="Naam van het schema">
-          <button class="btn secondary" id="tplSave">${done.template_id ? "Schema bijwerken" : "Bewaren"}</button></div>
-      </section>
+      <section class="panel" id="tplBox"><div class="skeleton" style="height:60px"></div></section>
       <a class="btn" href="#/training" style="display:block;text-align:center;text-decoration:none">Klaar</a>`;
-    document.getElementById("tplSave").onclick = async () => {
-      const exercises = done.exercises.map((e) => ({ title: e.title, muscle: e.muscle, rest_s: e.rest_s,
-        sets: e.sets.filter((x) => x.type !== "warmup").length || e.sets.length }));
-      await C.rpc("save_template", { p: { id: done.template_id || undefined, name: document.getElementById("tplName").value, exercises } });
-      C.toast("Schema bewaard");
-    };
+    import("./routines.js").then((R) => R.saveAsRoutine(C, done, document.getElementById("tplBox")));
   }
 }
 

@@ -1136,7 +1136,7 @@ async function renderSettings() {
     </section>
 
     <section class="panel">
-      <h3>Routines</h3>
+      <h3>Herinneringen</h3>
       <p class="hint">Terugkerende meldingen. Maak ze hier of vraag het aan de AI, bv. <i>"Stuur me elke maandag om 8u een melding om mijn gewicht te loggen."</i></p>
       <div id="routineList">${routines.length ? routines.map((r) => `
         <div class="routine" data-id="${r.id}">
@@ -1146,9 +1146,9 @@ async function renderSettings() {
           </div>
           <label class="switch" title="Aan/uit"><input type="checkbox" data-act="toggle" ${r.active ? "checked" : ""}><span></span></label>
           <button class="icon-btn" data-act="del" aria-label="Verwijderen">✕</button>
-        </div>`).join("") : `<p class="muted small">Nog geen routines.</p>`}
+        </div>`).join("") : `<p class="muted small">Nog geen herinneringen.</p>`}
       </div>
-      <details style="margin-top:10px"><summary>Nieuwe routine</summary>
+      <details style="margin-top:10px"><summary>Nieuwe herinnering</summary>
         <form id="rf">
           <div class="field"><label for="rt">Titel</label><input class="input" id="rt" required placeholder="Log je gewicht"></div>
           <div class="field"><label for="rb">Tekst (optioneel)</label><input class="input" id="rb" placeholder="Stap even op de weegschaal"></div>
@@ -1158,7 +1158,7 @@ async function renderSettings() {
             <div class="field" style="flex:1"><label for="rurl">Opent</label>
               <select class="input" id="rurl"><option value="/#/vandaag">Vandaag</option><option value="/#/log/gewicht">Gewicht loggen</option><option value="/#/dagboek">Dagboek</option><option value="/#/voeding">Voeding</option></select></div>
           </div>
-          <button class="btn" type="submit">Routine toevoegen</button>
+          <button class="btn" type="submit">Herinnering toevoegen</button>
         </form>
       </details>
     </section>

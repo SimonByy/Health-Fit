@@ -131,6 +131,41 @@ const TOOLS = [
       required: ["metric", "value"],
     },
   },
+  {
+    name: "save_workout_program",
+    description: "Bewaar een trainingsprogramma als routines in de app (map + routines), ALLEEN als de gebruiker expliciet vraagt om het op te slaan / op te zetten. " +
+      "Elke routine heeft oefeningen met Engelse namen in Hevy-stijl 'Naam (Materiaal)', bv. 'Bench Press (Barbell)', 'Lat Pulldown (Cable)', 'Romanian Deadlift (Dumbbell)'. " +
+      "Gratis versie: maximaal 3 routines in totaal; bij een fout meld je dat eerlijk.",
+    input_schema: {
+      type: "object",
+      properties: {
+        folder: { type: "string", description: "Naam van de map, bv. 'Push Pull Legs' of 'Upper Lower'." },
+        routines: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Bv. 'Push', 'Upper A'." },
+              note: { type: "string", description: "Korte uitleg (focus, duur)." },
+              exercises: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" }, sets: { type: "integer" }, reps: { type: "string", description: "Bv. '6-8' of '10-12'." },
+                    rest_s: { type: "integer", description: "Rust in seconden." }, muscle: { type: "string" },
+                  },
+                  required: ["title", "sets"],
+                },
+              },
+            },
+            required: ["name", "exercises"],
+          },
+        },
+      },
+      required: ["folder", "routines"],
+    },
+  },
 ];
 
 function systemPrompt(schema: string) {
@@ -155,6 +190,7 @@ WERKWIJZE
 - Gewicht: gebruik trend_kg (ai.weight_trend) voor veranderingen, niet losse wegingen. Vragen over onderhoud/TDEE/hoeveel eten: ai.energy_balance.
 - Routines: vraagt ${N()} om een herinnering/melding, maak die met create_routine en bevestig dag(en) en uur. Wijzigen/stoppen via list_routines + update_routine.
 - Je bent ook zijn coach in de app: menu, recepten, boodschappen, trainingsplanning en feedback lees je met app_read; wijzigen doe je met app_write, maar alleen wat hij expliciet vraagt. Menu-regels: hele porties voor pudding/eiwitreep/Upfront (portion_step), dagdoel rond het kcal-doel en minstens het eiwitdoel, nooit verwijderen, geen verzonnen voedingswaarden. Lees app.settings 'mealprep' voor menuwijzigingen.
+- TRAININGSSCHEMA (routine voorstellen): vraag eerst in één kort bericht wat je nog niet weet: hoeveel dagen per week, liever korte (±45 min) of lange (±75–90 min) sessies, doel (spier, kracht, vet verliezen), materiaal (volledige gym, thuis) en ervaring. Stel dan 2 à 3 opties voor met de weekindeling, bv. 5 dagen: Push-Pull-Legs-rust-Upper-Lower-rust of Upper-Lower-rust-Upper-Lower-rust-rust; 6 dagen: PPL-rust-PPL, Upper-Lower ×3 of Anterior-Posterior ×3. Na zijn keuze: per routine de oefeningen met sets × reps en rust (compound 6–8, isolatie 8–12; 2–4 werksets). Gebruik bij voorkeur oefeningnamen die al in ai.strength_sets staan. Vraagt hij "zet dit op" of "bewaar als routine", gebruik save_workout_program (map + routines) en zeg dat ze bij Training → Training starten → Mijn routines staan. Een bestaande routine aanpassen: lees app.workout_templates (id, name, exercises, folder_id) met app_read en werk bij met app_write (update app.workout_templates set exercises = '...'::jsonb where id = '...').
 ${goalLine()}
 - Opmaak: korte alinea's of een kleine lijst/tabel in Markdown. Geen SQL tonen tenzij gevraagd.
 
@@ -184,6 +220,8 @@ async function runTool(name: string, input: any) {
       return await rpc("internal_list_routines");
     case "update_routine":
       return await rpc("internal_save_routine", { p: input });
+    case "save_workout_program":
+      return await rpc("internal_save_program", { p: input });
     case "log_measurement":
       return await rpc("internal_log_entry", { p_metric: input.metric, p_value: input.value, p_ts: input.timestamp ?? null });
     default:

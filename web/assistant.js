@@ -149,7 +149,7 @@ async function ask(q) {
     $("#aiThinking")?.remove();
     $("#aiChat")?.insertAdjacentHTML("beforeend", msgHtml({ role: "assistant", content: r.answer, meta: { queries: r.queries } }));
     // iets aangepast in de app? Het scherm eronder vernieuwen.
-    if ((r.queries || []).some((x) => ["app_write", "log_measurement", "create_routine", "update_routine"].includes(x.tool) && !x.error)) C.refresh?.();
+    if ((r.queries || []).some((x) => ["app_write", "log_measurement", "create_routine", "update_routine", "save_workout_program"].includes(x.tool) && !x.error)) C.refresh?.();
   } catch (e) {
     $("#aiThinking")?.remove();
     $("#aiChat")?.insertAdjacentHTML("beforeend", `<div class="msg assistant"><p class="warn">${C.esc(e.message)}</p><p class="small muted">Probeer het zo nog eens.</p></div>`);

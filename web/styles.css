@@ -1299,3 +1299,10 @@ body.kb .tabbar, body.kb .ai-fab, body.kb .fab, body.kb .selbar { display: none;
 .rec .v { text-align: right; font-family: var(--font-num); font-size: 18px; }
 .rec .m { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
 .rec .new { color: var(--strength); font-weight: 600; }
+.startbar { display: grid; gap: 8px; margin: 4px 0 14px; }
+.big-start { width: 100%; padding: 16px; font-size: 17px; background: var(--strength); }
+.resume-btn { display: block; text-align: center; text-decoration: none; background: transparent; border: 1px solid var(--strength); color: var(--strength); }
+.rt-folder { margin: 8px 0; }
+.rt-folder summary { padding: 8px 0; cursor: pointer; display: flex; gap: 8px; align-items: center; }
+.rt-item { display: flex; gap: 6px; align-items: center; }
+.rt-item .tpl { flex: 1; }

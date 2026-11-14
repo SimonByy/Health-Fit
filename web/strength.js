@@ -31,9 +31,8 @@ export async function renderStrength(ctx) {
   C = ctx;
   C.view.innerHTML = `<div id="coachWeek"></div><div class="skeleton"></div>`;
   import("./coach.js").then((m) => m.renderCoachCalendar(ctx, C.view.querySelector("#coachWeek"))).catch(() => {});
-  const [o, records, templates, W] = await Promise.all([
-    C.rpc("get_strength_overview", { p_weeks: 12 }), C.rpc("get_records").catch(() => []),
-    C.rpc("get_templates").catch(() => []), import("./workout.js")]);
+  const [o, records, W] = await Promise.all([
+    C.rpc("get_strength_overview", { p_weeks: 12 }), C.rpc("get_records").catch(() => []), import("./workout.js")]);
   const active = W.activeWorkout();
   const lifts = (o.lifts || []).filter((l) => n(l.recent) > 0).map((l) => ({ ...l, t: trend(l.series) })).filter((l) => l.t).sort((a, b) => b.t.pct - a.t.pct);
   const up = lifts.filter((l) => l.t.pct >= 1).length, flat = lifts.filter((l) => Math.abs(l.t.pct) < 1).length, down = lifts.filter((l) => l.t.pct <= -1).length;
@@ -51,15 +50,9 @@ export async function renderStrength(ctx) {
       <span class="m">Zwaarst ${C.fmt(r.heaviest?.kg, 1)} kg × ${C.fmt(r.heaviest?.reps)} · beste set ${C.fmt(r.best_set?.kg, 1)} × ${C.fmt(r.best_set?.reps)} (${C.fmt(r.best_set?.volume)} kg) · ${C.fmt(r.sessions)}× getraind</span>
     </div>`;
   box.innerHTML = `
-    <section class="panel">
-      <h3>Training starten</h3>
-      <div class="startw">
-        ${active ? `<a class="tpl resume" href="#/workout" style="text-decoration:none"><span><b>${C.esc(active.title)}</b><br><small>loopt nog · tik om verder te gaan</small></span><span>›</span></a>` : ""}
-        <button class="tpl" data-start="empty"><span><b>Lege training</b><br><small>oefeningen kies je onderweg</small></span><span>＋</span></button>
-        ${recent[0] ? `<button class="tpl" data-start="repeat"><span><b>Herhaal: ${C.esc(recent[0].title || "laatste training")}</b><br><small>${C.esc(C.shortDate(recent[0].day))} · ${C.fmt(recent[0].working_sets)} sets</small></span><span>↻</span></button>` : ""}
-        ${(templates || []).filter((t) => !t.archived).map((t, i) => `<button class="tpl" data-tpl="${i}"><span><b>${C.esc(t.name)}</b><br><small>${(t.exercises || []).length} oefeningen</small></span><span>▶</span></button>`).join("")}
-      </div>
-      <p class="small muted" style="margin:8px 0 0">Vorige gewichten, rusttimer en records zitten in de logger. Na afronden kan je de training als schema bewaren.</p>
+    <section class="startbar">
+      ${active ? `<a class="btn resume-btn" href="#/workout">▶ Verder met ${C.esc(active.title)}</a>` : ""}
+      <button class="btn big-start" id="startBtn">Training starten</button>
     </section>
 
     <section class="sverdict">
@@ -109,12 +102,7 @@ export async function renderStrength(ctx) {
   if (weekly.length) C.mountChart(box.querySelector("#wkChart"), {
     points: weekly.map((w) => ({ x: w.week_start, y: n(w.working_sets) })), color: "var(--strength)", type: "bar", unit: "sets", height: 140,
   });
-  const tpls = (templates || []).filter((t) => !t.archived);
-  box.querySelectorAll("[data-start],[data-tpl]").forEach((b) => (b.onclick = () => {
-    if (b.dataset.tpl != null) return W.startWorkout(ctx, { template: tpls[Number(b.dataset.tpl)] });
-    if (b.dataset.start === "repeat") return W.startWorkout(ctx, { repeatOf: recent[0].id });
-    return W.startWorkout(ctx);
-  }));
+  box.querySelector("#startBtn").onclick = async () => (await import("./routines.js")).openStartSheet(ctx);
   box.querySelector("#hevyCsv").onchange = (e) => C.importHevy(e.target.files?.[0], () => renderStrength(ctx));
   box.querySelector("#mvDet").addEventListener("toggle", (e) => {
     if (e.target.open && !e.target.dataset.loaded) { e.target.dataset.loaded = 1; C.renderMuscles(box.querySelector("#mvBox")); }
