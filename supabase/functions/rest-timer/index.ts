@@ -16,19 +16,22 @@ const cors = {
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function rpc<T = unknown>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
-  const { data, error } = await admin.rpc(fn, args);
+// per gebruiker: de databank leest de gebruiker uit de header x-hh-user (alleen geldig met de service-sleutel)
+const asUser = (uid: string) => createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  { auth: { persistSession: false }, global: { headers: { "x-hh-user": uid } } });
+async function rpc<T = unknown>(fn: string, args: Record<string, unknown> = {}, uid?: string): Promise<T> {
+  const { data, error } = await (uid ? asUser(uid) : admin).rpc(fn, args);
   if (error) throw new Error(`${fn}: ${error.message}`);
   return data as T;
 }
 
 let appServer: webpush.ApplicationServer | null = null;
-async function pushAll(payload: Record<string, unknown>) {
+async function pushAll(uid: string, payload: Record<string, unknown>) {
   if (!appServer) {
     const keys = await webpush.importVapidKeys(JSON.parse(await rpc<string>("internal_get_secret", { p_name: "vapid_keys" })), { extractable: false });
     appServer = await webpush.ApplicationServer.new({ contactInformation: "mailto:noreply@health-hub.app", vapidKeys: keys });
   }
-  const subs = await rpc<any[]>("internal_push_targets");
+  const subs = await rpc<any[]>("internal_push_targets", {}, uid);
   for (const s of subs) {
     try {
       await appServer.subscribe(s).pushTextMessage(JSON.stringify(payload), { ttl: 120, urgency: webpush.Urgency.High });
@@ -48,7 +51,7 @@ async function run(id: string, cronToken: string) {
     const rem = Date.parse(t.due_at) - Date.now();
     if (rem <= 300) {
       await rpc("internal_timer_mark", { p_id: id, p_state: "sent" });
-      await pushAll({ title: t.title, body: t.body || "", url: "/#/workout", tag: "rest-timer" });
+      await pushAll(t.user_id, { title: t.title, body: t.body || "", url: "/#/workout", tag: "rest-timer" });
       return;
     }
     if (Date.now() - t0 > 110_000) {
@@ -84,7 +87,7 @@ Deno.serve(async (req) => {
     const secs = Math.round(Number(body.seconds) || 90);
     const t = await rpc<any>("internal_timer_start", {
       p_seconds: secs, p_title: String(body.title || "Rust voorbij"), p_body: body.body ? String(body.body) : null,
-    });
+    }, data.user.id);
     EdgeRuntime.waitUntil(run(t.id, cronToken).catch((e) => console.error(e)));
     return json(t);
   }
