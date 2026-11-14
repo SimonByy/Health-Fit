@@ -35,6 +35,15 @@ export async function geminiLoop(opts: {
       mi++; step--; continue;
     }
     if (res.status === 503 && mi < models.length - 1) { await res.body?.cancel(); mi++; step--; continue; }
+    if (res.status === 429 && mi < models.length - 1) {
+      // dagquotum of gratis limiet van dit model op: elk model heeft een eigen quotum, dus meteen het volgende proberen
+      const body = (await res.text()).slice(0, 400);
+      if (/quota|PerDay|limit: \d+/i.test(body)) { mi++; step--; continue; }
+      await new Promise((r) => setTimeout(r, Math.min(4000, Math.max(0, left - 8000))));
+      if (++retries > 3) { mi++; retries = 0; }
+      step--;
+      continue;
+    }
     if (res.status === 429 || res.status === 503) {
       // druk of limiet: kort wachten en opnieuw, maar niet eindeloos
       const body = (await res.text()).slice(0, 400);

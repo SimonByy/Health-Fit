@@ -2,6 +2,7 @@
 // Bovenaan de brandstofmeter (kcal over + macro's), daaronder per maaltijd
 // wat je at en de dingen die je daar meestal eet als knoppen.
 import { mealForNow, openAddFood, openEditFood, renderRecipes, pkv, MEALS } from "./food.js";
+import { openSuggest } from "./suggest.js";
 const OPEN_KEY = "hh_meal_closed";
 const closedMeals = (() => { try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || "[]")); } catch { return new Set(); } })();
 const saveClosed = () => { try { localStorage.setItem(OPEN_KEY, JSON.stringify([...closedMeals])); } catch { /* */ } };
@@ -10,6 +11,7 @@ const sel = new Set();
 let C;
 const SHOWN = ["Ontbijt", "Lunch", "Snack", "Avondeten", "Laat"];
 const LABEL = { Laat: "Avondsnack" };
+const SUGGEST = ["Lunch", "Avondeten"];   // knop "Stel voeding voor"
 const SLOT_OF = { Ontbijt: "ontbijt", Lunch: "lunch", Snack: "snack", Avondeten: "avond", Laat: "avondsnack" };
 const n = (v) => (v == null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
 
@@ -50,13 +52,14 @@ export async function renderNutrition(ctx, state) {
   C = ctx;
   const day = state.nutDay;
   const isToday = day === C.today();
+  let mpRecipes = [];
   const [d, items, quick, menu, week, pairs] = await Promise.all([
     C.rpc("get_nutrition_day", { p_day: day }),
     C.rpc("get_food_log", { p_day: day }),
     C.rpc("get_quick_add").catch(() => ({})),
     // geplande maaltijden uit het weekmenu voor deze dag (uit welke week ook)
-    C.rpc("mp_get").then((m) => (m.weeks || []).flatMap((w) => (w.items || []).map((i) => ({ ...i, week_id: w.id }))).filter((i) => i.day === day)
-      .map((i) => ({ ...i, r: m.recipes.find((r) => r.id === i.recipe_id) })).filter((i) => i.r)).catch(() => []),
+    C.rpc("mp_get").then((m) => { mpRecipes = m.recipes || []; return (m.weeks || []).flatMap((w) => (w.items || []).map((i) => ({ ...i, week_id: w.id }))).filter((i) => i.day === day)
+      .map((i) => ({ ...i, r: m.recipes.find((r) => r.id === i.recipe_id) })).filter((i) => i.r); }).catch(() => []),
     C.rpc("get_food_week", { p_days: 7 }).catch(() => null),
     C.rpc("get_day_pairs", { p_day: day }).catch(() => ({})),
   ]);
@@ -105,6 +108,7 @@ export async function renderNutrition(ctx, state) {
           </div>`).join("")}
       ${sugg[m].length && (!list.length || (isToday && m === now) || sugg[m].some((x) => x.pair)) ? `<div class="sugg">${sugg[m].some((x) => x.pair) && all.length ? `<span class="sugg-h">Vaak samen met wat je al at:</span>` : ""}${sugg[m].map((s, k) => `<button class="sg ${s.pair ? "pair" : ""}" data-sg="${k}"><span>${s.pair ? "＋ " : ""}${C.esc(short(s.name))}</span><small>${C.fmt(s.kcal)}</small></button>`).join("")}</div>`
         : !list.length && !plan.length ? `<p class="mempty">Nog niets. Tik op + om iets toe te voegen.</p>` : ""}
+      ${isToday && SUGGEST.includes(m) ? `<button class="sg-ask" type="button" data-suggest="${m}">Stel voeding voor</button>` : ""}
       </div>
     </section>`;
   };
@@ -192,6 +196,9 @@ export async function renderNutrition(ctx, state) {
   C.view.querySelectorAll(".mcard").forEach((card) => {
     const meal = card.dataset.meal;
     card.querySelector("[data-add]").onclick = () => openAddFood(C, { day, meal, after: reload });
+    card.querySelector("[data-suggest]")?.addEventListener("click", () => openSuggest(C, {
+      day, meal, label: LABEL[meal] || meal, goals: g, eaten: { kcal: tot.kcal, p: tot.p, f: tot.f },
+      plan: menu, logged: items, recipes: mpRecipes, frequent: quick.frequent?.[meal] || [], pkv, after: reload }));
     card.querySelectorAll(".sg").forEach((b) => (b.onclick = async () => {
       if (b.disabled) return;
       b.disabled = true; b.classList.add("busy");
