@@ -1,9 +1,10 @@
 // AI-assistent over je eigen data.
 // Tools: run_sql (read-only, rol ai_reader op schema ai), routines beheren, metingen loggen.
-// Modi: chat (ingelogde eigenaar) en weekly_review (pg_cron via notify, x-cron-token).
+// Modi: chat (ingelogde gebruiker) en weekly_review (pg_cron via notify, x-cron-token + user_id). Altijd per gebruiker.
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { geminiLoop } from "./gemini.ts";
-const GEMINI = Deno.env.get("GEMINI_API_KEY") ?? "";
+const ENV_GEMINI = Deno.env.get("GEMINI_API_KEY") ?? "";
 const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-flash-latest";
 
 const cors = {
@@ -18,8 +19,32 @@ const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE
   auth: { persistSession: false },
 });
 
+// Elk verzoek draait voor één gebruiker: de databank leest die uit de header x-hh-user (alleen geldig met de service-sleutel).
+type Ctx = { db: any; uid: string; key: string; name: string; legacy: boolean; goals: any };
+const als = new AsyncLocalStorage<Ctx>();
+const store = () => als.getStore();
+const GEMINIK = () => store()?.key || "";
+const N = () => store()?.name || "de gebruiker";
+let LEGACY: string | null = null;
+async function makeCtx(uid: string): Promise<Ctx> {
+  const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    { auth: { persistSession: false }, global: { headers: { "x-hh-user": uid } } });
+  const one = async (fn: string, args: any) => { const { data } = await db.rpc(fn, args); return data; };
+  LEGACY ??= (await admin.rpc("internal_legacy_user")).data;
+  const legacy = uid === LEGACY;
+  const key = (await one("internal_get_secret", { p_name: "gemini_api_key" })) || (legacy ? ENV_GEMINI : "");
+  const prof = await one("internal_agent_read", { q: "select display_name from app.profiles" });
+  const goals = await one("internal_get_setting", { p_key: "goals" });
+  return { db, uid, key, legacy, goals: goals || {}, name: legacy ? "Simon" : (prof?.[0]?.display_name || "de gebruiker") };
+}
+function goalLine() {
+  const c = store(); const g = c?.goals || {};
+  if (c?.legacy) return "- Doelen: 2000 kcal, 150 g eiwit, max 50 g vet; zone 2 = 138–152 bpm; halve marathon zomer 2027.";
+  return `- Doelen (app.settings 'goals'): ${g.kcal_in ?? "?"} kcal, ${g.protein_g ?? "?"} g eiwit, max ${g.fat_g ?? "?"} g vet, ${g.steps ?? "?"} stappen.`;
+}
+
 async function rpc<T = unknown>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
-  const { data, error } = await admin.rpc(fn, args);
+  const { data, error } = await (store()?.db ?? admin).rpc(fn, args);
   if (error) throw new Error(`${fn}: ${error.message}`);
   return data as T;
 }
@@ -48,7 +73,7 @@ const TOOLS = [
   },
   {
     name: "app_write",
-    description: "Eén INSERT of UPDATE om iets in de app te doen wat Simon vraagt: menu aanpassen (app.mp_week_items: day, slot, recipe_id, portions), recept maken/aanpassen (app.mp_recipes), coachplanning (app.coach_sessions: status, note), of select public.log_food('{...}'::jsonb) / public.log_entry(metric, waarde, tijd) / public.save_food(...). Nooit DELETE. Alleen als hij het expliciet vraagt.",
+    description: "Eén INSERT of UPDATE om iets in de app te doen wat de gebruiker vraagt: menu aanpassen (app.mp_week_items: day, slot, recipe_id, portions), recept maken/aanpassen (app.mp_recipes), coachplanning (app.coach_sessions: status, note), of select public.log_food('{...}'::jsonb) / public.log_entry(metric, waarde, tijd) / public.save_food(...). Nooit DELETE. Alleen als hij het expliciet vraagt.",
     input_schema: { type: "object", properties: { statement: { type: "string" }, purpose: { type: "string" } }, required: ["statement"] },
   },
   {
@@ -95,7 +120,7 @@ const TOOLS = [
   },
   {
     name: "log_measurement",
-    description: "Log een meting die Simon vertelt: gewicht (kg), vetpercentage (%), water (mL), cafeïne (mg) of een lichaamsomtrek in cm (taille, borst, bovenarm, dij, heup). Alleen als hij dat expliciet zegt.",
+    description: "Log een meting die de gebruiker vertelt: gewicht (kg), vetpercentage (%), water (mL), cafeïne (mg) of een lichaamsomtrek in cm (taille, borst, bovenarm, dij, heup). Alleen als hij dat expliciet zegt.",
     input_schema: {
       type: "object",
       properties: {
@@ -113,7 +138,7 @@ function systemPrompt(schema: string) {
   const today = now.toLocaleDateString("nl-BE", { timeZone: "Europe/Brussels", weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const time = now.toLocaleTimeString("nl-BE", { timeZone: "Europe/Brussels", hour: "2-digit", minute: "2-digit" });
   const iso = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Brussels" }).format(now);
-  return `Je bent de persoonlijke health- & fitness-analist in Simon's eigen app. Je antwoordt in het Nederlands, direct en beknopt.
+  return `Je bent de persoonlijke health- & fitness-analist in de app van ${N()}. Je antwoordt in het Nederlands, direct en beknopt.
 
 Nu: ${today} (${iso}), ${time}, tijdzone Europe/Brussels.
 
@@ -128,9 +153,9 @@ WERKWIJZE
 - Correlatie is geen oorzaak; wees eerlijk over onzekerheid bij weinig datapunten.
 - Je bent geen arts: bij medisch klinkende vragen geef je de data en raad je een professional aan.
 - Gewicht: gebruik trend_kg (ai.weight_trend) voor veranderingen, niet losse wegingen. Vragen over onderhoud/TDEE/hoeveel eten: ai.energy_balance.
-- Routines: vraagt Simon om een herinnering/melding, maak die met create_routine en bevestig dag(en) en uur. Wijzigen/stoppen via list_routines + update_routine.
-- Je bent ook zijn coach in de app: menu, recepten, boodschappen, trainingsplanning en feedback lees je met app_read; wijzigen doe je met app_write, maar alleen wat hij expliciet vraagt. Menu-regels: hele porties voor pudding/eiwitreep/Upfront (portion_step), dagdoel 1900–2100 kcal en ≥150 g eiwit, nooit verwijderen, geen verzonnen voedingswaarden. Lees app.settings 'mealprep' voor menuwijzigingen.
-- Doelen: 2000 kcal, 150 g eiwit, max 50 g vet; zone 2 = 138–152 bpm; halve marathon zomer 2027.
+- Routines: vraagt ${N()} om een herinnering/melding, maak die met create_routine en bevestig dag(en) en uur. Wijzigen/stoppen via list_routines + update_routine.
+- Je bent ook zijn coach in de app: menu, recepten, boodschappen, trainingsplanning en feedback lees je met app_read; wijzigen doe je met app_write, maar alleen wat hij expliciet vraagt. Menu-regels: hele porties voor pudding/eiwitreep/Upfront (portion_step), dagdoel rond het kcal-doel en minstens het eiwitdoel, nooit verwijderen, geen verzonnen voedingswaarden. Lees app.settings 'mealprep' voor menuwijzigingen.
+${goalLine()}
 - Opmaak: korte alinea's of een kleine lijst/tabel in Markdown. Geen SQL tonen tenzij gevraagd.
 
 BESCHIKBARE VIEWS (schema ai):
@@ -145,7 +170,7 @@ Gebruik ook het dagboek als er iets in staat. Ontbreekt data, vermeld dat kort.`
 async function runTool(name: string, input: any) {
   switch (name) {
     case "run_sql": {
-      const { data, error } = await admin.rpc("ai_run_query", { q: String(input?.query ?? "") });
+      const { data, error } = await (store()?.db ?? admin).rpc("ai_run_query", { q: String(input?.query ?? "") });
       if (error) throw new Error(`SQL-fout: ${error.message}`);
       return data;
     }
@@ -172,7 +197,7 @@ async function converseGemini(schema: string, messages: any[]) {
   const last = messages[messages.length - 1];
   const history = messages.slice(0, -1).filter((m) => typeof m.content === "string")
     .map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
-  const { text, actions } = await geminiLoop({ apiKey: GEMINI, model: GEMINI_MODEL, system: systemPrompt(schema), tools,
+  const { text, actions } = await geminiLoop({ apiKey: GEMINIK(), model: GEMINI_MODEL, system: systemPrompt(schema), tools,
     track: (m: string, l: boolean) => rpc("internal_ai_usage_add", { p_model: m, p_limited: l }),
     run: (n, a) => runTool(n, a), userParts: [{ text: String(last.content) }], history });
   return { answer: text, actions };
@@ -180,7 +205,7 @@ async function converseGemini(schema: string, messages: any[]) {
 
 async function converse(apiKey: string, model: string, schema: string, messages: any[]) {
   let fallback = false;
-  if (GEMINI) {
+  if (GEMINIK()) {
     try { return await converseGemini(schema, messages); }
     catch (e) {
       // Alle Gemini-modellen op of overbelast: terugvallen op Claude als er een sleutel is
@@ -248,26 +273,35 @@ Deno.serve(async (req) => {
   // --- auth ---
   const cron = req.headers.get("x-cron-token");
   let isCron = false;
+  let uid = "";
   if (cron) {
     const expected = await rpc<string>("internal_get_secret", { p_name: "cron_token" });
     if (!expected || cron !== expected) return json({ error: "Geen toegang" }, 401);
     isCron = true;
+    uid = String((body as any).user_id ?? "") || ((await admin.rpc("internal_legacy_user")).data as string);
   } else {
     const jwt = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
     if (!jwt) return json({ error: "Niet ingelogd" }, 401);
     const { data: u, error: ue } = await admin.auth.getUser(jwt);
     if (ue || !u.user) return json({ error: "Niet ingelogd" }, 401);
     if (!(await rpc<boolean>("internal_is_owner", { p_uid: u.user.id }))) return json({ error: "Geen toegang" }, 403);
+    uid = u.user.id;
   }
+  return await als.run(await makeCtx(uid), () => handle(body, isCron));
+});
 
-  const apiKey = GEMINI ? "" : await rpc<string | null>("internal_get_secret", { p_name: "anthropic_api_key" });
-  if (!GEMINI && !apiKey) return json({ error: "Geen AI-sleutel ingesteld" }, 400);
-  const model = GEMINI ? GEMINI_MODEL : ((await rpc<string | null>("internal_get_setting", { p_key: "ai_model" })) as string) || "claude-sonnet-5-5";
+async function handle(body: any, isCron: boolean): Promise<Response> {
+  if (!GEMINIK() && !(await rpc<string | null>("internal_get_secret", { p_name: "anthropic_api_key" }).catch(() => null)))
+    return json({ error: "Vul eerst je eigen gratis Gemini-sleutel in bij Instellingen (aistudio.google.com/apikey)." }, 400);
+
+  const apiKey = GEMINIK() ? "" : await rpc<string | null>("internal_get_secret", { p_name: "anthropic_api_key" });
+  if (!GEMINIK() && !apiKey) return json({ error: "Geen AI-sleutel ingesteld" }, 400);
+  const model = GEMINIK() ? GEMINI_MODEL : ((await rpc<string | null>("internal_get_setting", { p_key: "ai_model" })) as string) || "claude-sonnet-5-5";
   const schema = await rpc<string>("ai_schema_doc");
 
   // --- "Wat past erbij?": één snelle Gemini-oproep, kiest uit zijn eigen producten (echte waarden) ---
   if (body.mode === "pair") {
-    if (!GEMINI) return json({ error: "Geen AI-sleutel" }, 400);
+    if (!GEMINIK()) return json({ error: "Geen AI-sleutel" }, 400);
     const b: any = body;
     const day = /^\d{4}-\d{2}-\d{2}$/.test(b.day ?? "") ? b.day : new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Brussels" });
     const meal = String(b.meal ?? "Avondeten").slice(0, 20).replace(/'/g, "");
@@ -279,9 +313,9 @@ Deno.serve(async (req) => {
          from (select * from app.foods where not coalesce(archived, false) and recipe is null and per100 ? 'kcal' order by use_count desc nulls last limit 80) f) as producten` });
     const c = ctx?.[0] ?? {};
     if (!c.maaltijd) return json({ ideas: [] });
-    const sys = `Je stelt voor wat lekker past bij een maaltijd van Simon (fitness, ${meal.toLowerCase()}). Kies ALLEEN uit de lijst 'producten' (gebruik hun id), 2 of 3 ideeën die smaakmatig echt passen bij wat hij al heeft (bv. bij scampi: rijst of pasta, groenten, een saus), met een realistische hoeveelheid in gram die in zijn resterende budget past (doelen min vandaag). Antwoord met ALLEEN JSON: {"ideas":[{"id":"<uuid uit de lijst>","gram":<getal>,"waarom":"<max 6 woorden>"}]}`;
+    const sys = `Je stelt voor wat lekker past bij een maaltijd van ${N()} (fitness, ${meal.toLowerCase()}). Kies ALLEEN uit de lijst 'producten' (gebruik hun id), 2 of 3 ideeën die smaakmatig echt passen bij wat hij al heeft (bv. bij scampi: rijst of pasta, groenten, een saus), met een realistische hoeveelheid in gram die in zijn resterende budget past (doelen min vandaag). Antwoord met ALLEEN JSON: {"ideas":[{"id":"<uuid uit de lijst>","gram":<getal>,"waarom":"<max 6 woorden>"}]}`;
     try {
-      const { text } = await geminiLoop({ apiKey: GEMINI, model: GEMINI_MODEL, system: sys, tools: [], json: true, maxSteps: 2,
+      const { text } = await geminiLoop({ apiKey: GEMINIK(), model: GEMINI_MODEL, system: sys, tools: [], json: true, maxSteps: 2,
         deadline: Date.now() + 40000, run: async () => null,
         track: (m: string, l: boolean) => rpc("internal_ai_usage_add", { p_model: m, p_limited: l }),
         userParts: [{ text: JSON.stringify(c).slice(0, 25000) }] });
@@ -328,4 +362,4 @@ Deno.serve(async (req) => {
     p_conversation: conversationId, p_role: "assistant", p_content: result.answer, p_meta: { queries: result.actions, model },
   });
   return json({ conversation_id: conversationId, answer: result.answer, queries: result.actions });
-});
+}
