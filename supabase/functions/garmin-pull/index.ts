@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
     const sleepRaw = (await Promise.all([y, t].map((d) => safe(`sleep ${d}`, () => get(a, `/wellness-service/wellness/dailySleepData/${dn}`, { date: d, nonSleepBufferMinutes: "60" }))))).filter(Boolean);
     const ready = await safe("readiness", () => get(a, `/metrics-service/metrics/trainingreadiness/${t}`));
     // Body Battery als tijdreeks: 'bodyBatteryMostRecentValue' uit de dagsamenvatting loopt achter
-    const bbRep = await safe("bodybattery", () => get(a, "/wellness-service/wellness/bodyBattery/reports/daily", { startDate: t, endDate: t }));
+    const bbRep = await safe("bodybattery", () => get(a, "/wellness-service/wellness/bodyBattery/reports/daily", { startDate: minus(t, 7), endDate: t }));
     const bbSeries = (Array.isArray(bbRep) ? bbRep : bbRep ? [bbRep] : []).flatMap((d: any) => d?.bodyBatteryValuesArray ?? [])
       .map((e: any) => Array.isArray(e) ? [e[0], e.slice(1).find((v: any) => typeof v === "number")] : null)
       .filter((e: any) => e && typeof e[0] === "number" && typeof e[1] === "number");
@@ -143,11 +143,12 @@ Deno.serve(async (req) => {
       duration_seconds: x.duration, distance_meters: x.distance, calories: x.calories,
       avg_hr_bpm: x.averageHR, max_hr_bpm: x.maxHR, elevation_gain_meters: x.elevationGain,
     }));
-    // enkel als er geen reeks is, de (tragere) laatste waarde uit de samenvatting gebruiken
-    const bbNow = bbSeries.length ? null : (summaries.find((s: any) => s?.calendarDate === t) as any)?.bodyBatteryMostRecentValue ?? null;
+    // Geen losse "nu"-waarde meer: die bleef uren hangen als het horloge niet synct. Wel de laatste horloge-sync bewaren.
+    const syncs = summaries.map((s: any) => s?.lastSyncTimestampGMT).filter(Boolean).sort();
+    const watchSync = syncs.length ? new Date(String(syncs.at(-1)).replace(/(\.\d+)?$/, "") + "Z").toISOString() : null;
 
     const r = await rpc("internal_garmin_pull_ingest", {
-      p_raw: { summaries, sleep, readiness, activities }, p_bb_now: bbNow, p_errors: errors,
+      p_raw: { summaries, sleep, readiness, activities }, p_bb_now: null, p_errors: errors, p_watch_sync: watchSync,
     });
     return json({ ok: true, ...(r as object), bb_points: bbSeries.length, bb_last: bbSeries.at(-1)?.[1] ?? null, errors });
   } catch (e) {

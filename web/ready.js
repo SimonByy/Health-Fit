@@ -20,7 +20,12 @@ export async function renderReadiness(ctx, el, day) {
   const sc = n(r.score_now) ?? n(r.score);
   const hm = (iso) => new Intl.DateTimeFormat("nl-BE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Brussels" }).format(new Date(iso));
   const isToday = day === C.today();
-  const bbSub = !isToday ? "einde van de dag (geschat)" : r.bb_actual && r.bb_base_ts ? `nu · gemeten ${hm(r.bb_base_ts)}, daarna geschat` : r.bb_now != null ? "nu · geschat" : "bij opstaan";
+  // Het horloge synct pas naar Garmin als de Garmin Connect-app op je gsm verbinding maakt
+  const stale = isToday && r.watch_sync && Date.now() - new Date(r.watch_sync).getTime() > 60 * 6e4;
+  const est = isToday && r.bb_now != null && r.bb_base_ts && Date.now() - new Date(r.bb_base_ts).getTime() > 30 * 6e4;
+  const bbSub = !isToday ? "einde van de dag (geschat)"
+    : est && r.bb_actual ? `geschat · ${r.bb_base} om ${hm(r.bb_base_ts)}`
+    : r.bb_actual ? `gemeten ${hm(r.bb_base_ts)}` : r.bb_now != null ? "geschat" : "bij opstaan";
   el.innerHTML = `<div class="readyrow">
     <button class="rd-card ${tone(sc)}" id="rdOpen" type="button" aria-label="Readiness ${sc ?? "onbekend"}, details">
       ${ring(sc)}
@@ -28,9 +33,9 @@ export async function renderReadiness(ctx, el, day) {
     </button>
     <button class="rd-card bb ${bbTone}" id="bbOpen" type="button" aria-label="Body Battery ${bb ?? "onbekend"}, details">
       <div class="bb-bat" aria-hidden="true"><i style="height:${bb ?? 0}%"></i></div>
-      <span class="rd-txt"><span class="rd-k">Body Battery</span><b class="bb-num">${bb ?? "–"}</b><span class="rd-s">${bbSub}</span></span>
+      <span class="rd-txt"><span class="rd-k">Body Battery</span><b class="bb-num">${bb == null ? "–" : (est ? "≈" : "") + bb}</b><span class="rd-s">${bbSub}</span></span>
     </button>
-  </div>`;
+  </div>${stale ? `<p class="rd-stale small">Je horloge synct niet sinds ${hm(r.watch_sync)}. Open de Garmin Connect-app even, dan klopt dit weer.</p>` : ""}`;
   el.querySelector("#rdOpen").onclick = () => details(r);
   el.querySelector("#bbOpen").onclick = () => details(r);
 }
@@ -90,6 +95,7 @@ function bbChart(d, r) {
     const dlt = before && after ? Math.round(after[1] - before[1]) : null;
     return `<li><i class="dot ${a.kind}"></i>${C.esc(a.name || (a.kind === "kracht" ? "Krachttraining" : "Training"))} · ${hm(a.s)} · ${Math.round(a.min || 0)} min${dlt != null && dlt < 0 ? ` · <b>${dlt}</b>` : ""}</li>`;
   }).join("");
-  const lastTxt = last ? `Laatst gemeten om ${hm(last[0])}: <b>${last[1]}</b>${isToday && end - last[0] > 45 * 6e4 ? ". Je horloge synct pas als de Garmin Connect-app op je gsm open gaat; daarna staat het hier binnen 10 minuten." : ""}` : "Nog geen metingen vandaag.";
+  const lastTxt = last ? `Laatst gemeten om ${hm(last[0])}: <b>${last[1]}</b>${isToday && end - last[0] > 45 * 6e4 && r.bb_now != null
+      ? `. Stippellijn = schatting met jouw gemiddelde verbruik (${String(r.bb_rate ?? 2.5).replace(".", ",")} per uur): nu ongeveer <b>${r.bb_now}</b>.` : ""}` : "Nog geen metingen vandaag.";
   return `${svg}${drops ? `<ul class="bb-acts">${drops}</ul>` : ""}<p class="small muted" style="margin:8px 0 0">${lastTxt}</p>`;
 }

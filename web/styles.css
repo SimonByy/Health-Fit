@@ -1274,3 +1274,6 @@ body.kb .tabbar, body.kb .ai-fab, body.kb .fab, body.kb .selbar { display: none;
 .aibar.red i, .aibar-big.red i { background: var(--bad, #FF5C5C); }
 .aibar-big { height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; margin-top: 8px; }
 .aibar-big i { height: 100%; border-radius: 5px; }
+
+/* v25: horloge synct niet */
+.rd-stale { margin: 6px 2px 0; color: var(--warn, #F2B544); }

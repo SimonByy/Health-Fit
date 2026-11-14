@@ -1462,13 +1462,18 @@ $("#syncBtn").onclick = async () => {
   try {
     await rpc("request_garmin_sync");
     // De app haalt het meteen zelf op; wachten tot het klaar is (meestal 2–5 s)
-    let ok = false;
+    let ok = false, r = null;
     for (let i = 0; i < 12 && !ok; i++) {
-      await new Promise((r) => setTimeout(r, 1500));
-      const r = await rpc("get_readiness", {}).catch(() => null);
+      await new Promise((res) => setTimeout(res, 1500));
+      r = await rpc("get_readiness", {}).catch(() => null);
       ok = r && r.sync && !r.sync.pending;
     }
-    toast(ok ? "Garmin bijgewerkt ✓" : "Garmin reageert traag. Je data komt binnen enkele minuten binnen.", 3500);
+    // Garmin kan maar geven wat het horloge via de Garmin Connect-app heeft doorgestuurd
+    const ws = r?.watch_sync ? new Date(r.watch_sync) : null;
+    const stale = ws && Date.now() - ws.getTime() > 60 * 6e4;
+    const hm = ws ? ws.toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Brussels" }) : "";
+    toast(!ok ? "Garmin reageert traag. Je data komt binnen enkele minuten binnen."
+      : stale ? `Opgehaald, maar je horloge synct niet sinds ${hm}. Open Garmin Connect op je gsm en druk dan opnieuw.` : "Garmin bijgewerkt ✓", stale ? 6000 : 3500);
     if (ok) route();
   } catch (e) { toast(e.message, 5000); }
   b.classList.remove("spin");
