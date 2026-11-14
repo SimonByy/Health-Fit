@@ -84,12 +84,14 @@ export async function renderNutrition(ctx, state) {
   const mealCard = (m) => {
     const all = items.filter((i) => i.meal === m);
     const list = all.filter((i) => !planLogIds.has(i.id));   // gelogd via het menu: staat al als afgevinkte planning
-    const kc = all.filter((i) => !i.skipped).reduce((s, i) => s + (Number(i.kcal) || 0), 0);
+    const eat = all.filter((i) => !i.skipped);
+    const sum = (k) => eat.reduce((s, i) => s + (Number(i[k]) || 0), 0);
+    const kc = sum("kcal");
     const plan = planFor(m);
     const shut = closedMeals.has(m);
     return `<section class="mcard ${m === now && isToday ? "now" : ""} ${shut ? "shut" : ""}" data-meal="${m}">
       <header><button class="mtoggle" type="button" aria-expanded="${!shut}"><span class="mchev" aria-hidden="true">›</span><h2>${LABEL[m] || m}</h2>
-        <span class="mk">${all.length ? `${C.fmt(kc)} kcal${shut ? ` · ${all.length} ${all.length === 1 ? "item" : "items"}` : ""}` : ""}</span></button>
+        <span class="mk">${eat.length ? `<b>${C.fmt(kc)} kcal${shut ? ` · ${eat.length} ${eat.length === 1 ? "item" : "items"}` : ""}</b>${pkv(sum("protein"), sum("carbs"), sum("fat"))}` : ""}</span></button>
         <button class="madd" data-add="${m}" aria-label="Iets toevoegen aan ${(LABEL[m] || m).toLowerCase()}">+</button></header>
       <div class="mbody">
       ${plan.map((p) => { const q = Number(p.portions) || 1; return `<label class="mplan ${p.eaten ? "eaten" : ""}">

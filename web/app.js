@@ -1475,6 +1475,22 @@ $("#syncBtn").onclick = async () => {
 window.addEventListener("hashchange", () => { if (!$("#tabbar").hidden) route(); });
 sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT" && !$("#tabbar").hidden) renderLogin(); });
 
+// iOS PWA: vaste balken onderaan blijven soms "meescrollen" nadat het toetsenbord, dictee of een andere app
+// de viewport verschoof. Meet het verschil met de zichtbare viewport en corrigeer; toetsenbord open = balken weg.
+(() => {
+  const vv = window.visualViewport; if (!vv) return;
+  const fix = () => {
+    const off = window.innerHeight - vv.height - vv.offsetTop;   // >0: balk zit te laag, <0: te hoog
+    const kb = off > 120 && /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "");
+    document.body.classList.toggle("kb", kb);
+    document.documentElement.style.setProperty("--vv-off", kb || Math.abs(off) < 2 || Math.abs(off) > 600 ? "0px" : `${Math.round(off)}px`);
+  };
+  vv.addEventListener("resize", fix); vv.addEventListener("scroll", fix);
+  document.addEventListener("focusout", () => setTimeout(() => { fix(); if (!/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "")) window.scrollTo(window.scrollX, window.scrollY); }, 250));
+  document.addEventListener("visibilitychange", () => setTimeout(fix, 300));
+  fix();
+})();
+
 // Altijd actuele data: verversen bij een pushmelding, bij het openen van een melding en bij terugkeren naar de app
 let lastRoute = Date.now();
 function freshen(force = false) {

@@ -1147,3 +1147,11 @@ body:has(#tabbar[hidden]) .ai-fab, body.ai-open .ai-fab, body:has(.sheet) .ai-fa
 .selbar { flex-wrap: wrap; }
 .selbar button[hidden] { display: none; }
 .selbar button.ok { color: var(--good); }
+
+/* ---------- v19: maaltijdtotaal met P/C/F; vaste balken op iOS ---------- */
+.mcard .mk { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; line-height: 1.15; }
+.mcard .mk b { font-weight: inherit; }
+.mcard .mk .pkv { font-family: var(--font-text); font-size: 12.5px; }
+/* iOS: compenseer een verschoven viewport (na toetsenbord/dictee/andere app), verberg balken als het toetsenbord open is */
+.tabbar, .ai-fab, .fab, .selbar { translate: 0 calc(-1 * var(--vv-off, 0px)); }
+body.kb .tabbar, body.kb .ai-fab, body.kb .fab, body.kb .selbar { display: none; }

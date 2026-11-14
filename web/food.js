@@ -6,8 +6,8 @@ export const MEALS = ["Ontbijt", "Lunch", "Snack", "Avondeten", "Laat"];
 // Gekleurde eiwit / koolhydraten / vet, kort
 const r0 = (v) => (v == null || Number.isNaN(Number(v)) ? null : Math.round(Number(v)));
 export function pkv(p, c, f) {
-  const x = (v, cls, l) => (r0(v) == null ? "" : `<i class="${cls}" title="${l === "E" ? "eiwit" : l === "K" ? "koolhydraten" : "vet"}">${l} ${r0(v)}</i>`);
-  return `<span class="pkv">${x(p, "p", "E")}${x(c, "c", "K")}${x(f, "f", "V")}</span>`;
+  const x = (v, cls, l) => (r0(v) == null ? "" : `<i class="${cls}" title="${l === "P" ? "eiwit (protein)" : l === "C" ? "koolhydraten (carbs)" : "vet (fat)"}">${l} ${r0(v)}</i>`);
+  return `<span class="pkv">${x(p, "p", "P")}${x(c, "c", "C")}${x(f, "f", "F")}</span>`;
 }
 import { check, enterSubmits, readLabel } from "./formkit.js";
 const MACROS = [["kcal", "kcal", ""], ["protein", "Eiwit", "g"], ["carbs", "Koolh.", "g"], ["fat", "Vet", "g"]];
