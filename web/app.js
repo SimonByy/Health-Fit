@@ -90,7 +90,7 @@ async function rpc(fn, args = {}) {
 
 async function invoke(fn, body) {
   const { data, error } = await sb.functions.invoke(fn, { body });
-  if (fn === "ask") window.dispatchEvent(new Event("ai-used"));
+  if (fn === "ask" || fn === "tts") window.dispatchEvent(new Event("ai-used"));
   if (error) {
     let msg = error.message;
     try {

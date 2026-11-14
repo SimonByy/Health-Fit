@@ -25,10 +25,53 @@ function pickVoice() {
   return vs.find((v) => v.voiceURI === want) || vs[0] || null;
 }
 
-function speak(text, btn) {
+// Gemini-stemmen (natuurlijk, gratis laag; elke tekst wordt maar één keer omgezet en daarna bewaard)
+const GVOICES = [["Sulafat", "warm"], ["Achird", "vriendelijk"], ["Charon", "informatief"], ["Kore", "stevig"], ["Puck", "opgewekt"],
+  ["Aoede", "luchtig"], ["Algieba", "zacht"], ["Gacrux", "rijp"], ["Iapetus", "helder"], ["Schedar", "rustig"], ["Vindemiatrix", "kalm"], ["Orus", "zakelijk"]];
+const SILENT = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=";
+const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; } };
+const engine = () => ls("hh_tts") || "gemini";
+let audio = null;
+// Op een tik het audio-element "ontgrendelen" (iOS speelt anders later niets af)
+function unlock() {
+  if (!audio) { audio = new Audio(); audio.setAttribute("playsinline", ""); }
+  if (!speaking) { try { audio.src = SILENT; audio.play().catch(() => {}); } catch { /* */ } }
+}
+function stopAll() {
+  try { speechSynthesis.cancel(); } catch { /* */ }
+  if (audio) { audio.onended = null; audio.pause(); }
+}
+
+function speak(text, btn, opt = {}) {
+  if (speaking) { stopAll(); speaking = false; setBtn(btn, false); return; }
+  if (engine() === "device") return speakDevice(text, btn);
+  return speakGemini(text, btn, opt);
+}
+
+async function speakGemini(text, btn, opt) {
+  unlock();
+  speaking = true; setBtn(btn, true, "… Laden");
+  const done = () => { speaking = false; setBtn(btn, false); };
+  try {
+    const r = await C.invoke("tts", { text, voice: opt.voice || ls("hh_gvoice") || undefined });
+    if (!speaking) return;
+    if (!r?.url) throw new Error(r?.error || "Geen audio");
+    audio.onended = () => { done(); if (btn?.dataset.listen) startMic(); };
+    audio.onerror = done;
+    audio.src = r.url;
+    setBtn(btn, true);
+    await audio.play();
+  } catch (e) {
+    done();
+    if (e?.name === "NotAllowedError") { if (btn) C.toast("Tik op ▶ Voorlezen om te starten"); return; }
+    if ("speechSynthesis" in window && !opt.noFallback) { C.toast("Gemini-stem lukt nu niet, even met de iPhone-stem", 3500); speakDevice(text, btn); }
+    else C.toast(`Voorlezen lukt niet: ${e.message}`, 4000);
+  }
+}
+
+function speakDevice(text, btn) {
   if (!("speechSynthesis" in window)) { C.toast("Voorlezen wordt niet ondersteund in deze browser"); return; }
   speechSynthesis.cancel();
-  if (speaking) { speaking = false; setBtn(btn, false); return; }
   // iOS leest lange teksten soms niet volledig: in zinnen opdelen
   const parts = plain(text).match(/[^.!?]+[.!?]*/g) || [];
   const voice = pickVoice();
@@ -40,7 +83,7 @@ function speak(text, btn) {
     speechSynthesis.speak(u);
   });
 }
-function setBtn(btn, on) { if (btn) btn.innerHTML = on ? "■ Stop" : btn.dataset.label; }
+function setBtn(btn, on, label) { if (btn) btn.innerHTML = on ? (label || "■ Stop") : btn.dataset.label; }
 
 // ---------------------------------------------------------------- microfoon
 let rec = null;
@@ -98,11 +141,18 @@ export async function renderBriefing(ctx) {
     </section>`;
   const play = $("#bPlay");
   play.onclick = () => speak(B.text, play);
-  const fillVoices = () => { const sel = $("#bVoice"); if (!sel) return; const vs = dutchVoices(); const cur = pickVoice();
-    sel.innerHTML = vs.length ? vs.map((v) => `<option value="${C.esc(v.voiceURI)}" ${cur && v.voiceURI === cur.voiceURI ? "selected" : ""}>${C.esc(v.name)} (${C.esc(v.lang)})</option>`).join("")
-      : `<option>Standaardstem</option>`;
-    sel.onchange = () => { try { localStorage.setItem("hh_voice", sel.value); } catch { /* */ } speechSynthesis.cancel(); speaking = false; speak("Hoi Simon, zo klink ik.", null); }; };
-  if ("speechSynthesis" in window) { fillVoices(); speechSynthesis.onvoiceschanged = fillVoices; } else $(".voice-row")?.remove();
+  const fillVoices = () => { const sel = $("#bVoice"); if (!sel) return;
+    const dev = "speechSynthesis" in window ? dutchVoices() : []; const cur = dev.length ? pickVoice() : null;
+    const gv = ls("hh_gvoice") || "Sulafat"; const eng = engine();
+    sel.innerHTML = `<optgroup label="Gemini (natuurlijk)">${GVOICES.map(([n, d]) => `<option value="g:${n}" ${eng === "gemini" && n === gv ? "selected" : ""}>${n} · ${d}</option>`).join("")}</optgroup>`
+      + (dev.length ? `<optgroup label="iPhone">${dev.map((v) => `<option value="d:${C.esc(v.voiceURI)}" ${eng === "device" && cur && v.voiceURI === cur.voiceURI ? "selected" : ""}>${C.esc(v.name)}</option>`).join("")}</optgroup>` : "");
+    sel.onchange = () => {
+      stopAll(); speaking = false; setBtn(play, false);
+      const [kind, val] = [sel.value.slice(0, 1), sel.value.slice(2)];
+      if (kind === "g") { ls("hh_tts", "gemini"); ls("hh_gvoice", val); C.invoke("tts", { voice: val, save: true }).catch(() => {}); speakGemini("Hoi Simon, zo klink ik.", null, { voice: val, noFallback: true }); }
+      else { ls("hh_tts", "device"); ls("hh_voice", val); speakDevice("Hoi Simon, zo klink ik.", null); }
+    }; };
+  fillVoices(); if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = fillVoices;
   $("#bMic")?.addEventListener("click", startMic);
   $("#bSend").onclick = send;
   if (extra.some((m) => m.pending)) waitAnswer();
@@ -131,7 +181,7 @@ async function waitAnswer() {
       if (open < before) {
         box.innerHTML = bubbles(rs);
         const last = [...rs].reverse().find((r) => r.answer);
-        if (last && "speechSynthesis" in window) { speaking = false; try { speak(last.answer, null); } catch { /* */ } }
+        if (last) { stopAll(); speaking = false; try { speak(last.answer, null); } catch { /* */ } }
       }
       if (!open) return;
     }
@@ -142,6 +192,7 @@ async function send() {
   const ta = $("#bAns"); const btn = $("#bSend");
   const msg = ta.value.trim(); if (!msg) return startMic();
   rec?.stop();
+  unlock(); // zodat het antwoord straks voorgelezen mag worden
   btn.disabled = true;
   const box = $("#bChat");
   ta.value = "";
