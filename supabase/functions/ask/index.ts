@@ -173,6 +173,7 @@ async function converseGemini(schema: string, messages: any[]) {
   const history = messages.slice(0, -1).filter((m) => typeof m.content === "string")
     .map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
   const { text, actions } = await geminiLoop({ apiKey: GEMINI, model: GEMINI_MODEL, system: systemPrompt(schema), tools,
+    track: (m: string, l: boolean) => rpc("internal_ai_usage_add", { p_model: m, p_limited: l }),
     run: (n, a) => runTool(n, a), userParts: [{ text: String(last.content) }], history });
   return { answer: text, actions };
 }
@@ -241,7 +242,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Gebruik POST" }, 405);
 
-  let body: { message?: string; conversation_id?: string; mode?: string };
+  let body: { message?: string; conversation_id?: string; mode?: string; meal?: string; day?: string };
   try { body = await req.json(); } catch { return json({ error: "Ongeldige body" }, 400); }
 
   // --- auth ---
@@ -263,6 +264,38 @@ Deno.serve(async (req) => {
   if (!GEMINI && !apiKey) return json({ error: "Geen AI-sleutel ingesteld" }, 400);
   const model = GEMINI ? GEMINI_MODEL : ((await rpc<string | null>("internal_get_setting", { p_key: "ai_model" })) as string) || "claude-sonnet-5-5";
   const schema = await rpc<string>("ai_schema_doc");
+
+  // --- "Wat past erbij?": één snelle Gemini-oproep, kiest uit zijn eigen producten (echte waarden) ---
+  if (body.mode === "pair") {
+    if (!GEMINI) return json({ error: "Geen AI-sleutel" }, 400);
+    const b: any = body;
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(b.day ?? "") ? b.day : new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Brussels" });
+    const meal = String(b.meal ?? "Avondeten").slice(0, 20).replace(/'/g, "");
+    const ctx = await rpc<any>("internal_agent_read", { q: `select
+      (select jsonb_agg(jsonb_build_object('naam', name, 'gram', grams, 'kcal', kcal, 'p', protein)) from app.food_log where day = '${day}' and meal = '${meal}' and not voided and not coalesce(skipped, false)) as maaltijd,
+      (select jsonb_build_object('kcal', round(sum(kcal)), 'p', round(sum(protein)), 'c', round(sum(carbs)), 'f', round(sum(fat))) from app.food_log where day = '${day}' and not voided and not coalesce(skipped, false)) as vandaag,
+      (select value from app.settings where key = 'goals') as doelen,
+      (select jsonb_agg(jsonb_build_object('id', id, 'naam', name, 'merk', brand, 'per100', per100, 'portie_g', serving_g) order by use_count desc nulls last)
+         from (select * from app.foods where not coalesce(archived, false) and recipe is null and per100 ? 'kcal' order by use_count desc nulls last limit 80) f) as producten` });
+    const c = ctx?.[0] ?? {};
+    if (!c.maaltijd) return json({ ideas: [] });
+    const sys = `Je stelt voor wat lekker past bij een maaltijd van Simon (fitness, ${meal.toLowerCase()}). Kies ALLEEN uit de lijst 'producten' (gebruik hun id), 2 of 3 ideeën die smaakmatig echt passen bij wat hij al heeft (bv. bij scampi: rijst of pasta, groenten, een saus), met een realistische hoeveelheid in gram die in zijn resterende budget past (doelen min vandaag). Antwoord met ALLEEN JSON: {"ideas":[{"id":"<uuid uit de lijst>","gram":<getal>,"waarom":"<max 6 woorden>"}]}`;
+    try {
+      const { text } = await geminiLoop({ apiKey: GEMINI, model: GEMINI_MODEL, system: sys, tools: [], json: true, maxSteps: 2,
+        deadline: Date.now() + 40000, run: async () => null,
+        track: (m: string, l: boolean) => rpc("internal_ai_usage_add", { p_model: m, p_limited: l }),
+        userParts: [{ text: JSON.stringify(c).slice(0, 25000) }] });
+      const out = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+      const byId = new Map((c.producten ?? []).map((f: any) => [f.id, f]));
+      const ideas = (out.ideas ?? []).map((i: any) => {
+        const f: any = byId.get(i.id); const g = Math.max(5, Math.min(600, Math.round(Number(i.gram) || f?.portie_g || 100)));
+        if (!f) return null;
+        const v = (k: string) => Math.round(((Number(f.per100?.[k]) || 0) * g) / 10) / 10;
+        return { food_id: f.id, name: f.naam, grams: g, kcal: Math.round((Number(f.per100?.kcal) || 0) * g / 100), protein: v("protein"), carbs: v("carbs"), fat: v("fat"), why: String(i.waarom ?? "").slice(0, 60) };
+      }).filter(Boolean).slice(0, 3);
+      return json({ ideas });
+    } catch (e) { return json({ error: e instanceof Error ? e.message : String(e) }, 502); }
+  }
 
   // --- weekoverzicht ---
   if (body.mode === "weekly_review") {

@@ -1244,3 +1244,33 @@ body.kb .tabbar, body.kb .ai-fab, body.kb .fab, body.kb .selbar { display: none;
 .mp-seg button { flex: 1 0 auto; padding-left: 10px; padding-right: 10px; font-size: 14.5px; }
 .wg-c span { -webkit-hyphens: auto; hyphens: auto; word-break: normal; overflow-wrap: normal; }
 .wg-legend span { white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+
+/* ---------- v22: recepten-filters, camera ---------- */
+.rc-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.rc-filters .input { margin: 0; }
+.rc-h { margin: 16px 2px 6px; font-size: 15px; }
+.rc-e { font-size: 20px; text-align: center; align-self: center; }
+.e-cam { cursor: pointer; font-size: 20px; }
+
+/* ---------- v23: Body Battery-daggrafiek ---------- */
+.bb-svg { width: 100%; height: auto; display: block; }
+.bb-grid { stroke: var(--line); stroke-width: 1; }
+.bb-ax { fill: var(--faint); font-size: 10px; }
+.bb-line { fill: none; stroke: var(--good); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+.bb-est { fill: none; stroke: var(--good); stroke-width: 2; stroke-dasharray: 4 4; opacity: .6; }
+.bb-act { fill: color-mix(in srgb, var(--fat) 35%, transparent); }
+.bb-act.cardio { fill: color-mix(in srgb, var(--accent) 35%, transparent); }
+.bb-acts { list-style: none; padding: 0; margin: 8px 0 0; font-size: 13px; display: grid; gap: 4px; }
+.bb-acts .dot { margin-right: 6px; }
+.dot.kracht { background: var(--fat); } .dot.cardio { background: var(--accent); }
+
+/* ---------- v24: AI-verbruik bovenaan ---------- */
+.topbar { position: sticky; }
+.aibar { position: absolute; left: 0; right: 0; top: var(--safe-t); height: 12px; padding: 0; border: 0; background: none; cursor: pointer; z-index: 1; }
+.aibar i, .aibar-big i { display: block; height: 3px; border-radius: 0 3px 3px 0; background: var(--good); transition: width .6s ease; }
+.aibar::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: color-mix(in srgb, var(--line) 60%, transparent); }
+.aibar i { position: relative; }
+.aibar.orange i, .aibar-big.orange i { background: #F2A33A; }
+.aibar.red i, .aibar-big.red i { background: var(--bad, #FF5C5C); }
+.aibar-big { height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; margin-top: 8px; }
+.aibar-big i { height: 100%; border-radius: 5px; }

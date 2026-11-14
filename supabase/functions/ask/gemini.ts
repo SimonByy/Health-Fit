@@ -7,6 +7,7 @@ const BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 export async function geminiLoop(opts: {
   apiKey: string; model: string; system: string; tools: Tool[]; run: ToolRunner;
   userParts: any[]; history?: any[]; maxSteps?: number; deadline?: number; json?: boolean;
+  track?: (model: string, limited: boolean) => unknown;
 }): Promise<{ text: string; actions: { tool: string; purpose?: string; rows?: number; error?: string }[] }> {
   const contents: any[] = [...(opts.history ?? []), { role: "user", parts: opts.userParts }];
   const actions: { tool: string; purpose?: string; rows?: number; error?: string }[] = [];
@@ -34,6 +35,7 @@ export async function geminiLoop(opts: {
       if (++retries > 4 || mi >= models.length - 1) throw new Error(`Gemini time-out (${models[mi]}): ${e}`);
       mi++; step--; continue;
     }
+    try { await opts.track?.(models[mi], res.status === 429); } catch { /* tellen mag nooit iets breken */ }
     if (res.status === 503 && mi < models.length - 1) { await res.body?.cancel(); mi++; step--; continue; }
     if (res.status === 429 && mi < models.length - 1) {
       // dagquotum of gratis limiet van dit model op: elk model heeft een eigen quotum, dus meteen het volgende proberen

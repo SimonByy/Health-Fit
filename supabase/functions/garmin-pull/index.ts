@@ -118,6 +118,12 @@ Deno.serve(async (req) => {
     const summaries = (await Promise.all([y, t].map((d) => safe(`summary ${d}`, () => get(a, `/usersummary-service/usersummary/daily/${dn}`, { calendarDate: d }))))).filter(Boolean);
     const sleepRaw = (await Promise.all([y, t].map((d) => safe(`sleep ${d}`, () => get(a, `/wellness-service/wellness/dailySleepData/${dn}`, { date: d, nonSleepBufferMinutes: "60" }))))).filter(Boolean);
     const ready = await safe("readiness", () => get(a, `/metrics-service/metrics/trainingreadiness/${t}`));
+    // Body Battery als tijdreeks: 'bodyBatteryMostRecentValue' uit de dagsamenvatting loopt achter
+    const bbRep = await safe("bodybattery", () => get(a, "/wellness-service/wellness/bodyBattery/reports/daily", { startDate: t, endDate: t }));
+    const bbSeries = (Array.isArray(bbRep) ? bbRep : bbRep ? [bbRep] : []).flatMap((d: any) => d?.bodyBatteryValuesArray ?? [])
+      .map((e: any) => Array.isArray(e) ? [e[0], e.slice(1).find((v: any) => typeof v === "number")] : null)
+      .filter((e: any) => e && typeof e[0] === "number" && typeof e[1] === "number");
+    if (bbSeries.length) await safe("bb-series", () => rpc("internal_garmin_bb_series", { p_series: bbSeries }));
     const acts = await safe("activities", () => get(a, "/activitylist-service/activities/search/activities", { startDate: minus(t, 2), endDate: t, start: "0", limit: "20" }));
 
     const sleep = sleepRaw.map((s: any) => {
@@ -137,12 +143,13 @@ Deno.serve(async (req) => {
       duration_seconds: x.duration, distance_meters: x.distance, calories: x.calories,
       avg_hr_bpm: x.averageHR, max_hr_bpm: x.maxHR, elevation_gain_meters: x.elevationGain,
     }));
-    const bbNow = (summaries.find((s: any) => s?.calendarDate === t) as any)?.bodyBatteryMostRecentValue ?? null;
+    // enkel als er geen reeks is, de (tragere) laatste waarde uit de samenvatting gebruiken
+    const bbNow = bbSeries.length ? null : (summaries.find((s: any) => s?.calendarDate === t) as any)?.bodyBatteryMostRecentValue ?? null;
 
     const r = await rpc("internal_garmin_pull_ingest", {
       p_raw: { summaries, sleep, readiness, activities }, p_bb_now: bbNow, p_errors: errors,
     });
-    return json({ ok: true, ...(r as object), errors });
+    return json({ ok: true, ...(r as object), bb_points: bbSeries.length, bb_last: bbSeries.at(-1)?.[1] ?? null, errors });
   } catch (e) {
     const msg = (e as Error).message;
     await rpc("internal_garmin_pull_fail", { p_error: msg, p_auth: !!(e as any).auth }).catch(() => {});

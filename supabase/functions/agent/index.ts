@@ -23,6 +23,7 @@ const TOOLS: Tool[] = [
   { name: "sql_write", description: "Eén INSERT of UPDATE op app.mp_week_items, app.mp_recipes, app.mp_weeks, app.menu_wishes, app.capture_inbox, app.briefing_replies, app.recipe_inbox, app.menu_rebalance, app.push_outbox, app.coach_sessions, app.store_products, app.foods of app.coach_feedback; of select public.log_food(...)/log_entry(...)/save_food(...)/mp_set_portion_step(...)/copy_food_items(...)/void_food(...); een geplande maaltijd weghalen met select public.mp_item_remove(<item-id>) (alleen als Simon vraagt die maaltijd niet te plannen, bv. omdat hij uit eet). Gebruik RETURNING om id's terug te krijgen. Nooit DELETE.",
     parameters: { type: "object", properties: { statement: { type: "string" }, purpose: { type: "string" } }, required: ["statement"] } },
 ];
+const track = (m: string, l: boolean) => rpc("internal_ai_usage_add", { p_model: m, p_limited: l });
 const run = async (name: string, a: any) => {
   if (name === "sql_read") return await rpc("internal_agent_read", { q: String(a.query ?? "") });
   if (name === "sql_write") return await rpc("internal_agent_write", { q: String(a.statement ?? "") });
@@ -144,7 +145,7 @@ async function processFeedback(id: number, row: any, deadline: number) {
   const sys = `Je bent Simons personal coach. Nederlands, direct, eerlijk, concreet met cijfers, geen overdreven lof.
 Context: hoofddoel halve marathon zomer 2027; de komende weken vooral zone 2 (138–152 bpm), runs zijn één open run zonder intervallen; kracht volgens zijn split.
 Antwoord met ALLEEN JSON: {"title": "<training · duur>", "summary": "<1–3 zinnen>", "good": "<punten gescheiden door ' · '>", "improve": "<punten gescheiden door ' · '>", "focus": "<één concrete focus voor de volgende keer>", "stats": {<3–6 kerncijfers, korte labels>}}`;
-  const { text } = await geminiLoop({ apiKey: KEY, model: MODEL, system: sys, tools: [], run, deadline, json: true,
+  const { text } = await geminiLoop({ apiKey: KEY, model: MODEL, track, system: sys, tools: [], run, deadline, json: true,
     userParts: [{ text: `Nieuwe training (${row.sport}). Data:\n${JSON.stringify(data).slice(0, 30000)}` }] });
   const f = parseFinal(text);
   if (!f.summary) throw new Error("Geen bruikbare feedback");
@@ -173,7 +174,7 @@ async function process(kind: string, id: number) {
     const parts: any[] = [{ text: TASK[kind](row) }];
     const img = await imagePart(kind, row);
     if (img) parts.push(img);
-    const { text, actions } = await geminiLoop({ apiKey: KEY, model: MODEL, system: system(), tools: TOOLS, run, userParts: parts, deadline });
+    const { text, actions } = await geminiLoop({ apiKey: KEY, model: MODEL, track, system: system(), tools: TOOLS, run, userParts: parts, deadline });
     const f = parseFinal(text);
     if (!f.ok) throw new Error(f.message || "Agent gaf op");
     const msg = String(f.message || "Verwerkt.").slice(0, 1500);

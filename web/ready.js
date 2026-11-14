@@ -35,25 +35,61 @@ export async function renderReadiness(ctx, el, day) {
   el.querySelector("#bbOpen").onclick = () => details(r);
 }
 
-function details(r) {
+async function details(r) {
   const sheet = document.createElement("div");
   sheet.className = "sheet";
-  const row = (k, l, v, extra) => `<div class="rd-part"><span>${l}</span><span class="rd-bar"><i class="${tone(v)}" style="width:${v ?? 0}%"></i></span><b>${v ?? "–"}</b>${extra ? `<small>${extra}</small>` : ""}</div>`;
+  const row = (l, v, extra) => `<div class="rd-part"><span>${l}</span><span class="rd-bar"><i class="${tone(v)}" style="width:${v ?? 0}%"></i></span><b>${v ?? "–"}</b>${extra ? `<small>${extra}</small>` : ""}</div>`;
   const p = r.parts || {};
+  const sc = r.score_now ?? r.score;
   sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Readiness">
-    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h3 style="margin:0">Readiness ${r.score_now ?? r.score ?? "–"}</h3>
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h3 style="margin:0">Readiness ${sc ?? "–"}</h3>
       <button class="icon-btn" data-close aria-label="Sluiten">✕</button></div>
-    <p class="small muted" style="margin:6px 0 12px">Je Venu 3 heeft geen Training Readiness, dus Health Hub berekent er zelf een. 's Ochtends: <b>${r.score ?? "–"}</b>. Doorheen de dag zakt hij mee met je Body Battery en je trainingen${r.load ? ` (−${r.load} door training vandaag)` : ""}.</p>
-    <div class="bb-flow"><span><small>Bij opstaan</small><b>${r.bb_wake ?? "–"}</b></span><span class="arrow">→</span>
-      <span><small>${r.bb_actual ? "Gemeten" : "Start"}</small><b>${r.bb_actual ? "" : ""}${r.bb_actual ? Math.round((r.bb_now ?? 0) + (r.drain ?? 0)) : r.bb_wake ?? "–"}</b></span><span class="arrow">→</span>
-      <span><small>Nu (geschat)</small><b>${r.bb_now ?? "–"}</b></span></div>
-    <p class="small muted" style="margin:0 0 12px">Tussen twee Garmin-syncs schat Health Hub ongeveer 2,5 punten per wakker uur, plus je trainingen (kracht ±15 per uur, cardio ±20 per uur). Tik op ⟳ bovenaan voor een echte meting.</p>
-    ${row("slaap", "Slaap (30%)", p.slaap, r.sleep_score != null ? `slaapscore ${r.sleep_score}` : "")}
-    ${row("bb", "Body Battery (30%)", p.body_battery, r.bb_wake != null ? `${r.bb_wake} bij opstaan` : "")}
-    ${row("hrv", "HRV (25%)", p.hrv, r.hrv != null ? `${r.hrv} ms, gemiddeld ${r.hrv_base ?? "–"}` : "")}
-    ${row("rhr", "Rusthartslag (15%)", p.rusthartslag, r.rhr != null ? `${r.rhr} bpm, gemiddeld ${r.rhr_base ?? "–"}` : "")}
-    <p class="small muted" style="margin:12px 0 0">75+ klaar voor zwaar werk · 50–74 normaal trainen · 30–49 rustig aan · onder 30 herstel voorop. HRV en rusthartslag worden vergeleken met je eigen gemiddelde van de 7 dagen ervoor.</p>
+    <p class="small muted" style="margin:4px 0 12px">${C.esc(r.label || "")}${r.score != null && sc !== r.score ? ` · 's ochtends ${r.score}` : ""}</p>
+    ${row("Slaap", p.slaap, r.sleep_score != null ? `score ${r.sleep_score}` : "")}
+    ${row("Body Battery", p.body_battery, r.bb_wake != null ? `${r.bb_wake} bij opstaan` : "")}
+    ${row("HRV", p.hrv, r.hrv != null ? `${r.hrv} ms (gem. ${r.hrv_base ?? "–"})` : "")}
+    ${row("Rusthartslag", p.rusthartslag, r.rhr != null ? `${r.rhr} bpm (gem. ${r.rhr_base ?? "–"})` : "")}
+    <h4 style="margin:16px 0 6px">Body Battery vandaag</h4>
+    <div id="bbDay" class="bbday"><div class="skeleton" style="height:120px"></div></div>
   </div>`;
   document.body.appendChild(sheet);
   sheet.addEventListener("click", (e) => { if (e.target === sheet || e.target.closest("[data-close]")) sheet.remove(); });
+  const box = sheet.querySelector("#bbDay");
+  const d = await C.rpc("get_bb_day", { p_day: r.day }).catch(() => null);
+  if (!d) { box.innerHTML = `<p class="small muted">Geen gegevens.</p>`; return; }
+  box.innerHTML = bbChart(d, r);
+}
+
+// Verloop van je Body Battery met je trainingen erop: waarom hij zakte
+function bbChart(d, r) {
+  const W = 340, H = 130, P = { l: 24, r: 8, t: 8, b: 20 };
+  const day0 = new Date(d.day + "T00:00:00").getTime();
+  const isToday = d.day === C.today();
+  const end = isToday ? Date.now() : day0 + 864e5;
+  const pts = (d.series || []).filter(([t]) => t >= day0 && t <= end);
+  const x = (t) => P.l + ((t - day0) / (end - day0)) * (W - P.l - P.r);
+  const y = (v) => P.t + (1 - v / 100) * (H - P.t - P.b);
+  const hm = (t) => new Intl.DateTimeFormat("nl-BE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Brussels" }).format(new Date(t));
+  const acts = (d.acts || []).map((a) => {
+    const s = new Date(String(a.start).replace(" ", "T")).getTime();
+    return { ...a, s, e: s + (Number(a.min) || 30) * 6e4 };
+  }).filter((a) => !Number.isNaN(a.s));
+  const path = pts.map(([t, v], i) => `${i ? "L" : "M"}${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const last = pts.at(-1);
+  // schatting vanaf de laatste meting tot nu
+  const est = isToday && last && r.bb_now != null && end - last[0] > 20 * 6e4 ? `<path d="M${x(last[0]).toFixed(1)},${y(last[1]).toFixed(1)} L${x(end).toFixed(1)},${y(r.bb_now).toFixed(1)}" class="bb-est"/>` : "";
+  const hours = [0, 6, 12, 18].map((h) => day0 + h * 36e5).filter((t) => t <= end);
+  const svg = `<svg viewBox="0 0 ${W} ${H}" class="bb-svg" role="img" aria-label="Body Battery doorheen de dag">
+    ${[0, 50, 100].map((v) => `<line x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}" class="bb-grid"/><text x="${P.l - 4}" y="${y(v) + 4}" text-anchor="end" class="bb-ax">${v}</text>`).join("")}
+    ${acts.map((a) => `<rect x="${x(a.s).toFixed(1)}" y="${P.t}" width="${Math.max(3, x(Math.min(a.e, end)) - x(a.s)).toFixed(1)}" height="${H - P.t - P.b}" class="bb-act ${a.kind}"/>`).join("")}
+    ${path ? `<path d="${path}" class="bb-line"/>` : ""}${est}
+    ${hours.map((t) => `<text x="${x(t)}" y="${H - 5}" text-anchor="middle" class="bb-ax">${hm(t).slice(0, 2)}u</text>`).join("")}
+  </svg>`;
+  const drops = acts.map((a) => {
+    const before = pts.filter(([t]) => t <= a.s).at(-1), after = pts.filter(([t]) => t >= a.e).at(0);
+    const dlt = before && after ? Math.round(after[1] - before[1]) : null;
+    return `<li><i class="dot ${a.kind}"></i>${C.esc(a.name || (a.kind === "kracht" ? "Krachttraining" : "Training"))} · ${hm(a.s)} · ${Math.round(a.min || 0)} min${dlt != null && dlt < 0 ? ` · <b>${dlt}</b>` : ""}</li>`;
+  }).join("");
+  const lastTxt = last ? `Laatst gemeten om ${hm(last[0])}: <b>${last[1]}</b>${isToday && end - last[0] > 45 * 6e4 ? ". Je horloge synct pas als de Garmin Connect-app op je gsm open gaat; daarna staat het hier binnen 10 minuten." : ""}` : "Nog geen metingen vandaag.";
+  return `${svg}${drops ? `<ul class="bb-acts">${drops}</ul>` : ""}<p class="small muted" style="margin:8px 0 0">${lastTxt}</p>`;
 }

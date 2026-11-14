@@ -90,6 +90,7 @@ async function rpc(fn, args = {}) {
 
 async function invoke(fn, body) {
   const { data, error } = await sb.functions.invoke(fn, { body });
+  if (fn === "ask") window.dispatchEvent(new Event("ai-used"));
   if (error) {
     let msg = error.message;
     try {
@@ -260,7 +261,7 @@ async function route() {
   if (name === "log") { state.openWeight = param === "gewicht"; state.day = today(); name = "vandaag"; }
   const fn = ROUTES[name] || ROUTES.vandaag;
   $("#title").textContent = TITLES[name] || "Vandaag";
-  $("#syncBtn").hidden = !(name === "vandaag" || !name);
+  $("#syncBtn").hidden = false;
   // Subpagina's (niet in de tabbalk) krijgen een terugknop: in de geïnstalleerde app is er geen browserknop
   const sub = SUBPAGES.has(name);
   $("#backBtn").hidden = !sub;
@@ -1443,6 +1444,7 @@ async function boot() {
   $("#topbar").hidden = false;
   $("#tabbar").hidden = false;
   aiMod().then((m) => m.mountAssistant(ctx)).catch(() => {});
+  aiBar();
   route();
 }
 
@@ -1490,6 +1492,34 @@ sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT" && !$("#tabbar").hid
   document.addEventListener("visibilitychange", () => setTimeout(fix, 300));
   fix();
 })();
+
+// AI-verbruik: balkje bovenaan (groen → oranje → rood), tik voor details
+async function aiBar() {
+  const el = $("#aiBar"); if (!el || $("#topbar").hidden) return;
+  try {
+    const u = await rpc("get_ai_usage");
+    const f = Math.min(1, (u.used || 0) / (u.limit || 1));
+    const tone = u.limited || f >= 0.85 ? "red" : f >= 0.6 ? "orange" : "green";
+    el.className = `aibar ${tone}`; el.firstElementChild.style.width = `${Math.max(2, f * 100)}%`;
+    el._u = u;
+  } catch { /* stil */ }
+}
+$("#aiBar")?.addEventListener("click", () => {
+  const u = $("#aiBar")._u; if (!u) return;
+  const left = Math.max(0, u.limit - u.used);
+  const at = new Intl.DateTimeFormat("nl-BE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Brussels" }).format(new Date(u.reset_at));
+  const sheet = document.createElement("div"); sheet.className = "sheet";
+  sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="AI-verbruik">
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h3 style="margin:0">AI vandaag</h3><button class="icon-btn" data-close aria-label="Sluiten">✕</button></div>
+    <p style="margin:12px 0 4px"><b style="font-size:28px">${left}</b> van de ${u.limit} AI-oproepen over</p>
+    <div class="aibar-big ${$("#aiBar").className.split(" ")[1] || "green"}"><i style="width:${Math.min(100, (u.used / u.limit) * 100)}%"></i></div>
+    <p class="small muted" style="margin:8px 0 0">Reset om ${at}.${u.limited ? " Gemini gaf vandaag al een limietmelding; de app schakelt dan over op een lichter model." : ""}</p></div>`;
+  document.body.appendChild(sheet);
+  sheet.addEventListener("click", (e) => { if (e.target === sheet || e.target.closest("[data-close]")) sheet.remove(); });
+});
+window.addEventListener("ai-used", () => setTimeout(aiBar, 800));
+setInterval(() => { if (document.visibilityState === "visible") aiBar(); }, 3 * 60 * 1000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") aiBar(); });
 
 // Altijd actuele data: verversen bij een pushmelding, bij het openen van een melding en bij terugkeren naar de app
 let lastRoute = Date.now();

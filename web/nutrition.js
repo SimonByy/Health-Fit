@@ -108,6 +108,7 @@ export async function renderNutrition(ctx, state) {
           </div>`).join("")}
       ${sugg[m].length && (!list.length || (isToday && m === now) || sugg[m].some((x) => x.pair)) ? `<div class="sugg">${sugg[m].some((x) => x.pair) && all.length ? `<span class="sugg-h">Vaak samen met wat je al at:</span>` : ""}${sugg[m].map((s, k) => `<button class="sg ${s.pair ? "pair" : ""}" data-sg="${k}"><span>${s.pair ? "＋ " : ""}${C.esc(short(s.name))}</span><small>${C.fmt(s.kcal)}</small></button>`).join("")}</div>`
         : !list.length && !plan.length ? `<p class="mempty">Nog niets. Tik op + om iets toe te voegen.</p>` : ""}
+      ${list.some((i) => !i.skipped) ? `<div class="pair-box" data-pairbox="${m}"><button class="sg-ask pair-ask" type="button" data-pair="${m}">✨ Wat past erbij?</button></div>` : ""}
       ${isToday && SUGGEST.includes(m) ? `<button class="sg-ask" type="button" data-suggest="${m}">Stel voeding voor</button>` : ""}
       </div>
     </section>`;
@@ -199,6 +200,24 @@ export async function renderNutrition(ctx, state) {
     card.querySelector("[data-suggest]")?.addEventListener("click", () => openSuggest(C, {
       day, meal, label: LABEL[meal] || meal, goals: g, eaten: { kcal: tot.kcal, p: tot.p, f: tot.f },
       plan: menu, logged: items, recipes: mpRecipes, frequent: quick.frequent?.[meal] || [], pkv, after: reload }));
+    // AI: wat past bij wat je al in deze maaltijd hebt (kiest uit je eigen producten, echte waarden)
+    card.querySelector("[data-pair]")?.addEventListener("click", async (e) => {
+      const box = card.querySelector("[data-pairbox]");
+      e.currentTarget.disabled = true; e.currentTarget.textContent = "✨ Even denken…";
+      try {
+        const res = await C.invoke("ask", { mode: "pair", meal, day });
+        const ideas = res.ideas || [];
+        box.innerHTML = ideas.length ? `<span class="sugg-h">Past erbij:</span><div class="sugg">${ideas.map((x, k) =>
+          `<button class="sg pair" data-pi="${k}"><span>＋ ${C.esc(short(x.name))} <small>${C.fmt(x.grams)} g</small></span><small>${C.fmt(x.kcal)} · P ${C.fmt(x.protein)}</small></button>`).join("")}</div>`
+          : `<p class="small muted">Niets gevonden dat past.</p>`;
+        box.querySelectorAll("[data-pi]").forEach((b) => (b.onclick = async () => {
+          const x = ideas[Number(b.dataset.pi)]; b.disabled = true;
+          try { await C.rpc("log_food", { p: { day, meal, grams: x.grams, food: { id: x.food_id } } }); C.toast(`${x.name} gelogd`); reload(); }
+          catch (err) { b.disabled = false; C.toast(err.message, 4000); }
+        }));
+        window.dispatchEvent(new Event("ai-used"));
+      } catch (err) { box.innerHTML = `<p class="small muted">${C.esc(err.message)}</p>`; }
+    });
     card.querySelectorAll(".sg").forEach((b) => (b.onclick = async () => {
       if (b.disabled) return;
       b.disabled = true; b.classList.add("busy");
