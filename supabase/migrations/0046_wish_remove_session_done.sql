@@ -35,5 +35,3 @@ begin
 exception when others then return new;
 end $$;
 
--- vastgelopen feedback (bv. time-out) vrijgeven
-update app.feedback_queue set status = 'fout', processed_at = now() where status = 'bezig';
