@@ -1,0 +1,6 @@
+-- 0070_calendar_import (+0070b): set_secret kent 'calendar_ics_url' (https/webcal), app.get_secret leest hem per gebruiker;
+--   app.calendar_busy (komende 3 weken: dag, start/einde, hele dag, titel), app.calendar_imports (status);
+--   calendar_import_status(), calendar_import_stop(), get_calendar_busy(from,to), internal_save_calendar_busy(p) (service_role),
+--   internal_calendar_import_users() (service_role); cron 'calendar-import' 3x per dag → edge function 'calendar-import'.
+-- 0071_calendar_feed_reopen: app.calendar_feeds.token, zodat de agendalink later opnieuw te bekijken is (calendar_feed_status geeft hem aan de eigenaar).
+-- Volledige SQL staat in supabase_migrations.schema_migrations.

@@ -88,33 +88,52 @@ async function rpc(fn, args = {}) {
   return data;
 }
 
-// Agenda-abonnement (iCal-link): de sleutel is alleen zichtbaar vlak na het maken; bewaard wordt enkel een hash
-async function mountCalendar(fresh) {
+// Agenda koppelen: (1) Health Hub in je agenda (iCal-abonnement), (2) optioneel je eigen agenda inlezen
+async function mountCalendar() {
   const box = document.getElementById("calState"); if (!box) return;
-  let st = { active: false };
-  try { st = await rpc("calendar_feed_status"); } catch { /* oud schema */ }
-  if (fresh) {
-    const https = `${SUPABASE_URL}/functions/v1/ical?t=${fresh}`, webcal = https.replace(/^https:/, "webcal:");
-    box.innerHTML = `<p><b>Je agendalink</b> (alleen nu zichtbaar, deel hem met niemand):</p>
-      <div class="row"><input class="input" id="calUrl" value="${esc(https)}" readonly><button class="btn" data-copy="calUrl">Kopiëren</button></div>
-      <p style="margin-top:10px"><a class="btn" href="${esc(webcal)}">Toevoegen aan iPhone-agenda</a></p>
+  let st = { active: false }, im = { linked: false };
+  [st, im] = await Promise.all([rpc("calendar_feed_status").catch(() => st), rpc("calendar_import_status").catch(() => im)]);
+  const linkHtml = (tok) => {
+    const https = `${SUPABASE_URL}/functions/v1/ical?t=${tok}`, webcal = https.replace(/^https:/, "webcal:");
+    return `<p class="small">Deel deze link met niemand. Gebruik dezelfde link in al je agenda's.</p>
+      <div class="row"><input class="input" id="calUrl" value="${esc(https)}" readonly><button class="btn" id="calCopy">Kopiëren</button></div>
+      <p style="margin-top:10px"><a class="btn secondary" href="${esc(webcal)}">Toevoegen aan iPhone-agenda</a></p>
       <details style="margin-top:8px"><summary>Google Agenda</summary><p class="small">Open Google Agenda op een computer → naast <b>Andere agenda's</b> op <b>+</b> → <b>Via URL</b> → plak de link → <b>Agenda toevoegen</b>. Google ververst zelf, soms pas na enkele uren.</p></details>
-      <details><summary>iPhone of Mac (iCloud)</summary><p class="small">Tik op de knop hierboven, of: Instellingen → Agenda → Accounts → Account toevoegen → Andere → <b>Voeg agenda-abonnement toe</b> → plak de link. Op een Mac kies je bij <b>Archief → Nieuw agenda-abonnement</b> hoe vaak hij ververst.</p></details>
+      <details><summary>iPhone of Mac (iCloud)</summary><p class="small">Tik op de knop hierboven, of: Instellingen → Agenda → Accounts → Account toevoegen → Andere → <b>Voeg agenda-abonnement toe</b> → plak de link.</p></details>
       <details><summary>Outlook</summary><p class="small">Agenda → <b>Agenda toevoegen</b> → <b>Abonneren vanaf internet</b> → plak de link.</p></details>`;
-    box.querySelector("[data-copy]").onclick = async () => { try { await navigator.clipboard.writeText($("#calUrl").value); toast("Gekopieerd"); } catch { $("#calUrl").select(); } };
-    return;
-  }
-  box.innerHTML = st.active
-    ? `<p class="small">Gekoppeld sinds ${esc(shortDate(String(st.since).slice(0, 10)))}. Kwijt of gedeeld? Maak een nieuwe link: de oude werkt dan niet meer.</p>
-       <div class="row"><button class="btn secondary" id="calNew">Nieuwe link maken</button><button class="btn ghost" id="calStop">Koppeling stoppen</button></div>`
-    : `<button class="btn" id="calNew">Agendalink maken</button>`;
-  $("#calNew").onclick = async () => {
-    if (st.active && !confirm("Nieuwe link maken? De agenda's met de oude link krijgen geen updates meer.")) return;
-    try { mountCalendar(await rpc("calendar_feed_new")); } catch (e) { toast(e.message, 5000); }
   };
-  document.getElementById("calStop")?.addEventListener("click", async () => {
+  const feed = !st.active ? `<button class="btn" id="calNew">Agendalink maken</button>`
+    : `${st.token ? linkHtml(st.token) : `<p class="small">Je link is van vóór deze update en kan hier niet meer getoond worden. Kopieer hem uit je iPhone (Instellingen → Agenda → Accounts → Health Hub → Server) of maak een nieuwe link.</p>`}
+       <div class="row" style="margin-top:10px"><button class="btn ghost" id="calNew">Nieuwe link maken</button><button class="btn ghost" id="calStop">Koppeling stoppen</button></div>`;
+  const when = im.synced_at ? new Date(im.synced_at).toLocaleString("nl-BE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : null;
+  const imp = im.linked
+    ? `<p class="small">Gekoppeld. ${im.error ? `<span style="color:#D6533F">Laatste poging mislukt: ${esc(im.error)}</span>` : when ? `${im.events ?? 0} afspraken in de komende 3 weken, opgehaald ${esc(when)}.` : "Nog niet opgehaald."}</p>
+       <div class="row"><button class="btn secondary" id="impNow">Nu ophalen</button><button class="btn ghost" id="impStop">Ontkoppelen</button></div>`
+    : `<div class="row"><input class="input" id="impUrl" placeholder="Plak je geheime iCal-link (https:// of webcal://)" autocomplete="off"><button class="btn" id="impSave">Koppelen</button></div>
+       <details style="margin-top:8px"><summary>Waar vind ik die link?</summary>
+         <p class="small"><b>Google Agenda</b> (computer): Instellingen → kies je agenda links → <b>Agenda integreren</b> → <b>Geheim adres in iCal-indeling</b>.</p>
+         <p class="small"><b>iCloud</b>: in de Agenda-app op je iPhone ⓘ naast de agenda → <b>Openbare agenda</b> aan → <b>Deel link</b>. Let op: iedereen met die link kan die agenda zien.</p></details>`;
+  box.innerHTML = `<h4 style="margin:4px 0 6px">Health Hub in je agenda</h4>${feed}
+    <h4 style="margin:18px 0 6px">Je eigen agenda lezen <span class="muted small">(optioneel)</span></h4>
+    <p class="small muted">De planner toont dan drukke dagen en kiest daar geen inhaalsessie. Alleen de komende 3 weken worden bewaard (tijd en titel); ontkoppelen wist alles.</p>${imp}`;
+  $("#calCopy")?.addEventListener("click", async () => { try { await navigator.clipboard.writeText($("#calUrl").value); toast("Gekopieerd"); } catch { $("#calUrl").select(); } });
+  $("#calNew").onclick = async () => {
+    if (st.active && !confirm("Nieuwe link maken? Agenda's met de oude link krijgen dan geen updates meer.")) return;
+    try { await rpc("calendar_feed_new"); mountCalendar(); } catch (e) { toast(e.message, 5000); }
+  };
+  $("#calStop")?.addEventListener("click", async () => {
     if (!confirm("Koppeling stoppen? Je agenda krijgt geen nieuwe trainingen meer; verwijder het abonnement daar ook.")) return;
     try { await rpc("calendar_feed_stop"); mountCalendar(); } catch (e) { toast(e.message, 5000); }
+  });
+  const pull = async () => { try { const r = await invoke("calendar-import", {}); toast(`${r.events} afspraken opgehaald`); } catch (e) { toast(e.message, 6000); } mountCalendar(); };
+  $("#impSave")?.addEventListener("click", async () => {
+    const v = $("#impUrl").value.trim(); if (!v) return;
+    try { await rpc("set_secret", { p_name: "calendar_ics_url", p_value: v }); await pull(); } catch (e) { toast(e.message, 6000); }
+  });
+  $("#impNow")?.addEventListener("click", pull);
+  $("#impStop")?.addEventListener("click", async () => {
+    if (!confirm("Je agenda ontkoppelen? De opgehaalde afspraken worden gewist.")) return;
+    try { await rpc("calendar_import_stop"); mountCalendar(); } catch (e) { toast(e.message, 5000); }
   });
 }
 
@@ -1270,7 +1289,7 @@ async function renderSettings() {
     </div></details>
 
     <details class="set-group"><summary>Agenda koppelen</summary><div class="set-body" id="calBox">
-      <p class="hint">Zet je geplande trainingen en je mealprep-zondag in Google Agenda, iPhone/iCloud Agenda of Outlook. Je agenda haalt ze zelf op via een geheime link (alleen lezen).</p>
+      <p class="hint">Zet je trainingen (✅ gedaan, 🚫 overgeslagen) en je mealprep-zondag in Google Agenda, iPhone/iCloud Agenda of Outlook.</p>
       <div id="calState" class="small">Laden…</div>
     </div></details>
 

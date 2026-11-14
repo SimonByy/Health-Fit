@@ -8,7 +8,7 @@ const admin = createClient(URL_, SR, { auth: { persistSession: false } });
 const asUser = (uid: string) => createClient(URL_, SR, { auth: { persistSession: false }, global: { headers: { "x-hh-user": uid } } });
 const TZ = "Europe/Brussels";
 
-const esc = (s: unknown) => String(s ?? "").replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+const esc = (s: unknown) => String(s ?? "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 function fold(line: string) {
   const enc = new TextEncoder(); const out: string[] = []; let cur = "";
   for (const ch of line) {
@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
   const { data, error } = await asUser(uid).rpc("internal_agent_read", { q: `select
     (select jsonb_agg(jsonb_build_object('id', id, 'day', day, 'title', title, 'details', details, 'start', start_local, 'end', end_local,
         'dur', duration_min, 'status', status, 'upd', updated_at) order by day)
-       from app.coach_sessions where day between current_date - 14 and current_date + 56 and coalesce(status, '') not in ('overgeslagen', 'geschrapt')
+       from app.coach_sessions where day between current_date - 14 and current_date + 56 and coalesce(status, '') <> 'geschrapt'
          and coalesce(kind, '') <> 'rust') as sessies,
     (select jsonb_agg(jsonb_build_object('id', id, 'day', week_start, 'prep', prep, 'notes', notes))
        from app.mp_weeks where week_start between current_date - 14 and current_date + 56) as weken` });
@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
   const L: string[] = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Health Hub//NL", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
     "X-WR-CALNAME:Health Hub", "X-WR-TIMEZONE:Europe/Brussels", "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H", ...VTZ];
   for (const s of row?.sessies ?? []) {
-    const title = (s.status === "gedaan" ? "Gedaan: " : "") + (s.title || "Training");
+    const title = (s.status === "gedaan" ? "✅ " : s.status === "overgeslagen" ? "🚫 " : "") + String(s.title || "Training").replace(/^(✅|🚫)\s*/u, "");
     L.push("BEGIN:VEVENT", `UID:hh-sessie-${s.id}@health-hub`, `DTSTAMP:${stamp}`, `SUMMARY:${esc(title)}`);
     if (s.start) {
       const end = s.end || addMin(s.start, Number(s.dur) || 60);

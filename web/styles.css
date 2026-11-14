@@ -1432,6 +1432,12 @@ body:has(.fab) .ai-fab { bottom: calc(var(--tabbar-h) + var(--safe-b) + 90px); w
 .pl-day { background: var(--surface); border-radius: var(--radius-l); padding: 10px 12px; }
 .pl-day.today { outline: 1.5px solid var(--ink); }
 .pl-day.past { opacity: .65; }
+.pl-busy { margin: 4px 0 6px; font-size: .82rem; color: var(--muted, #A9A79F); }
+.pl-busy summary { cursor: pointer; list-style: none; }
+.pl-busy summary::-webkit-details-marker { display: none; }
+.pl-busy.heavy summary { color: #DDB040; }
+.pl-busy ul { margin: 4px 0 2px; padding-left: 16px; }
+.pl-busy li { margin: 1px 0; }
 .pl-day header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
 .pl-day header b { font-stretch: 105%; text-transform: none; }
 .pl-pref { margin-left: auto; color: var(--faint); }

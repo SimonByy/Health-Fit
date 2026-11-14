@@ -132,7 +132,26 @@ export async function renderPlanner(ctx, start) {
     } else missed.push(s);
   }
   if (changed) list = await C.rpc("get_coach_week", { p_from: from }).catch(() => list);
-  const freeDay = (cat) => days.find((d) => d >= today && !list.some((s) => s.day === d && catOf(s) === cat));
+  // Optioneel: je eigen agenda (Instellingen → Agenda koppelen). Drukke dagen tonen en niet kiezen om in te halen.
+  const busyRows = await C.rpc("get_calendar_busy", { p_from: from, p_to: days[6] }).catch(() => []);
+  const hm = (t) => new Date(t).toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Brussels" });
+  const busyOf = (d) => {
+    const r = (busyRows || []).filter((b) => b.day === d); if (!r.length) return null;
+    const timed = r.filter((b) => !b.all_day);
+    const min = timed.reduce((a, b) => a + (new Date(b.end) - new Date(b.start)) / 60000, 0);
+    const late = timed.some((b) => Number(hm(b.end).slice(0, 2)) >= 19);
+    return { r, timed, allDay: r.filter((b) => b.all_day), min, heavy: min >= 360 || late || r.some((b) => b.all_day) };
+  };
+  const freeDay = (cat) => days.find((d) => d >= today && !busyOf(d)?.heavy && !list.some((s) => s.day === d && catOf(s) === cat))
+    || days.find((d) => d >= today && !list.some((s) => s.day === d && catOf(s) === cat));
+  const busyHtml = (d) => {
+    const b = busyOf(d); if (!b) return "";
+    const span = b.timed.length ? `${hm(b.timed[0].start)}–${hm(b.timed.reduce((m, x) => (x.end > m ? x.end : m), b.timed[0].end))}` : "";
+    const head = [b.allDay.map((x) => x.title).join(", "), span, b.timed.length ? `${b.timed.length} afspra${b.timed.length === 1 ? "ak" : "ken"}` : ""].filter(Boolean).join(" · ");
+    return `<details class="pl-busy ${b.heavy ? "heavy" : ""}"><summary>${b.heavy ? "Drukke dag · " : "Agenda · "}${C.esc(head)}</summary>
+      <ul>${b.r.map((x) => `<li>${x.all_day ? "hele dag" : `${hm(x.start)}–${hm(x.end)}`} ${C.esc(x.title || "Bezet")}</li>`).join("")}</ul>
+      ${b.heavy && list.some((s) => s.day === d && s.status === "gepland" && catOf(s) !== "rust") ? `<p class="small muted">Tip: maak het korter of schuif het naar een rustigere dag.</p>` : ""}</details>`;
+  };
 
   const fmtRange = new Intl.DateTimeFormat("nl-BE", { day: "numeric", month: "short", timeZone: "UTC" }).formatRange(new Date(from + "T12:00:00Z"), new Date(days[6] + "T12:00:00Z"));
   const kracht = list.filter((s) => catOf(s) === "kracht"), cardio = list.filter((s) => catOf(s) === "cardio");
@@ -161,6 +180,7 @@ export async function renderPlanner(ctx, start) {
       const items = list.filter((s) => s.day === d);
       return `<section class="pl-day ${d === today ? "today" : ""} ${d < today ? "past" : ""}">
         <header><b>${WDL[i]}</b> <span class="muted small">${new Date(d + "T12:00:00Z").getUTCDate()}</span></header>
+        ${busyHtml(d)}
         ${items.map(sessRow).join("") || `<p class="small muted pl-empty">${[hasDone(d, "kracht") ? "krachttraining gedaan ✓" : "", hasDone(d, "cardio") ? "cardio gedaan ✓" : ""].filter(Boolean).join(" · ") || "rust"}</p>`}
         ${d >= today ? `<button class="pl-add" data-add="${d}">+ sessie deze week</button>` : ""}
       </section>`;

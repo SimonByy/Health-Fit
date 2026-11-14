@@ -67,7 +67,9 @@ async function makeFor(uid: string, force = false) {
     (select jsonb_agg(jsonb_build_object('maaltijd', i.slot, 'gerecht', r.name, 'week_start', w.week_start)) from app.mp_week_items i
        join app.mp_recipes r on r.id = i.recipe_id join app.mp_weeks w on w.id = i.week_id where i.day = ${q(today)}) as menu,
     (select jsonb_build_object('kcal', round(avg(kcal_in)), 'eiwit', round(avg(protein_g))) from ai.daily_summary
-       where day between ${q(today)}::date - 7 and ${q(today)}::date - 1 and kcal_in > 800) as voeding_week` });
+       where day between ${q(today)}::date - 7 and ${q(today)}::date - 1 and kcal_in > 800) as voeding_week,
+    (select jsonb_agg(jsonb_build_object('van', to_char(start_at at time zone 'Europe/Brussels', 'HH24:MI'), 'tot', to_char(end_at at time zone 'Europe/Brussels', 'HH24:MI'),
+        'titel', title, 'hele_dag', all_day) order by start_at nulls first) from app.calendar_busy where day = ${q(today)}) as agenda` });
   const wx = await weather((wkend && cfg.weekend_location) || cfg.location);
   const weekday = new Date().toLocaleDateString("nl-BE", { timeZone: TZ, weekday: "long" });
   const name = data?.naam || "";
@@ -76,7 +78,7 @@ async function makeFor(uid: string, force = false) {
 Precies deze onderdelen, in deze volgorde:
 1. "Goeiemorgen${name ? " " + name : ""}, het is ${weekday}." Daarna in één zin het weer als dat er is (regent het en wanneer, of droog, met de maximumtemperatuur).
 2. Slaap: duur en slaapscore in één zin. Was de score lager dan ongeveer 85 of valt er iets op (laat ingeslapen, veel wakker, weinig diepe slaap), geef één concrete tip voor de volgende nacht. Was de slaap goed, zeg dat kort. HRV, rusthartslag of Body Battery bij opstaan alleen noemen als ze duidelijk afwijken van het gemiddelde; neutraal, geen diagnose.
-3. Training: wat er vandaag gepland staat, zonder uur en zonder oefeningen op te sommen. Past het bij een groot doel (grote_doelen, bv. een halve marathon), zeg dat in een paar woorden. Niets gepland: zeg kort dat het een rustdag is of sla over. Alleen bij duidelijk slecht herstel één zin advies.
+3. Training: wat er vandaag gepland staat, zonder uur en zonder oefeningen op te sommen. Past het bij een groot doel (grote_doelen, bv. een halve marathon), zeg dat in een paar woorden. Niets gepland: zeg kort dat het een rustdag is of sla over. Alleen bij duidelijk slecht herstel één zin advies. Staat er iets in de agenda (agenda), zeg in één zin hoe de dag eruitziet en wanneer er tijd is om te trainen (bv. "na je les tot vier uur"); geen agenda: niets over zeggen.
 4. Eten: het ontbijt van vandaag uit het menu. Komt een lunch of avondgerecht uit de diepvries (donderdag of vrijdag, minstens 4 dagen na week_start), zeg "Vergeet je <gerecht> niet uit de diepvries te halen." Geen menu: sla over.
 5. Afsluiter: geen vraag, één korte warme zin zoals "Een fijne dag toegewenst!"
 Antwoord met alleen de tekst van de briefing.`;
