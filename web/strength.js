@@ -1,5 +1,5 @@
-// Training: plan van de coach, progressie per oefening (uit Hevy), volume per week.
-// Loggen gebeurt in Hevy; deze pagina toont alleen wat eruit komt.
+// Training: training starten (eigen logger), plan van de coach, records, progressie per oefening, volume per week.
+// Trainingen komen uit de eigen logger (workout.js) en/of een Hevy-import.
 let C;
 const n = (v) => (v == null || Number.isNaN(Number(v)) ? null : Number(v));
 const clean = (s) => s.replace(/\s*\([^)]*\)\s*$/, "").trim();
@@ -31,7 +31,10 @@ export async function renderStrength(ctx) {
   C = ctx;
   C.view.innerHTML = `<div id="coachWeek"></div><div class="skeleton"></div>`;
   import("./coach.js").then((m) => m.renderCoachCalendar(ctx, C.view.querySelector("#coachWeek"))).catch(() => {});
-  const o = await C.rpc("get_strength_overview", { p_weeks: 12 });
+  const [o, records, templates, W] = await Promise.all([
+    C.rpc("get_strength_overview", { p_weeks: 12 }), C.rpc("get_records").catch(() => []),
+    C.rpc("get_templates").catch(() => []), import("./workout.js")]);
+  const active = W.activeWorkout();
   const lifts = (o.lifts || []).filter((l) => n(l.recent) > 0).map((l) => ({ ...l, t: trend(l.series) })).filter((l) => l.t).sort((a, b) => b.t.pct - a.t.pct);
   const up = lifts.filter((l) => l.t.pct >= 1).length, flat = lifts.filter((l) => Math.abs(l.t.pct) < 1).length, down = lifts.filter((l) => l.t.pct <= -1).length;
   const weekly = o.weekly || [];
@@ -41,7 +44,24 @@ export async function renderStrength(ctx) {
   const lastDays = recent.length ? Math.round((Date.parse(C.today()) - Date.parse(recent[0].day)) / 864e5) : null;
 
   const box = document.createElement("div");
+  const recent7 = (iso) => iso && (Date.parse(C.today()) - Date.parse(iso)) / 864e5 <= 7;
+  const recRow = (r) => `<div class="rec">
+      <span class="n">${C.esc(clean(r.exercise))}${recent7(r.best_1rm?.day) ? ` <span class="new">nieuw</span>` : ""}</span>
+      <span class="v">${C.fmt(r.best_1rm?.value, 1)}<small> kg 1RM</small></span>
+      <span class="m">Zwaarst ${C.fmt(r.heaviest?.kg, 1)} kg × ${C.fmt(r.heaviest?.reps)} · beste set ${C.fmt(r.best_set?.kg, 1)} × ${C.fmt(r.best_set?.reps)} (${C.fmt(r.best_set?.volume)} kg) · ${C.fmt(r.sessions)}× getraind</span>
+    </div>`;
   box.innerHTML = `
+    <section class="panel">
+      <h3>Training starten</h3>
+      <div class="startw">
+        ${active ? `<a class="tpl resume" href="#/workout" style="text-decoration:none"><span><b>${C.esc(active.title)}</b><br><small>loopt nog · tik om verder te gaan</small></span><span>›</span></a>` : ""}
+        <button class="tpl" data-start="empty"><span><b>Lege training</b><br><small>oefeningen kies je onderweg</small></span><span>＋</span></button>
+        ${recent[0] ? `<button class="tpl" data-start="repeat"><span><b>Herhaal: ${C.esc(recent[0].title || "laatste training")}</b><br><small>${C.esc(C.shortDate(recent[0].day))} · ${C.fmt(recent[0].working_sets)} sets</small></span><span>↻</span></button>` : ""}
+        ${(templates || []).filter((t) => !t.archived).map((t, i) => `<button class="tpl" data-tpl="${i}"><span><b>${C.esc(t.name)}</b><br><small>${(t.exercises || []).length} oefeningen</small></span><span>▶</span></button>`).join("")}
+      </div>
+      <p class="small muted" style="margin:8px 0 0">Vorige gewichten, rusttimer en records zitten in de logger. Na afronden kan je de training als schema bewaren.</p>
+    </section>
+
     <section class="sverdict">
       <h2>Progressie, laatste 4 weken</h2>
       ${lifts.length ? `<div class="tally" role="group" aria-label="Filter oefeningen">
@@ -49,7 +69,7 @@ export async function renderStrength(ctx) {
         <button data-f="flat" aria-pressed="false"><b>${flat}</b>gelijk</button>
         <button class="down" data-f="down" aria-pressed="false"><b>${down}</b>zwakker</button></div>
       <p class="small muted">Per oefening: je zwaarste werkset nu tegenover 4 weken geleden, omgerekend naar een geschatte 1RM (zo tellen meer reps ook mee). Tik op een getal om alleen die oefeningen te zien, of op een oefening voor de grafiek.${lastDays != null && lastDays > 3 ? ` Laatste Hevy-training is van ${lastDays} dagen geleden: deel je export om bij te werken.` : ""}</p>`
-      : `<p class="muted">Nog te weinig trainingen uit Hevy. Deel je Hevy-export naar Health Hub met de opdracht op je iPhone.</p>`}
+      : `<p class="muted">Nog te weinig trainingen. Start hierboven een training, of importeer je Hevy-export.</p>`}
     </section>
     ${lifts.length ? `<div class="lifts">${lifts.map((l, i) => `<button class="lift ${l.t.pct >= 1 ? "up" : l.t.pct <= -1 ? "down" : "flat"}" data-i="${i}">
         <span class="lift-n">${C.esc(clean(l.exercise))}</span>
@@ -57,6 +77,14 @@ export async function renderStrength(ctx) {
         ${spark(l.series)}
         <span class="lift-d">${l.t.pct >= 0 ? "+" : "−"}${C.fmt(Math.abs(l.t.pct), 1)}%</span>
       </button>`).join("")}</div>` : ""}
+
+    <h2 class="section-title">Records</h2>
+    <section class="panel">
+      ${records.length ? `<div class="records">${records.slice(0, 8).map(recRow).join("")}</div>
+        ${records.length > 8 ? `<details style="margin-top:8px"><summary>Alle ${records.length} oefeningen</summary><div class="records">${records.slice(8).map(recRow).join("")}</div></details>` : ""}
+        <p class="small muted" style="margin:8px 0 0">1RM = geschat maximum voor 1 herhaling, berekend uit je beste werkset.</p>`
+      : `<p class="muted">Nog geen records. Log een training en ze verschijnen hier.</p>`}
+    </section>
 
     <h2 class="section-title">Werksets per week</h2>
     <section class="panel">
@@ -72,7 +100,7 @@ export async function renderStrength(ctx) {
         <span class="r">${C.fmt(n(r.volume_kg) / 1000, 1)}<small>ton volume</small></span></div>`).join("") || `<p class="muted" style="padding:14px">Nog geen trainingen.</p>`}</div>
 
     <section class="panel hevy-sync">
-      <h3>Hevy bijwerken</h3>
+      <h3>Hevy importeren</h3>
       <p class="hint">In Hevy: Profiel → ⚙ → Export &amp; Import Data → Export workouts, en deel het bestand met de opdracht "Naar Health Hub". Op een computer kan het ook met een bestand.</p>
       <label class="btn ghost" style="cursor:pointer">CSV kiezen<input type="file" id="hevyCsv" accept=".csv,text/csv" hidden></label>
     </section>`;
@@ -81,6 +109,12 @@ export async function renderStrength(ctx) {
   if (weekly.length) C.mountChart(box.querySelector("#wkChart"), {
     points: weekly.map((w) => ({ x: w.week_start, y: n(w.working_sets) })), color: "var(--strength)", type: "bar", unit: "sets", height: 140,
   });
+  const tpls = (templates || []).filter((t) => !t.archived);
+  box.querySelectorAll("[data-start],[data-tpl]").forEach((b) => (b.onclick = () => {
+    if (b.dataset.tpl != null) return W.startWorkout(ctx, { template: tpls[Number(b.dataset.tpl)] });
+    if (b.dataset.start === "repeat") return W.startWorkout(ctx, { repeatOf: recent[0].id });
+    return W.startWorkout(ctx);
+  }));
   box.querySelector("#hevyCsv").onchange = (e) => C.importHevy(e.target.files?.[0], () => renderStrength(ctx));
   box.querySelector("#mvDet").addEventListener("toggle", (e) => {
     if (e.target.open && !e.target.dataset.loaded) { e.target.dataset.loaded = 1; C.renderMuscles(box.querySelector("#mvBox")); }

@@ -1111,6 +1111,7 @@ async function renderSettings() {
   const [s, routines, pstate] = await Promise.all([rpc("get_settings"), rpc("get_routines"), pushState()]);
   const { data: { user } } = await sb.auth.getUser();
   const goals = s.settings?.goals || {};
+  const prof = s.profile || {};
   const model = s.settings?.ai_model || "claude-sonnet-5-5";
   const vapid = s.settings?.vapid_public;
   const ingestUrl = `${SUPABASE_URL}/functions/v1/ingest-health`;
@@ -1252,16 +1253,44 @@ async function renderSettings() {
     </section>
 
     <section class="panel">
-      <h3>AI (Claude)</h3>
-      <p class="hint">API-key van console.anthropic.com. Status: ${s.secrets?.anthropic_api_key ? `<span class="ok">ingesteld</span>` : `<span class="warn">niet ingesteld</span>`}</p>
-      <div class="row"><input class="input" type="password" id="aiKey" placeholder="${s.secrets?.anthropic_api_key ? "•••••••• (opgeslagen)" : "sk-ant-…"}" autocomplete="off">
-        <button class="btn" id="saveAi">Opslaan</button></div>
-      <div class="field"><label for="model">Model</label>
-        <select class="input" id="model">
-          ${[["claude-sonnet-5-5", "Claude Sonnet 5.5 (aanbevolen)"], ["claude-haiku-4-5-20251001", "Claude Haiku 4.5 (goedkoopst)"], ["claude-opus-5-5", "Claude Opus 5.5 (grondigst, duurder)"]]
-            .map(([v, l]) => `<option value="${v}" ${v === model ? "selected" : ""}>${l}</option>`).join("")}
-        </select></div>
+      <h3>Abonnement</h3>
+      ${(() => { const pl = prof.plan || "free"; return pl === "admin"
+        ? `<p class="hint"><span class="ok">Beheerder</span>: alles onbeperkt.</p>`
+        : pl === "premium" ? `<p class="hint"><span class="ok">Premium</span>${prof.plan_until ? ` tot ${esc(dayLabel(String(prof.plan_until).slice(0, 10), { day: "numeric", month: "long", year: "numeric" }))}` : " (levenslang)"}.</p>`
+        : `<p class="hint">Je gebruikt de <b>gratis</b> versie.</p>
+          <div class="plans">
+            <div><b>€5</b><span>per maand</span></div><div><b>€50</b><span>per jaar</span></div><div><b>€150</b><span>levenslang</span></div>
+          </div>
+          <p class="small muted">Premium: tot 30 AI-vragen per dag, AI-feedback na elke training, ochtendbriefing met stem, weekmenu met boodschappenlijst en recepten met wat je nog hebt. Betalen kan binnenkort.</p>`; })()}
+      <div id="quotaBox" class="small"></div>
     </section>
+
+    <section class="panel">
+      <h3>AI-coach (Gemini)</h3>
+      <p class="hint">Tijdens de testfase gebruikt de coach je eigen gratis Gemini-sleutel. Maak er een op <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (inloggen met Google → <b>Create API key</b>) en plak ze hier.
+        Status: ${s.secrets?.gemini_api_key ? `<span class="ok">ingesteld</span>` : prof.is_admin ? `<span class="ok">sleutel van de server</span>` : `<span class="warn">niet ingesteld</span>`}</p>
+      <div class="row"><input class="input" type="password" id="gemKey" placeholder="${s.secrets?.gemini_api_key ? "•••••••• (opgeslagen)" : "AIza…"}" autocomplete="off">
+        <button class="btn" id="saveGem">Opslaan</button></div>
+      ${s.secrets?.gemini_api_key ? `<button class="btn ghost" id="delGem" style="margin-top:8px">Sleutel verwijderen</button>` : ""}
+      ${prof.is_admin ? `<details style="margin-top:10px"><summary>Claude als reserve (beheerder)</summary>
+        <p class="hint">Status: ${s.secrets?.anthropic_api_key ? `<span class="ok">ingesteld</span>` : "niet ingesteld"}</p>
+        <div class="row"><input class="input" type="password" id="aiKey" placeholder="${s.secrets?.anthropic_api_key ? "•••••••• (opgeslagen)" : "sk-ant-…"}" autocomplete="off">
+          <button class="btn" id="saveAi">Opslaan</button></div>
+        <div class="field"><label for="model">Model</label>
+          <select class="input" id="model">
+            ${[["claude-sonnet-5-5", "Claude Sonnet 5.5"], ["claude-haiku-4-5-20251001", "Claude Haiku 4.5"], ["claude-opus-5-5", "Claude Opus 5.5"]]
+              .map(([v, l]) => `<option value="${v}" ${v === model ? "selected" : ""}>${l}</option>`).join("")}
+          </select></div></details>` : ""}
+    </section>
+
+    ${prof.is_admin ? `<section class="panel">
+      <h3>Beheer</h3>
+      <p class="hint">Wie kan zich registreren en de app gebruiken.</p>
+      <div class="field"><label for="accMode">Toegang</label>
+        <select class="input" id="accMode"><option value="closed">Gesloten: alleen ik</option><option value="invite">Testers: alleen uitgenodigde e-mails</option><option value="open">Open: iedereen</option></select></div>
+      <div class="row"><input class="input" type="email" id="invMail" placeholder="e-mail van een tester"><button class="btn secondary" id="invAdd">Uitnodigen</button></div>
+      <div id="invList" class="small" style="margin-top:8px"></div>
+    </section>` : ""}
 
     <section class="panel">
       <h3>Data</h3>
@@ -1284,8 +1313,12 @@ async function renderSettings() {
 
     <section class="panel">
       <h3>Account</h3>
-      <p class="hint">Ingelogd als ${esc(user?.email)}</p>
-      <button class="btn ghost" id="logout">Uitloggen</button>
+      <p class="hint">Ingelogd als ${esc(user?.email)}${prof.display_name ? ` (${esc(prof.display_name)})` : ""}</p>
+      <div class="row"><button class="btn ghost" id="logout">Uitloggen</button><button class="btn ghost" id="privacy">Privacyverklaring</button></div>
+      ${prof.is_admin ? "" : `<details style="margin-top:12px"><summary>Account verwijderen</summary>
+        <p class="small">Dit wist je account en <b>al je gegevens</b> definitief. Download eerst een back-up (Data) als je iets wil bewaren.</p>
+        <div class="row"><input class="input" id="delConfirm" placeholder="typ VERWIJDER" autocomplete="off"><button class="btn danger" id="delAcc">Verwijderen</button></div>
+      </details>`}
     </section>`;
 
   // meldingen
@@ -1347,10 +1380,44 @@ async function renderSettings() {
   $("#ahFile").onchange = (e) => importAppleHealth(e.target.files?.[0], Number($("#ahSince").value));
   $("#hevyCsv2").onchange = (e) => importHevyFile(e.target.files?.[0], renderSettings);
   $("#saveHevy").onclick = () => saveSecret("hevy_api_key", "#hevyKey").catch((e) => toast(e.message));
-  $("#saveAi").onclick = () => saveSecret("anthropic_api_key", "#aiKey").catch((e) => toast(e.message));
+  $("#saveAi")?.addEventListener("click", () => saveSecret("anthropic_api_key", "#aiKey").catch((e) => toast(e.message)));
+  $("#saveGem").onclick = () => saveSecret("gemini_api_key", "#gemKey").catch((e) => toast(e.message));
+  $("#delGem")?.addEventListener("click", async () => {
+    if (!confirm("Je Gemini-sleutel verwijderen? De coach werkt dan niet meer tot je een nieuwe invult.")) return;
+    await rpc("set_secret", { p_name: "gemini_api_key", p_value: "" }); toast("Sleutel verwijderd"); renderSettings();
+  });
+  $("#privacy").onclick = openPrivacy;
+  $("#delAcc")?.addEventListener("click", async () => {
+    if ($("#delConfirm").value.trim().toUpperCase() !== "VERWIJDER") return toast("Typ VERWIJDER om te bevestigen");
+    try { await rpc("delete_my_account"); await sb.auth.signOut(); location.hash = ""; renderLogin("Je account en al je gegevens zijn verwijderd."); }
+    catch (e) { toast(e.message, 5000); }
+  });
+  rpc("get_ai_quota").then((q) => {
+    const f = q?.features || {}; const L = { chat: "Vragen aan de coach", pair: "Wat past erbij?", workout_feedback: "Feedback na training" };
+    const box = $("#quotaBox"); if (!box) return;
+    box.innerHTML = `<table class="nutrients">${Object.entries(L).filter(([k]) => f[k]).map(([k, l]) => {
+      const x = f[k]; const lim = q.plan === "admin" ? "onbeperkt" : x.per_day === 0 ? "Premium" : `${x.used_day} / ${x.per_day} vandaag`;
+      return `<tr><td>${l}</td><td>${lim}</td></tr>`; }).join("")}</table>`;
+  }).catch(() => {});
+  if (prof.is_admin) {
+    const drawAcc = (a) => {
+      $("#accMode").value = a.mode;
+      $("#invList").innerHTML = `${a.users} gebruiker(s) met toegang.` + (a.invites.length ? `<ul>${a.invites.map((m) => `<li>${esc(m)} <button class="link-btn inline" data-rm="${esc(m)}">verwijderen</button></li>`).join("")}</ul>` : " Nog geen testers uitgenodigd.");
+    };
+    rpc("admin_access").then(drawAcc).catch((e) => toast(e.message));
+    $("#accMode").onchange = async (e) => {
+      if (e.target.value === "open" && !confirm("Iedereen kan zich dan registreren. Zeker?")) { rpc("admin_access").then(drawAcc); return; }
+      drawAcc(await rpc("admin_access", { p_mode: e.target.value })); toast("Toegang aangepast");
+    };
+    $("#invAdd").onclick = async () => {
+      const m = $("#invMail").value.trim(); if (!m) return;
+      drawAcc(await rpc("admin_access", { p_add: m })); $("#invMail").value = ""; toast("Uitgenodigd. Zet toegang op Testers.");
+    };
+    $("#invList").onclick = async (e) => { const m = e.target.dataset?.rm; if (m) drawAcc(await rpc("admin_access", { p_remove: m })); };
+  }
   $("#syncNow").onclick = () => syncHevy($("#syncNow"), false, renderSettings);
   $("#syncFull").onclick = () => syncHevy($("#syncFull"), true, renderSettings);
-  $("#model").onchange = async (e) => { await rpc("set_setting", { p_key: "ai_model", p_value: e.target.value }); toast("Model opgeslagen"); };
+  if ($("#model")) $("#model").onchange = async (e) => { await rpc("set_setting", { p_key: "ai_model", p_value: e.target.value }); toast("Model opgeslagen"); };
   moreMod().then((M) => {
     M.renderHabitSettings(ctx, $("#habitSet"));
     $("#exportAll").onclick = (e) => M.exportAll(ctx, e.currentTarget);
@@ -1365,6 +1432,52 @@ async function renderSettings() {
     toast("Doelen opgeslagen");
   };
   $("#logout").onclick = async () => { await sb.auth.signOut(); location.hash = ""; boot(); };
+}
+
+// ======================================================================
+// Eerste keer: naam en toestemming (AVG: gezondheidsgegevens vragen uitdrukkelijke toestemming)
+// ======================================================================
+async function openPrivacy() {
+  const { PRIVACY_HTML } = await import("./privacy.js");
+  const sheet = document.createElement("div"); sheet.className = "sheet";
+  sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Privacyverklaring">
+    <div class="row" style="justify-content:flex-end"><button class="icon-btn" data-close aria-label="Sluiten">✕</button></div>
+    ${PRIVACY_HTML}<button class="btn" data-close style="width:100%;margin-top:12px">Sluiten</button></div>`;
+  document.body.appendChild(sheet);
+  sheet.addEventListener("click", (e) => { if (e.target === sheet || e.target.closest("[data-close]")) sheet.remove(); });
+}
+
+function renderOnboarding(user) {
+  $("#topbar").hidden = true;
+  $("#tabbar").hidden = true;
+  view.innerHTML = `<div class="login">
+    <div class="stripe" aria-hidden="true"><i style="background:var(--move)"></i><i style="background:var(--sleep)"></i><i style="background:var(--fuel)"></i><i style="background:var(--strength)"></i><i style="background:var(--heart)"></i></div>
+    <h1 class="mark"><span>Welkom</span></h1>
+    <p>Nog twee dingen voor je begint.</p>
+    <form id="of">
+      <div class="field"><label for="dn">Hoe mogen we je noemen?</label><input class="input" id="dn" autocomplete="given-name" maxlength="40" required></div>
+      <label class="check"><input type="checkbox" id="ok1" required>
+        <span>Ik geef toestemming om mijn gezondheids- en trainingsgegevens te verwerken om mijn overzicht en coachadvies te tonen. Ik kan dit altijd intrekken door mijn account te verwijderen.</span></label>
+      <label class="check"><input type="checkbox" id="ok2" required>
+        <span>Ik heb de <button type="button" class="link-btn inline" id="pv">privacyverklaring</button> gelezen en begrijp dat de app geen medisch advies geeft.</span></label>
+      <div class="error" id="err"></div>
+      <button class="btn" style="width:100%" id="go">Starten</button>
+    </form>
+    <button class="link-btn" id="out">Uitloggen (${esc(user?.email || "")})</button>
+  </div>`;
+  $("#pv").onclick = openPrivacy;
+  $("#out").onclick = async () => { await sb.auth.signOut(); renderLogin(); };
+  $("#of").onsubmit = async (e) => {
+    e.preventDefault();
+    $("#go").disabled = true; $("#err").textContent = "";
+    try {
+      await rpc("accept_terms", { p_name: $("#dn").value.trim() });
+      boot();
+    } catch (er) {
+      $("#err").textContent = er.message;
+      $("#go").disabled = false;
+    }
+  };
 }
 
 // ======================================================================
@@ -1421,6 +1534,7 @@ function renderLogin(msg = "") {
 const ROUTES = {
   vandaag: renderToday,
   training: async () => (await import("./strength.js")).renderStrength(ctx),
+  workout: async () => (await workoutMod()).renderWorkout(ctx),
   voeding: async () => (await import("./nutrition.js")).renderNutrition(ctx, state),
   trends: renderTrends,
   vraag: async () => { history.replaceState(null, "", "#/vandaag"); navStack[navStack.length - 1] = "#/vandaag"; route(); (await aiMod()).openAssistant(ctx); },
@@ -1437,10 +1551,7 @@ async function boot() {
   if (!session) return renderLogin();
   let owner = false;
   try { owner = await rpc("am_i_owner"); } catch { owner = false; }
-  if (!owner) {
-    await sb.auth.signOut();
-    return renderLogin("Dit account heeft geen toegang. Alleen de eigenaar kan inloggen.");
-  }
+  if (!owner) return renderOnboarding(session.user);
   $("#topbar").hidden = false;
   $("#tabbar").hidden = false;
   aiMod().then((m) => m.mountAssistant(ctx)).catch(() => {});

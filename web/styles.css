@@ -1277,3 +1277,25 @@ body.kb .tabbar, body.kb .ai-fab, body.kb .fab, body.kb .selbar { display: none;
 
 /* v25: horloge synct niet */
 .rd-stale { margin: 6px 2px 0; color: var(--warn, #F2B544); }
+
+/* v26: onboarding, abonnement, records, training starten */
+.login .check { display: flex; gap: 10px; align-items: flex-start; text-align: left; margin: 12px 0; font-size: 14px; line-height: 1.45; }
+.login .check input { margin-top: 3px; width: 18px; height: 18px; flex: none; accent-color: var(--strength); }
+.link-btn.inline { padding: 0; font: inherit; color: inherit; }
+.plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 10px; }
+.plans div { border: 1px solid var(--line); border-radius: var(--radius-s); padding: 10px 6px; text-align: center; }
+.plans b { display: block; font-family: var(--font-num); font-size: 22px; }
+.plans span { font-size: 12px; color: var(--muted); }
+.btn.danger { background: var(--fat); color: #fff; }
+.startw { display: grid; gap: 8px; }
+.startw .tpl { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 12px 14px; color: inherit; font: inherit; cursor: pointer; }
+.startw .tpl small { color: var(--muted); }
+.startw .resume { border-color: var(--strength); }
+.records { display: grid; gap: 6px; }
+.rec { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 10px 2px; border-bottom: 1px solid var(--line); }
+.rec:last-child { border-bottom: 0; }
+.rec .n { font-weight: 600; }
+.rec .v { text-align: right; font-family: var(--font-num); font-size: 18px; }
+.rec .m { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
+.rec .new { color: var(--strength); font-weight: 600; }

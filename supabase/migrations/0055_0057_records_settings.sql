@@ -1,0 +1,4 @@
+-- 0055: public.get_records() — records per oefening (beste 1RM, zwaarste set, beste set, aantal trainingen), owner hh_app.
+-- 0056: get_settings() geeft ook secrets.gemini_api_key en profile (plan, is_admin, display_name); admin_access() telt gebruikers.
+-- 0057: set_secret() staat anthropic_api_key toe, alleen voor de beheerder.
+-- De volledige SQL staat in supabase_migrations.schema_migrations (namen 0055_strength_records, 0056b_settings_profile_fix, 0057_set_secret_admin_claude).
