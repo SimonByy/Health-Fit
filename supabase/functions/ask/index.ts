@@ -178,6 +178,7 @@ async function converseGemini(schema: string, messages: any[]) {
 }
 
 async function converse(apiKey: string, model: string, schema: string, messages: any[]) {
+  let fallback = false;
   if (GEMINI) {
     try { return await converseGemini(schema, messages); }
     catch (e) {
@@ -187,6 +188,7 @@ async function converse(apiKey: string, model: string, schema: string, messages:
       if (!apiKey) throw new Error("Gemini is even overbelast of je dagquotum is op. Probeer het later opnieuw.");
       model = ((await rpc<string | null>("internal_get_setting", { p_key: "ai_model" }).catch(() => null)) as string) || "claude-sonnet-5-5";
       messages.splice(0, messages.length, ...messages.filter((m) => typeof m.content === "string"));
+      fallback = true;
     }
   }
   const actions: { tool: string; purpose?: string; rows?: number; error?: string; summary?: string }[] = [];
@@ -196,7 +198,11 @@ async function converse(apiKey: string, model: string, schema: string, messages:
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({ model, max_tokens: 2000, system: systemPrompt(schema), tools: TOOLS, messages }),
     });
-    if (!res.ok) throw new Error(`Claude API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    if (!res.ok) {
+      const why = (await res.text()).slice(0, 300);
+      if (fallback) { console.log("Claude-terugval faalde:", res.status, why); throw new Error("Gemini is even overbelast of je dagquotum is op. Probeer het later opnieuw."); }
+      throw new Error(`Claude API ${res.status}: ${why}`);
+    }
     const out = await res.json();
     messages.push({ role: "assistant", content: out.content });
     const uses = (out.content ?? []).filter((b: any) => b.type === "tool_use");
