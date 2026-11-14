@@ -1,5 +1,5 @@
 // Voorlezen met een Gemini-stem (gratis laag) in plaats van de iPhone-stem.
-// POST {text, voice?}            (ingelogde eigenaar)  -> {url}   audio (WAV) via een tijdelijke link
+// POST {text, voice?}            (ingelogde eigenaar of service-sleutel) -> {url}   audio (WAV) via een tijdelijke link
 // POST {briefing_day}            (databank, geen login) -> maakt de audio van de opgeslagen briefing vooraf klaar
 // POST {voice, save: true}       (eigenaar)            -> standaardstem bewaren
 // Elke tekst wordt maar één keer omgezet: de audio wordt bewaard (bucket tts) en daarna hergebruikt.
@@ -136,8 +136,11 @@ Deno.serve(async (req) => {
 
   const jwt = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!jwt) return json({ error: "Niet ingelogd" }, 401);
-  const { data: u, error: ue } = await admin.auth.getUser(jwt);
-  if (ue || !u.user || !(await rpc<boolean>("internal_is_owner", { p_uid: u.user.id }))) return json({ error: "Geen toegang" }, 403);
+  // andere edge functions (bv. de iPhone-opdracht) mogen met de service-sleutel
+  if (jwt !== Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) {
+    const { data: u, error: ue } = await admin.auth.getUser(jwt);
+    if (ue || !u.user || !(await rpc<boolean>("internal_is_owner", { p_uid: u.user.id }))) return json({ error: "Geen toegang" }, 403);
+  }
 
   if (body.list) return json({ voices: VOICES, voice: await getVoice() });
   if (body.save) {

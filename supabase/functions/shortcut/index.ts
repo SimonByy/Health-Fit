@@ -1,5 +1,6 @@
 // Endpoint voor iPhone-opdrachten (Opdrachten-app). Beveiligd met een geheime sleutel (?k=...), alleen de sha256 staat in app.settings.
 // GET  ?a=briefing&k=...        -> platte tekst van de briefing van vandaag
+// GET  ?a=briefing_audio&k=...  -> de briefing van vandaag als audio (Gemini-stem), voor "Speel geluid af"
 // GET  ?a=log&q=kwark&k=...     -> logt 1 portie van een vast product en geeft een zin terug
 // POST ?a=hevy&k=...  (body = Hevy CSV-export) -> importeert de trainingen van de laatste 120 dagen
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -119,6 +120,20 @@ Deno.serve(async (req) => {
       if (error) throw error;
       return text(data || "Goeiemorgen Simon. Je briefing is nog niet klaar. Over een paar minuten krijg je een melding.");
     }
+    if (a === "briefing_audio") {
+      const day = new Date().toLocaleDateString("sv-SE", { timeZone: TZ });
+      const { data: t } = await admin.rpc("internal_tts_text", { p_day: day, p_reply: null });
+      if (!t) return text("Je briefing is nog niet klaar.", 404);
+      const SR = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tts`, {
+        method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${SR}` }, body: JSON.stringify({ text: t }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!j.url) return text("Voorlezen lukt nu niet: " + String(j.error || r.status).slice(0, 120), 502);
+      const audio = await fetch(j.url);
+      if (!audio.ok) return text("Audio niet gevonden", 502);
+      return new Response(audio.body, { headers: { "Content-Type": "audio/wav", "Content-Disposition": 'inline; filename="briefing.wav"', "Cache-Control": "no-store" } });
+    }
     if (a === "hevy") {
       // Body = het Hevy-exportbestand (rauw, of als formulier met één bestand)
       let csv = "";
@@ -182,7 +197,7 @@ Deno.serve(async (req) => {
       }
       const { error } = await admin.rpc("internal_capture_add", { p_text: txt, p_note: note, p_image_path: path });
       if (error) throw error;
-      return text("Verstuurd naar Health Hub. Claude verwerkt het binnen het uur, je krijgt een melding.");
+      return text("Verstuurd naar Health Hub. Het wordt meteen verwerkt, je krijgt zo een melding.");
     }
     if (a === "wake") {
       const { data, error } = await admin.rpc("internal_wake", { p_source: u.searchParams.get("src") || "wekker" });
