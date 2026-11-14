@@ -123,7 +123,7 @@ export async function renderBriefing(ctx) {
     <section class="panel briefing">
       <div class="row" style="justify-content:space-between">
         <h3 style="margin:0">Goeiemorgen Simon</h3>
-        <button class="btn" id="bPlay" data-label="▶ Voorlezen" data-listen="1">▶ Voorlezen</button>
+        <button class="btn" id="bPlay" data-label="▶ Voorlezen">▶ Voorlezen</button>
       </div>
       <div class="md" style="margin-top:10px">${C.md(B.text)}</div>
       <div class="row voice-row" style="margin-top:10px;gap:8px"><label for="bVoice" class="small muted">Stem</label>
@@ -131,13 +131,13 @@ export async function renderBriefing(ctx) {
     </section>
     <div class="chat" id="bChat">${extra.map((m) => `<div class="msg ${m.role}${m.pending ? " pending" : ""}">${m.role === "user" ? C.esc(m.content) : C.md(m.content)}</div>`).join("")}</div>
     <section class="panel">
-      <label for="bAns" class="small muted">Jouw antwoord</label>
+      <label for="bAns" class="small muted">Iets kwijt of een vraag?</label>
       <textarea class="input" id="bAns" rows="3" placeholder="${SR ? "Tik op Inspreken of typ…" : "Typ, of gebruik de microfoon van je toetsenbord…"}" style="margin-top:6px"></textarea>
       <div class="row" style="margin-top:8px">
         ${SR ? `<button class="btn secondary mic" id="bMic" type="button" aria-pressed="false"><span class="dot"></span><span>Inspreken</span></button>` : ""}
         <button class="btn" id="bSend" style="flex:1">Antwoorden</button>
       </div>
-      <p class="small muted" style="margin:8px 0 0">Na het voorlezen start de microfoon vanzelf. Je antwoord komt hier binnen een minuut en wordt voorgelezen.</p>
+      <p class="small muted" style="margin:8px 0 0">Het antwoord komt hier binnen een minuut en wordt voorgelezen.</p>
     </section>`;
   const play = $("#bPlay");
   play.onclick = () => speak(B.text, play);

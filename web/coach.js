@@ -11,7 +11,7 @@ function item(s, today) {
   return `<div class="coach-item ${st}" data-id="${s.id}">
     <div class="row" style="justify-content:space-between;flex-wrap:nowrap;gap:8px">
       <span><b>${ICON[s.kind] || "•"} ${C.esc(s.title)}</b>
-        <span class="small muted"> · ${today ? "" : wd(s.day) + " "}${hm(s.start_local)}${s.end_local ? "–" + hm(s.end_local) : ""}</span></span>
+        ${today ? "" : `<span class="small muted"> · ${wd(s.day)}</span>`}</span>
       <span class="small">${st === "gedaan" ? "✓" : st === "overgeslagen" ? "✕" : ""}</span>
     </div>
     ${s.details ? `<details ${today ? "open" : ""}><summary class="small muted">Doelen en uitleg</summary>
@@ -104,7 +104,7 @@ function openSession(s, rerender) {
     <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="sess-kicker ${KIND_CLS(s.kind)}">${s.kind === "z2" ? "Zone 2" : "Kracht"}</span>
       <button class="icon-btn" data-close aria-label="Sluiten">✕</button></div>
     <h2 class="sess-title">${C.esc(s.title.replace(/^[^\p{L}]+/u, ""))}</h2>
-    <p class="sess-when">${C.esc(when)}${s.start_local ? ` · ${hm(s.start_local)}${s.end_local ? "–" + hm(s.end_local) : ""}` : ""}${s.status !== "gepland" ? ` · <b>${C.esc(s.status)}</b>` : ""}</p>
+    <p class="sess-when">${C.esc(when)}${s.status !== "gepland" ? ` · <b>${C.esc(s.status)}</b>` : ""}</p>
     ${parts.length ? `<div class="sess-list">${parts.map((p) => {
       const m = isGym ? /^(.*?)\s+([\d.,]+(?:\s*×.*)?)$/.exec(p) : null;
       return m ? `<div class="sess-row"><span>${C.esc(m[1])}</span><b>${C.esc(m[2])}</b></div>` : `<div class="sess-row"><span>${C.esc(p)}</span></div>`;
