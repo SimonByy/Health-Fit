@@ -46,7 +46,7 @@ async function reload() { await load(); draw(); }
 // ======================================================================
 export async function renderMenu(ctx, param) {
   C = ctx;
-  if (["week", "lijst", "recepten"].includes(param)) tab = param;
+  if (["week", "koken", "lijst", "recepten"].includes(param)) tab = param;
   await load();
   draw();
 }
@@ -54,7 +54,7 @@ export async function renderMenu(ctx, param) {
 function draw() {
   const v = C.view;
   v.innerHTML = `<div class="seg mp-seg" role="group" aria-label="Onderdeel">
-      ${[["week", "Weekmenu"], ["lijst", "Boodschappen"], ["recepten", "Recepten"]].map(([k, l]) =>
+      ${[["week", "Week"], ["koken", "Koken"], ["lijst", "Boodschappen"], ["recepten", "Recepten"]].map(([k, l]) =>
         `<button data-t="${k}" aria-pressed="${tab === k}">${l}</button>`).join("")}</div>
     <div id="mpBody"></div>`;
   v.querySelector(".mp-seg").onclick = (e) => {
@@ -63,6 +63,7 @@ function draw() {
   };
   const body = $("#mpBody");
   if (tab === "week") drawWeek(body);
+  else if (tab === "koken") drawCook(body);
   else if (tab === "lijst") drawList(body);
   else drawRecipes(body);
 }
@@ -141,6 +142,36 @@ function bindWeekPicker(box, w) {
   });
 }
 
+// Emoji + korte naam voor het weekrooster
+const EMO = [[/brownie/i, "🍫", "Brownie"], [/rijstpudding|pudding/i, "🍮", "Pudding"], [/oats|havermout|porridge/i, "🥣", "Oats"], [/granola|muesli/i, "🥣", "Granola"],
+  [/wrap|tortilla/i, "🌯", "Wrap"], [/kwark/i, "🥛", "Kwark"], [/skyr/i, "🥛", "Skyr"], [/yoghurt|yogurt/i, "🥛", "Yoghurt"], [/eiwitreep|reep\b/i, "🍫", "Reep"],
+  [/jachtschotel/i, "🍲", "Jacht\u00adschotel"], [/stoof|schotel|goulash|chili/i, "🍲", null], [/puree/i, "🥔", "Puree"], [/aardappel|patat/i, "🥔", null],
+  [/curry/i, "🍛", "Curry"], [/pasta|spaghetti|penne|lasagne|macaroni/i, "🍝", "Pasta"], [/nasi|bami/i, "🍚", null], [/rijst|wok/i, "🍚", null],
+  [/zalm|vis\b|tonijn|kabeljauw/i, "🐟", null], [/omelet|eieren|\bei\b/i, "🍳", null], [/pizza/i, "🍕", "Pizza"], [/burger/i, "🍔", "Burger"],
+  [/salade|bowl/i, "🥗", null], [/soep/i, "🍜", "Soep"], [/pannenkoek|pancake/i, "🥞", "Pannenkoek"], [/shake|whey|smoothie/i, "🥤", "Shake"],
+  [/brood|toast|sandwich|boterham/i, "🍞", null], [/kip|chicken|kalkoen/i, "🍗", null], [/banaan/i, "🍌", null], [/fruit|appel|peer/i, "🍎", null]];
+const SLOT_EMO = { ontbijt: "🥣", lunch: "🥪", snack: "🍎", avond: "🍽️", avondsnack: "🌙" };
+const SHORT = { ontbijt: "Ontb.", lunch: "Lunch", snack: "Snack", avond: "Avond", avondsnack: "Laat" };
+const SLOT_AT = { ontbijt: "8u45", lunch: "12u30", snack: "16u", avond: "18u45", avondsnack: "21u30" };
+const emoOf = (r, slot) => (EMO.find(([re]) => re.test(r?.name || "")) || [null, SLOT_EMO[slot]])[1];
+function shortName(r) {
+  const hit = EMO.find(([re, , l]) => l && re.test(r?.name || "")); if (hit) return hit[2];
+  const w = String(r?.name || "?").replace(/^(upfront|ah|okay|kosso|zelfgemaakte?|magere|baked|eiwit|griekse)\s+/gi, "").replace(/^(upfront|ah|okay|kosso|zelfgemaakte?)\s+/i, "").split(/\s+(?:met|en|van|op|in|à|a la)\s+|[,(]/i)[0].trim();
+  const t = w.split(/\s+/).slice(0, 2).join(" ");
+  return t.length > 13 ? t.slice(0, 12) + "…" : t;
+}
+const dayItems = (w, d) => w.items.filter((i) => i.day === d).sort((a, b) => SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot));
+// Dagstatus: groen = klopt (kcal ±100 van doel en eiwit gehaald), geel = niet, grijs = leeg of uit eten (geen avondmaal)
+function dayState(its, t, g) {
+  if (!its.length) return "leeg";
+  if (!its.some((i) => i.slot === "avond")) return "uit";
+  const kOk = !n(g.kcal_in) || Math.abs(t.kcal - n(g.kcal_in)) <= 120;
+  const pOk = !n(g.protein_g) || t.protein >= n(g.protein_g) - 5;
+  return kOk && pOk ? "ok" : "let";
+}
+
+let dayOpen = null;      // { d, card, close } van het open dag-scherm
+
 function drawWeek(box) {
   const w = currentWeek();
   const weekBar = weekPicker(w);
@@ -148,8 +179,7 @@ function drawWeek(box) {
     const prev = D.weeks.find((x) => x.items?.length && (!w || x.week_start < w.week_start));
     box.innerHTML = `${weekBar}<section class="panel"><h3>${w ? "Deze week is nog leeg" : "Nog geen weekmenu"}</h3>
       ${prev ? `<button class="btn" id="copyPrev" style="width:100%;margin:6px 0 10px">⧉ Kopieer de week van ${C.esc(dshort(prev.week_start))}</button>` : ""}
-      <p class="hint">Elke vrijdag stelt Claude je menu voor zondagavond tot vrijdagmiddag voor: met je favorieten, een wrap als lunch, magere kwark als snack en hoogstens twee avondgerechten die je voor 2 à 3 dagen kookt. Bonusproducten van Albert Heijn worden meegenomen.</p>
-      <p class="hint">Zet intussen een ★ bij wat je lekker vindt en een 👎 bij wat niet: daar houdt het menu rekening mee.</p>
+      <p class="hint">Elke vrijdag wordt je menu voor de komende week gemaakt, met je favorieten en je wensen hieronder.</p>
       <button class="btn" id="goRec">Naar mijn recepten</button></section>`;
     $("#goRec").onclick = () => { tab = "recepten"; draw(); };
     $("#copyPrev")?.addEventListener("click", async () => { try { weekSel = await C.rpc("mp_week_new", { p_copy_from: prev.id }); C.toast("Week gekopieerd. Pas aan wat je anders wilt."); reload(); } catch (e) { C.toast(e.message, 5000); } });
@@ -158,102 +188,134 @@ function drawWeek(box) {
   }
   const g = D.goals || {};
   const days = Array.from({ length: 7 }, (_, k) => addDaysIso(w.week_start, k));
-  const plan = cookPlan(w);
-  const prepDone = prepState(w.id);
-  box.innerHTML = `
-    ${weekBar}
-    ${w.reviewed_at ? "" : `<div class="mp-reviewbar"><span class="small">Klopt je menu? Tik een gerecht om te wisselen of aan te passen.</span><button class="btn" id="review">✓ Goed</button></div>`}
-    <div class="mp-tabs" id="mpTabs">${days.map((d) => `<button class="mp-tab ${d === D.today ? "today" : ""}" data-go="${d}">
-      <span>${wd(d).slice(0, 2)}</span><b>${Number(d.slice(8))}</b></button>`).join("")}</div>
-    <div class="mp-swipe" id="mpSwipe">${days.map((d) => {
-      const its = w.items.filter((i) => i.day === d).sort((a, b) => SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot));
-      const t = dayTotals(its);
-      const bar = (cls, label, v, goal, unit = "g") => `<div class="mrow ${cls}"><div class="mrow-h"><span>${label}</span><span><b>${C.fmt(v)}</b>${goal ? ` / ${C.fmt(goal)}` : ""} ${unit}</span></div>
-        <div class="mtrack"><i style="width:${goal ? Math.min(100, (v / goal) * 100) : 0}%"></i></div></div>`;
-      const have = new Set(its.map((i) => i.slot));
-      const free = SLOT_ORDER.filter((sl) => !have.has(sl));
-      return `<section class="panel mp-day ${d === D.today ? "today" : ""}" data-day="${d}">
-        <div class="row" style="justify-content:space-between"><h3 style="text-transform:capitalize;margin:0">${C.esc(dshort(d))}${d === D.today ? ` <span class="badge" style="background:var(--fuel)">vandaag</span>` : ""}</h3>
-          <span class="mp-dk"><b>${C.fmt(t.kcal)}</b>${g.kcal_in ? ` / ${C.fmt(g.kcal_in)}` : ""} kcal</span></div>
-        ${its.length && g.kcal_in ? `<p class="small mp-left">${leftText(t, g)}</p>` : ""}
-        ${d <= D.today && its.length ? (its.every((i) => i.eaten) ? `<p class="small ok-badge" style="margin:4px 0 0">✓ Alles gegeten en gelogd</p>`
-          : `<button class="chip mp-dayeat" data-dayeat="${d}">✓ Alles van deze dag gegeten</button>`) : ""}
-        ${suggestHtml(d, its, t, g)}
-        <div class="mp-dbars">
-          ${bar("prot", "Eiwit", t.protein, n(g.protein_g))}
-          ${bar("carb", "Koolhydraten", t.carbs, n(g.carbs_g))}
-          ${bar("fat", "Vet", t.fat, n(g.fat_g))}
-        </div>
-        ${its.map((it) => { const r = recById(it.recipe_id); if (!r) return "";
-          const q = n(it.portions) || 1;
-          const canEat = d <= D.today;
-          return `<div class="mp-meal">
-            <div class="mp-meal-h"><span>${SLOTS[it.slot]}</span>
-              <span class="mp-mm"><b>${C.fmt(q * (n(r.kcal) || 0))} kcal</b> · E ${C.fmt(q * (n(r.protein) || 0))} · K ${C.fmt(q * (n(r.carbs) || 0))} · V ${C.fmt(q * (n(r.fat) || 0))}</span></div>
-            <div class="mp-irow ${it.eaten ? "eaten" : ""}">${canEat ? `<label class="mp-eat" title="Gegeten"><input type="checkbox" data-eat="${it.id}" ${it.eaten ? "checked" : ""} aria-label="${C.esc(r.name)} gegeten"></label>` : ""}
-              <button class="mp-item" data-item="${it.id}">
-                <span class="nm">${r.favorite ? "★ " : ""}${C.esc(r.name)}${q !== 1 ? ` <span class="mp-q">× ${C.fmt(q, 2)}</span>` : ""}${r.macros_checked ? "" : ` <span class="small muted">· geschat</span>`}</span>
-                <span class="k">›</span></button></div></div>`; }).join("") || `<p class="muted small" style="margin:12px 0 0">Nog niets gepland.</p>`}
-        ${free.length ? `<div class="chips mp-addslot">${free.map((sl) => `<button class="chip" data-addday="${d}" data-addslot="${sl}">+ ${SLOTS[sl]}</button>`).join("")}</div>` : ""}
-      </section>`;
+  const rows = days.map((d) => {
+    const its = dayItems(w, d), t = dayTotals(its), st = dayState(its, t, g);
+    const cells = SLOT_ORDER.map((sl) => {
+      const it = its.find((i) => i.slot === sl); const r = it && recById(it.recipe_id);
+      return r ? `<span class="wg-c ${it.eaten ? "eaten" : ""}"><i aria-hidden="true">${emoOf(r, sl)}</i><span>${C.esc(shortName(r))}</span></span>`
+        : `<span class="wg-c empty" aria-label="${SLOTS[sl]}: niets">·</span>`;
+    }).join("");
+    return `<button class="wg-row ${st} ${d === D.today ? "today" : ""} ${d < D.today ? "past" : ""}" data-dayopen="${d}"
+        aria-label="${C.esc(dshort(d))}: ${C.fmt(t.kcal)} kcal, ${C.fmt(t.protein)} gram eiwit">
+      <span class="wg-d"><b>${wd(d).slice(0, 2)}</b><small>${Number(d.slice(8))}</small></span>${cells}
+      <span class="wg-k"><b>${its.length ? C.fmt(t.kcal) : "–"}</b><small>${its.length ? `P ${C.fmt(t.protein)}` : ""}</small></span></button>`;
+  }).join("");
+  box.innerHTML = `${weekBar}
+    <section class="panel wg">
+      <div class="wg-head" aria-hidden="true"><span></span>${SLOT_ORDER.map((sl) => `<span>${SHORT[sl]}</span>`).join("")}<span>kcal</span></div>
+      ${rows}
+      <p class="wg-legend small muted"><span><i class="dot ok"></i> klopt</span><span><i class="dot let"></i> kcal of eiwit niet</span><span><i class="dot uit"></i> uit eten of leeg</span><span>· tik een dag</span></p>
+    </section>`;
+  box.querySelectorAll("[data-dayopen]").forEach((b) => (b.onclick = () => openDay(b.dataset.dayopen)));
+  bindWeekPicker(box, w); mountWish(box);
+  if (dayOpen && document.body.contains(dayOpen.card)) fillDay();
+}
+
+// ---------------------------------------------------------------- één dag (tijdlijn)
+function openDay(d) {
+  const { card, close, sheet } = sheetShell("Dag");
+  sheet.classList.add("mp-daysheet");
+  dayOpen = { d, card, close };
+  sheet._onClose = () => { dayOpen = null; };
+  fillDay();
+}
+function fillDay() {
+  const w = currentWeek(); if (!w || !dayOpen) return;
+  const { d, card, close } = dayOpen;
+  const g = D.goals || {};
+  const its = dayItems(w, d), t = dayTotals(its);
+  const have = new Set(its.map((i) => i.slot));
+  const free = SLOT_ORDER.filter((sl) => !have.has(sl));
+  const days = Array.from({ length: 7 }, (_, k) => addDaysIso(w.week_start, k));
+  const i = days.indexOf(d);
+  const bar = (cls, label, v, goal, unit = "g") => `<div class="mrow ${cls}"><div class="mrow-h"><span>${label}</span><span><b>${C.fmt(v)}</b>${goal ? ` / ${C.fmt(goal)}` : ""} ${unit}</span></div>
+    <div class="mtrack"><i style="width:${goal ? Math.min(100, (v / goal) * 100) : 0}%"></i></div></div>`;
+  card.innerHTML = `<div class="row" style="justify-content:space-between;flex-wrap:nowrap;gap:6px">
+      <button class="icon-btn" data-dnav="${days[i - 1] || ""}" ${i > 0 ? "" : "disabled"} aria-label="Vorige dag">‹</button>
+      <h3 style="margin:0;flex:1;text-align:center;text-transform:capitalize">${C.esc(dshort(d))}${d === D.today ? " · vandaag" : ""}</h3>
+      <button class="icon-btn" data-dnav="${days[i + 1] || ""}" ${i < 6 ? "" : "disabled"} aria-label="Volgende dag">›</button>
+      <button class="icon-btn" data-close aria-label="Sluiten">✕</button></div>
+    ${its.length ? `<div class="dt-sum"><span><b>${C.fmt(t.kcal)}</b>${g.kcal_in ? ` / ${C.fmt(g.kcal_in)}` : ""} kcal</span>
+      <span class="pkv"><i class="p">P ${C.fmt(t.protein)}</i><i class="c">C ${C.fmt(t.carbs)}</i><i class="f">F ${C.fmt(t.fat)}</i></span></div>
+      ${g.kcal_in ? `<p class="small mp-left" style="margin:2px 0 8px">${leftText(t, g)}</p>` : ""}
+      <div class="mp-dbars">${bar("prot", "Eiwit", t.protein, n(g.protein_g))}${bar("carb", "Koolhydraten", t.carbs, n(g.carbs_g))}${bar("fat", "Vet", t.fat, n(g.fat_g))}</div>` : ""}
+    <div class="dt-list">${SLOT_ORDER.map((sl) => {
+      const it = its.find((x) => x.slot === sl); const r = it && recById(it.recipe_id);
+      if (!r) return `<div class="dt-row empty"><span class="dt-t">${SLOT_AT[sl]}</span><span class="dt-dot"></span>
+        <button class="dt-add" data-addslot="${sl}">+ ${SLOTS[sl]}</button></div>`;
+      const q = n(it.portions) || 1, canEat = d <= D.today;
+      return `<div class="dt-row ${it.eaten ? "eaten" : ""}"><span class="dt-t">${SLOT_AT[sl]}</span>
+        ${canEat ? `<label class="dt-ck" title="Gegeten"><input type="checkbox" data-eat="${it.id}" ${it.eaten ? "checked" : ""} aria-label="${C.esc(r.name)} gegeten"><span></span></label>` : `<span class="dt-dot"></span>`}
+        <button class="dt-it" data-item="${it.id}"><span class="dt-n"><i aria-hidden="true">${emoOf(r, sl)}</i> ${C.esc(r.name)}${q !== 1 ? ` <span class="mp-q">× ${C.fmt(q, 2)}</span>` : ""}</span>
+          <span class="dt-m"><b>${C.fmt(q * (n(r.kcal) || 0))} kcal</b> <span class="pkv"><i class="p">P ${C.fmt(q * (n(r.protein) || 0))}</i><i class="c">C ${C.fmt(q * (n(r.carbs) || 0))}</i><i class="f">F ${C.fmt(q * (n(r.fat) || 0))}</i></span></span></button></div>`;
     }).join("")}</div>
-    ${plan.length || w.prep?.length ? `<section class="panel"><h3>Klaarmaken deze week</h3>
-        ${plan.map((p) => { const r = recById(p.recipe_id); return r ? `<div class="mp-row">
-          <span><span class="small mp-cookday">${C.esc(wd(p.cook))}</span><br><b>${C.esc(r.name)}</b><br><span class="small muted">${C.fmt(p.portions, 2)} porties voor ${p.days.map((d) => wd(d).slice(0, 2)).join(", ")}</span></span>
-          <span class="row" style="gap:6px;flex-wrap:nowrap"><button class="icon-btn mp-edit" data-r="${r.id}" aria-label="${C.esc(r.name)} aanpassen">✏️</button>
-          <button class="btn secondary mp-cook" data-r="${r.id}" data-p="${p.portions}">Koken</button></span></div>` : ""; }).join("")}
-        ${w.prep?.length ? `<div class="sub-h" style="margin-top:12px">Stappen</div>${w.prep.map((st, k) => `<label class="mp-check ${prepDone.has(k) ? "done" : ""}"><input type="checkbox" data-prep="${k}" ${prepDone.has(k) ? "checked" : ""}><span class="t">${C.esc(st)}</span></label>`).join("")}` : ""}
-      </section>` : ""}
-    ${w.reviewed_at ? `<p class="small muted" style="margin:4px 2px 12px">✓ Menu goedgekeurd · <button class="linkbtn" id="unreview">ongedaan maken</button></p>` : ""}
-    ${w.bonus?.length ? `<section class="panel"><h3>In de bonus verwerkt</h3><ul class="mp-ul">${w.bonus.map((b) =>
-      `<li>${C.esc(b.product || "")}${b.deal ? ` · <b>${C.esc(b.deal)}</b>` : ""}${b.valid ? ` <span class="muted small">(${C.esc(b.valid)})</span>` : ""}</li>`).join("")}</ul></section>` : ""}`;
-
-  // Dagen naast elkaar: swipen, of tik een dag in de balk. Onthoudt de dag bij herladen.
-  const sw = $("#mpSwipe"), tabs = [...box.querySelectorAll(".mp-tab")];
-  const mark = (d) => { tabs.forEach((t) => t.classList.toggle("on", t.dataset.go === d)); };
-  const go = (d, smooth) => { const el = sw.querySelector(`[data-day="${d}"]`); if (!el) return;
-    sw.scrollTo({ left: el.offsetLeft - sw.offsetLeft, behavior: smooth ? "smooth" : "auto" }); mark(d); curDay = d; };
-  tabs.forEach((t) => (t.onclick = () => go(t.dataset.go, true)));
-  let st;
-  sw.addEventListener("scroll", () => { clearTimeout(st); st = setTimeout(() => {
-    const i = Math.round(sw.scrollLeft / (sw.clientWidth || 1)); const d = days[Math.max(0, Math.min(days.length - 1, i))];
-    if (d) { mark(d); curDay = d; } }, 60); }, { passive: true });
-  const start = days.includes(curDay) ? curDay : days.includes(D.today) ? D.today : days.find((d) => w.items.some((i) => i.day === d)) || days[0];
-  requestAnimationFrame(() => go(start, false));
-
-  $("#review")?.addEventListener("click", async () => { await C.rpc("mp_week_review", { p_week_id: w.id, p_reviewed: true }); C.toast("Menu goedgekeurd"); reload(); });
-  $("#unreview")?.addEventListener("click", async () => { await C.rpc("mp_week_review", { p_week_id: w.id, p_reviewed: false }); reload(); });
-  box.querySelectorAll(".mp-cook").forEach((b) => (b.onclick = () => openCook(recById(Number(b.dataset.r)), Number(b.dataset.p))));
-  box.querySelectorAll(".mp-edit").forEach((b) => (b.onclick = () => openEdit(recById(Number(b.dataset.r)))));
-  box.querySelectorAll("[data-eat]").forEach((cb) => (cb.onchange = async () => {
-    const it = w.items.find((i) => i.id === Number(cb.dataset.eat)); const r = recById(it.recipe_id);
-    try {
-      await C.rpc("mp_item_eaten", { p_item_id: it.id, p_eaten: cb.checked });
-      it.eaten = cb.checked; cb.closest(".mp-irow").classList.toggle("eaten", cb.checked);
-      C.toast(cb.checked ? `${r.name} gelogd in Voeding` : `${r.name} uit Voeding gehaald`);
-    } catch (e) { cb.checked = !cb.checked; C.toast(e.message, 5000); }
+    ${suggestHtml(d, its, t, g)}
+    ${d <= D.today && its.length && !its.every((x) => x.eaten) ? `<button class="btn secondary" data-dayeat="${d}" style="width:100%;margin-top:10px">✓ Alles van deze dag gegeten</button>` : ""}`;
+  card.querySelector("[data-close]").onclick = close;
+  card.querySelectorAll("[data-dnav]").forEach((b) => (b.onclick = () => { if (b.dataset.dnav) { dayOpen.d = b.dataset.dnav; fillDay(); } }));
+  card.querySelectorAll(".dt-it").forEach((b) => (b.onclick = () => {
+    const it = w.items.find((x) => x.id === Number(b.dataset.item)); openRecipe(recById(it.recipe_id), { item: it });
   }));
-  box.querySelectorAll("[data-addslot]").forEach((b) => (b.onclick = () => openAddSlot(w, b.dataset.addday, b.dataset.addslot)));
-  box.querySelectorAll("[data-dayeat]").forEach((b) => (b.onclick = async () => {
+  card.querySelectorAll("[data-addslot]").forEach((b) => (b.onclick = () => openAddSlot(w, d, b.dataset.addslot)));
+  card.querySelectorAll("[data-eat]").forEach((cb) => (cb.onchange = async () => {
+    const it = w.items.find((x) => x.id === Number(cb.dataset.eat)); const r = recById(it.recipe_id);
+    try { await C.rpc("mp_item_eaten", { p_item_id: it.id, p_eaten: cb.checked }); it.eaten = cb.checked;
+      C.toast(cb.checked ? `${r.name} gelogd in Voeding` : `${r.name} uit Voeding gehaald`); reload(); }
+    catch (e) { cb.checked = !cb.checked; C.toast(e.message, 5000); }
+  }));
+  card.querySelectorAll("[data-dayeat]").forEach((b) => (b.onclick = async () => {
     b.disabled = true;
-    try { const k = await C.rpc("mp_day_eaten", { p_week_id: w.id, p_day: b.dataset.dayeat, p_eaten: true }); C.toast(`${k} ${k === 1 ? "maaltijd" : "maaltijden"} gelogd in Voeding`); reload(); }
+    try { const k = await C.rpc("mp_day_eaten", { p_week_id: w.id, p_day: d, p_eaten: true }); C.toast(`${k} ${k === 1 ? "maaltijd" : "maaltijden"} gelogd in Voeding`); reload(); }
     catch (e) { b.disabled = false; C.toast(e.message, 5000); }
   }));
-  box.querySelectorAll("[data-sr]").forEach((b) => (b.onclick = async () => {
+  card.querySelectorAll("[data-sr]").forEach((b) => (b.onclick = async () => {
     b.disabled = true;
     try { await C.rpc("mp_item_add", { p_week_id: w.id, p_day: b.dataset.sday, p_slot: b.dataset.sslot, p_recipe_id: Number(b.dataset.sr), p_portions: 1 });
       C.toast(`${recById(Number(b.dataset.sr))?.name} toegevoegd`); reload(); }
     catch (e) { b.disabled = false; C.toast(e.message, 5000); }
   }));
+}
+
+// ---------------------------------------------------------------- koken: kookmomenten + klaar-porties
+function drawCook(box) {
+  const w = currentWeek();
+  if (!w || !w.items.length) { box.innerHTML = `${weekPicker(w)}<section class="panel"><p class="muted">Nog geen weekmenu, dus niets te koken.</p></section>`; bindWeekPicker(box, w); return; }
+  const plan = cookPlan(w);
+  const prepDone = prepState(w.id);
+  const T = D.today;
+  // klaar-porties: gekookt (kookdag ≤ vandaag), nog niet gegeten
+  const ready = plan.filter((p) => p.cook <= T).map((p) => {
+    const its = w.items.filter((i) => i.recipe_id === p.recipe_id && ["lunch", "avond"].includes(i.slot));
+    const left = its.filter((i) => !i.eaten && i.day >= T);
+    return { ...p, left: left.reduce((s, i) => s + (n(i.portions) || 1), 0), leftDays: left.map((i) => i.day) };
+  }).filter((p) => p.left > 0);
+  const byCook = new Map();
+  for (const p of plan) { if (!byCook.has(p.cook)) byCook.set(p.cook, []); byCook.get(p.cook).push(p); }
+  const frozen = (r) => /diepvries|vries/i.test(r?.storage || "");
+  box.innerHTML = `${weekPicker(w)}
+    <section class="panel"><h3>Klaar in je frigo</h3>
+      ${ready.length ? ready.map((p) => { const r = recById(p.recipe_id); return r ? `<div class="ck-row">
+        <span class="ck-e" aria-hidden="true">${emoOf(r, p.slot)}</span>
+        <span class="ck-n"><b>${C.esc(r.name)}</b><small>${frozen(r) ? "🧊 diepvries · " : ""}voor ${p.leftDays.map((d) => wd(d).slice(0, 2)).join(", ")}</small></span>
+        <span class="ck-q"><b>${C.fmt(p.left, 2)}</b><small>${p.left === 1 ? "portie" : "porties"}</small></span></div>` : ""; }).join("")
+      : `<p class="muted small" style="margin:4px 0 0">Nog niets klaar. Na het koken verschijnen je porties hier en tellen ze af als je ze opeet.</p>`}
+    </section>
+    ${[...byCook.entries()].map(([day, ps]) => `<section class="panel ck-moment ${day < T ? "past" : day === T ? "today" : ""}">
+      <h3>Koken · ${C.esc(dshort(day))}${day === T ? ` <span class="badge" style="background:var(--fuel)">vandaag</span>` : ""}</h3>
+      ${ps.map((p) => { const r = recById(p.recipe_id); return r ? `<div class="mp-row">
+        <span><b>${emoOf(r, p.slot)} ${C.esc(r.name)}</b><br><span class="small muted">${C.fmt(p.portions, 2)} porties voor ${p.days.map((d) => wd(d).slice(0, 2)).join(", ")}${frozen(r) ? " · deel invriezen" : ""}</span></span>
+        <span class="row" style="gap:6px;flex-wrap:nowrap"><button class="icon-btn mp-edit" data-r="${r.id}" aria-label="${C.esc(r.name)} aanpassen">✏️</button>
+        <button class="btn secondary mp-cook" data-r="${r.id}" data-p="${p.portions}">Koken</button></span></div>` : ""; }).join("")}</section>`).join("")}
+    ${w.prep?.length ? `<section class="panel"><h3>Stappen deze week</h3>${w.prep.map((st, k) => `<label class="mp-check ${prepDone.has(k) ? "done" : ""}"><input type="checkbox" data-prep="${k}" ${prepDone.has(k) ? "checked" : ""}><span class="t">${C.esc(st)}</span></label>`).join("")}</section>` : ""}
+    ${w.bonus?.length ? `<section class="panel"><h3>In de bonus verwerkt</h3><ul class="mp-ul">${w.bonus.map((b) =>
+      `<li>${C.esc(b.product || "")}${b.deal ? ` · <b>${C.esc(b.deal)}</b>` : ""}${b.valid ? ` <span class="muted small">(${C.esc(b.valid)})</span>` : ""}</li>`).join("")}</ul></section>` : ""}`;
+  box.querySelectorAll(".mp-cook").forEach((b) => (b.onclick = () => openCook(recById(Number(b.dataset.r)), Number(b.dataset.p))));
+  box.querySelectorAll(".mp-edit").forEach((b) => (b.onclick = () => openEdit(recById(Number(b.dataset.r)))));
   box.querySelectorAll("[data-prep]").forEach((cb) => (cb.onchange = () => {
     cb.checked ? prepDone.add(Number(cb.dataset.prep)) : prepDone.delete(Number(cb.dataset.prep));
     cb.closest(".mp-check").classList.toggle("done", cb.checked); prepSave(w.id, prepDone);
   }));
-  bindWeekPicker(box, w); mountWish(box);
-  box.querySelectorAll(".mp-item").forEach((b) => (b.onclick = () => {
-    const it = w.items.find((i) => i.id === Number(b.dataset.item));
-    openRecipe(recById(it.recipe_id), { item: it });
-  }));
+  bindWeekPicker(box, w);
 }
 
 // ---------------------------------------------------------------- boodschappen
