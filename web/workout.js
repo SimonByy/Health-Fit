@@ -165,7 +165,7 @@ export async function renderWorkout(ctx) {
       <button class="wprev" type="button" title="Vorige waarden overnemen" data-kg="${prevSet?.kg ?? ""}" data-reps="${prevSet?.reps ?? ""}">${C.esc(prev)}</button>
       <input class="input wkg" inputmode="decimal" placeholder="${C.esc(phKg)}" value="${C.esc(s.kg)}" aria-label="Gewicht in kg">
       <input class="input wreps" inputmode="numeric" placeholder="${C.esc(phReps)}" value="${C.esc(s.reps)}" aria-label="Herhalingen">
-      <button class="wcheck" type="button" aria-pressed="${s.done}" aria-label="Set voltooid">${pr ? "🏆" : "✓"}</button>
+      <button class="wcheck" type="button" aria-pressed="${s.done}" aria-label="Set voltooid">${pr ? "PR" : "✓"}</button>
     </div>`;
   }
 
@@ -173,7 +173,7 @@ export async function renderWorkout(ctx) {
     const sg = suggestion(title);
     const rr = repRange(ctxCache[title]);
     return `<button class="wsug" type="button" data-pref="${C.esc(title)}" title="Bereik en stapgrootte aanpassen">
-      ${sg ? `🎯 <b>${sg.kg != null ? C.fmt(sg.kg, 2) + " kg × " : ""}${sg.reps}</b> <span>${C.esc(sg.why)}</span>` : `🎯 <span>Eerste keer: kies een gewicht waarmee je ${rr.min}–${rr.max} herhalingen haalt</span>`}
+      ${sg ? `<b>${sg.kg != null ? C.fmt(sg.kg, 2) + " kg × " : ""}${sg.reps}</b> <span>${C.esc(sg.why)}</span>` : `<span>Eerste keer: kies een gewicht waarmee je ${rr.min}–${rr.max} herhalingen haalt</span>`}
       <span class="wsug-r">bereik ${rr.min}–${rr.max}${rr.own ? "" : " (auto)"} ✎</span></button>`;
   }
 
@@ -320,7 +320,7 @@ export async function renderWorkout(ctx) {
     w.timer = { id: null, due: Date.now() + secs * 1000, total: secs, rang: false };
     persist(); updateTimer();
     try {
-      const t = await C.invoke("rest-timer", { action: "start", seconds: secs, title: "Rust voorbij 💪", body: `Volgende: ${next}` });
+      const t = await C.invoke("rest-timer", { action: "start", seconds: secs, title: "Rust voorbij", body: `Volgende: ${next}` });
       if (w.timer) { w.timer.id = t.id; persist(); }
     } catch { /* geen push, timer in de app werkt nog */ }
   }
@@ -384,14 +384,14 @@ export async function renderWorkout(ctx) {
     const rec = res.records || [];
     view.innerHTML = `
       <section class="panel whero">
-        <h3 style="font-family:var(--font-num);font-size:26px;margin:0 0 6px">Goed gedaan! 💪</h3>
+        <h3 style="font-family:var(--font-num);font-size:26px;margin:0 0 6px">Goed gedaan</h3>
         <div class="wstats">
           <div><b>${C.fmt(s.duration_min)}</b><span>minuten</span></div>
           <div><b>${C.fmt(s.volume_kg)}</b><span>kg volume</span></div>
           <div><b>${C.fmt(s.working_sets)}</b><span>werksets</span></div>
         </div>
       </section>
-      ${rec.length ? `<section class="panel"><h3>🏆 Nieuwe records</h3>
+      ${rec.length ? `<section class="panel"><h3>Nieuwe records</h3>
         ${rec.map((r) => `<div class="meal"><span><b>${C.esc(r.exercise)}</b><br><span class="small muted">${C.esc(r.kind)}</span></span>
           <span class="k">${C.fmt(r.value, 1)} kg<br><span class="small muted">was ${C.fmt(r.previous, 1)}</span></span></div>`).join("")}</section>` : ""}
       <section class="panel" id="tplBox"><div class="skeleton" style="height:60px"></div></section>

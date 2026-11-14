@@ -108,7 +108,7 @@ export async function renderNutrition(ctx, state) {
           </div>`).join("")}
       ${sugg[m].length && (!list.length || (isToday && m === now) || sugg[m].some((x) => x.pair)) ? `<div class="sugg">${sugg[m].some((x) => x.pair) && all.length ? `<span class="sugg-h">Vaak samen met wat je al at:</span>` : ""}${sugg[m].map((s, k) => `<button class="sg ${s.pair ? "pair" : ""}" data-sg="${k}"><span>${s.pair ? "＋ " : ""}${C.esc(short(s.name))}</span><small>${C.fmt(s.kcal)}</small></button>`).join("")}</div>`
         : !list.length && !plan.length ? `<p class="mempty">Nog niets. Tik op + om iets toe te voegen.</p>` : ""}
-      ${list.some((i) => !i.skipped) ? `<div class="pair-box" data-pairbox="${m}"><button class="sg-ask pair-ask" type="button" data-pair="${m}">✨ Wat past erbij?</button></div>` : ""}
+      ${list.some((i) => !i.skipped) ? `<div class="pair-box" data-pairbox="${m}"><button class="sg-ask pair-ask" type="button" data-pair="${m}">Wat past erbij?</button></div>` : ""}
       ${isToday && SUGGEST.includes(m) ? `<button class="sg-ask" type="button" data-suggest="${m}">Stel voeding voor</button>` : ""}
       </div>
     </section>`;
@@ -199,7 +199,7 @@ export async function renderNutrition(ctx, state) {
     // AI: wat past bij wat je al in deze maaltijd hebt (kiest uit je eigen producten, echte waarden)
     card.querySelector("[data-pair]")?.addEventListener("click", async (e) => {
       const box = card.querySelector("[data-pairbox]");
-      e.currentTarget.disabled = true; e.currentTarget.textContent = "✨ Even denken…";
+      e.currentTarget.disabled = true; e.currentTarget.textContent = "Even denken…";
       try {
         const res = await C.invoke("ask", { mode: "pair", meal, day });
         const ideas = res.ideas || [];
