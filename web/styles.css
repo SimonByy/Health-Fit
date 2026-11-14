@@ -1155,3 +1155,12 @@ body:has(#tabbar[hidden]) .ai-fab, body.ai-open .ai-fab, body:has(.sheet) .ai-fa
 /* iOS: compenseer een verschoven viewport (na toetsenbord/dictee/andere app), verberg balken als het toetsenbord open is */
 .tabbar, .ai-fab, .fab, .selbar { translate: 0 calc(-1 * var(--vv-off, 0px)); }
 body.kb .tabbar, body.kb .ai-fab, body.kb .fab, body.kb .selbar { display: none; }
+
+/* ---------- v20: wensen achter een streepje ---------- */
+.wish-handle { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; margin-top: 6px; padding: 6px 0 2px; background: none; border: 0; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.wish-dash { width: 36px; height: 4px; border-radius: 2px; background: var(--faint); }
+.wish-handle[aria-expanded="true"] .wish-dash { background: var(--accent); }
+.wish-it { grid-template-columns: 1fr 36px; align-items: start; }
+.wish-txt { display: grid; gap: 2px; }
+.wish-del { border: 0; background: none; color: var(--faint); font-size: 20px; line-height: 1; cursor: pointer; width: 36px; height: 36px; }
+.wish-del:hover { color: var(--bad); }

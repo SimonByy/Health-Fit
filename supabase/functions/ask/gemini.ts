@@ -6,7 +6,7 @@ const BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 export async function geminiLoop(opts: {
   apiKey: string; model: string; system: string; tools: Tool[]; run: ToolRunner;
-  userParts: any[]; history?: any[]; maxSteps?: number;
+  userParts: any[]; history?: any[]; maxSteps?: number; deadline?: number; json?: boolean;
 }): Promise<{ text: string; actions: { tool: string; purpose?: string; rows?: number; error?: string }[] }> {
   const contents: any[] = [...(opts.history ?? []), { role: "user", parts: opts.userParts }];
   const actions: { tool: string; purpose?: string; rows?: number; error?: string }[] = [];
@@ -16,16 +16,18 @@ export async function geminiLoop(opts: {
   let mi = 0;
   for (let step = 0; step < (opts.maxSteps ?? 16); step++) {
     let res: Response;
+    const left = (opts.deadline ?? Date.now() + 120000) - Date.now();
+    if (left < 4000) throw new Error("Geen tijd meer (Gemini te traag)");
     try {
       res = await fetch(`${BASE}/${models[mi]}:generateContent`, {
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(Math.min(30000, left)),
       method: "POST",
       headers: { "content-type": "application/json", "x-goog-api-key": opts.apiKey },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: opts.system }] },
         contents,
         tools: opts.tools.length ? [{ functionDeclarations: opts.tools }] : undefined,
-        generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+        generationConfig: { temperature: 0.3, maxOutputTokens: 4096, ...(opts.json ? { responseMimeType: "application/json" } : {}) },
       }),
       });
     } catch (e) {
@@ -37,7 +39,7 @@ export async function geminiLoop(opts: {
       // druk of limiet: kort wachten en opnieuw, maar niet eindeloos
       const body = (await res.text()).slice(0, 400);
       if (++retries > 3 || /limit: 0|PerDay/i.test(body)) throw new Error(`Gemini ${res.status}: ${body}`);
-      await new Promise((r) => setTimeout(r, 5000 * retries));
+      await new Promise((r) => setTimeout(r, Math.min(5000 * retries, Math.max(0, left - 8000))));
       step--;
       continue;
     }

@@ -112,14 +112,68 @@ function parseFinal(text: string) {
 const DEFAULT_URL: Record<string, string> = { feedback: "/#/feedback", wish: "/#/menu/week", capture: "/#/vandaag", reply: "/#/briefing", recipe: "/#/menu/recepten", rebalance: "/#/menu/week" };
 const DEFAULT_TITLE: Record<string, string> = { feedback: "Feedback op je training", wish: "Menu aangepast", capture: "Verwerkt", reply: "Antwoord op je briefing", recipe: "Recept klaar", rebalance: "Menu bijgestuurd" };
 
+// ---- Feedback na een training: data vooraf ophalen, één Gemini-oproep zonder tools (snel), daarna zelf wegschrijven ----
+const q = (s: string) => "'" + String(s).replace(/'/g, "''") + "'";
+async function feedbackData(row: any) {
+  const ref = q(row.ref);
+  if (row.sport === "kracht") {
+    return await rpc("internal_agent_read", { q: `with w as (select * from ai.strength_workouts where id::text = ${ref}),
+      s as (select exercise, workout_id, day, count(*) filter (where coalesce(set_type,'normal') <> 'warmup') sets,
+              max(est_1rm_kg) e1, (array_agg(weight_kg || ' kg x ' || reps order by est_1rm_kg desc nulls last))[1] best
+            from ai.strength_sets where exercise in (select exercise from ai.strength_sets where workout_id::text = ${ref})
+            group by exercise, workout_id, day),
+      cur as (select * from s where workout_id::text = ${ref}),
+      prev as (select distinct on (exercise) * from s where workout_id::text <> ${ref} and day <= (select day from w) order by exercise, day desc)
+      select (select to_jsonb(w) from w) workout,
+        (select jsonb_agg(jsonb_build_object('oefening', c.exercise, 'sets', c.sets, 'beste_set', c.best, 'e1rm', round(c.e1::numeric,1),
+           'vorige_dag', p.day, 'vorige_beste', p.best, 'vorige_e1rm', round(p.e1::numeric,1))) from cur c left join prev p using (exercise)) oefeningen,
+        (select jsonb_agg(x) from (select day, title, duration_min, working_sets, volume_kg from ai.strength_workouts
+           where title = (select title from w) and id::text <> ${ref} order by day desc limit 4) x) vorige_sessies` });
+  }
+  return await rpc("internal_agent_read", { q: `with w as (select * from ai.workouts where id = ${ref})
+    select (select to_jsonb(w) from w) workout,
+      (select jsonb_agg(x) from (select day, name, duration_min, distance_km, avg_hr, max_hr, pace_min_per_km from ai.workouts
+         where id <> ${ref} and coalesce(distance_km,0) > 0 and day < (select day from w) order by day desc limit 6) x) vorige_runs,
+      (select jsonb_agg(x) from (select day, kind, title, details, status from app.coach_sessions where day = (select day from w)) x) planning` });
+}
+
+async function processFeedback(id: number, row: any, deadline: number) {
+  const data = await feedbackData(row);
+  const w = (data as any)?.[0]?.workout;
+  if (!w) throw new Error("Training niet gevonden");
+  const sys = `Je bent Simons personal coach. Nederlands, direct, eerlijk, concreet met cijfers, geen overdreven lof.
+Context: hoofddoel halve marathon zomer 2027; de komende weken vooral zone 2 (138–152 bpm), runs zijn één open run zonder intervallen; kracht volgens zijn split.
+Antwoord met ALLEEN JSON: {"title": "<training · duur>", "summary": "<1–3 zinnen>", "good": "<punten gescheiden door ' · '>", "improve": "<punten gescheiden door ' · '>", "focus": "<één concrete focus voor de volgende keer>", "stats": {<3–6 kerncijfers, korte labels>}}`;
+  const { text } = await geminiLoop({ apiKey: KEY, model: MODEL, system: sys, tools: [], run, deadline, json: true,
+    userParts: [{ text: `Nieuwe training (${row.sport}). Data:\n${JSON.stringify(data).slice(0, 30000)}` }] });
+  const f = parseFinal(text);
+  if (!f.summary) throw new Error("Geen bruikbare feedback");
+  const sport = row.sport === "kracht" ? "kracht" : /loopband|treadmill/i.test(w.name ?? "") ? "loopband" : "run";
+  await rpc("internal_agent_write", { q: `insert into app.coach_feedback (kind, day, ref, sport, title, summary, good, improve, focus, stats)
+    values ('training', ${q(w.day)}, ${q(row.ref)}, ${q(sport)}, ${q(String(f.title || w.title || w.name || "Training").slice(0, 80))}, ${q(f.summary)},
+    ${q(f.good ?? "")}, ${q(f.improve ?? "")}, ${q(f.focus ?? "")}, ${q(JSON.stringify(f.stats ?? {}))}::jsonb) on conflict (kind, day, ref) do nothing` });
+  const msg = String(f.summary).slice(0, 600);
+  await rpc("internal_agent_finish", { p_kind: "feedback", p_id: id, p_ok: true, p_msg: msg });
+  await rpc("internal_agent_write", { q: `insert into app.push_outbox (title, body, url) values (${q(("Feedback: " + (f.title || w.title || w.name || "training")).slice(0, 60))}, ${q(msg.slice(0, 140))}, '/#/feedback')` });
+  return { kind: "feedback", id, ok: true };
+}
+
 async function process(kind: string, id: number) {
   const row = await rpc("internal_agent_claim", { p_kind: kind, p_id: id });
   if (!row) return { kind, id, skipped: true };
+  const deadline = started + 135000;   // edge functions stoppen na 150 s: altijd netjes afronden
+  if (kind === "feedback") {
+    try { return await processFeedback(id, row, deadline); }
+    catch (e) {
+      await rpc("internal_agent_finish", { p_kind: kind, p_id: id, p_ok: false, p_msg: null }).catch(() => {});
+      return { kind, id, ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
   try {
     const parts: any[] = [{ text: TASK[kind](row) }];
     const img = await imagePart(kind, row);
     if (img) parts.push(img);
-    const { text, actions } = await geminiLoop({ apiKey: KEY, model: MODEL, system: system(), tools: TOOLS, run, userParts: parts });
+    const { text, actions } = await geminiLoop({ apiKey: KEY, model: MODEL, system: system(), tools: TOOLS, run, userParts: parts, deadline });
     const f = parseFinal(text);
     if (!f.ok) throw new Error(f.message || "Agent gaf op");
     const msg = String(f.message || "Verwerkt.").slice(0, 1500);
@@ -133,7 +187,9 @@ async function process(kind: string, id: number) {
 }
 const lit = (s: string) => "'" + s.replace(/'/g, "''") + "'";
 
+let started = Date.now();
 Deno.serve(async (req) => {
+  started = Date.now();
   if (req.method !== "POST") return json({ error: "POST" }, 405);
   if (!KEY) return json({ error: "GEMINI_API_KEY ontbreekt" }, 500);
   let body: any = {};
@@ -141,7 +197,7 @@ Deno.serve(async (req) => {
   const todo: { kind: string; id: number }[] = body.kind && body.id ? [{ kind: body.kind, id: Number(body.id) }] : await rpc("internal_agent_pending");
   const work = (async () => {
     const results = [];
-    for (const t of todo.slice(0, 6)) if (TASK[t.kind]) results.push(await process(t.kind, t.id));
+    for (const t of todo.slice(0, 6)) if (TASK[t.kind] && Date.now() - started < 90000) results.push(await process(t.kind, t.id));
     console.log(JSON.stringify(results));
     return results;
   })();

@@ -1004,14 +1004,26 @@ async function mountWish(box) {
       <button class="wish-mic" id="wishMic" type="button" aria-label="Inspreken">🎙️</button>
       <button class="wish-go" id="wishGo" type="button" aria-label="Versturen">➤</button>
     </div>
-    <div id="wishList"></div></section>`;
+    <button class="wish-handle" id="wishHandle" type="button" aria-expanded="false" aria-controls="wishList" hidden><span class="wish-dash" aria-hidden="true"></span><span id="wishLbl"></span></button>
+    <div id="wishList" hidden></div></section>`;
   if (anchor) anchor.insertAdjacentHTML("afterend", html); else box.insertAdjacentHTML("afterbegin", html);
   const inp = box.querySelector("#wishIn"), list = box.querySelector("#wishList");
+  // Je wensen zitten achter een streepje: tik erop om ze te zien en eentje weg te halen
+  const handle = box.querySelector("#wishHandle"), lbl = box.querySelector("#wishLbl");
+  handle.onclick = () => { const open = list.hidden; list.hidden = !open; handle.setAttribute("aria-expanded", String(open)); };
   const show = async () => {
-    const W = await C.rpc("menu_wishes_get", { p_limit: 4 }).catch(() => []);
-    const recent = W.filter((x) => x.status !== "klaar" || Date.now() - new Date(x.processed_at || x.created_at) < 3 * 864e5);
-    list.innerHTML = recent.map((x) => `<div class="wish-it ${x.status}"><span class="wish-q">“${C.esc(x.text)}”</span>
-      <span class="wish-a">${x.status === "klaar" ? C.esc(x.answer || "Verwerkt.") : x.status === "fout" ? C.esc(x.answer || "Lukte niet.") : "Bezig met aanpassen…"}</span></div>`).join("");
+    const W = await C.rpc("menu_wishes_get", { p_limit: 12 }).catch(() => []);
+    const busy = W.some((x) => x.status === "nieuw" || x.status === "bezig");
+    handle.hidden = !W.length;
+    lbl.textContent = busy ? "Bezig met aanpassen…" : `Mijn wensen (${W.length})`;
+    list.innerHTML = W.map((x) => `<div class="wish-it ${x.status}"><div class="wish-txt"><span class="wish-q">“${C.esc(x.text)}”</span>
+      <span class="wish-a">${x.status === "klaar" ? C.esc(x.answer || "Verwerkt.") : x.status === "fout" ? C.esc(x.answer || "Lukte niet.") : "Bezig met aanpassen…"}</span></div>
+      <button class="wish-del" type="button" data-wdel="${x.id}" aria-label="Wens verwijderen">×</button></div>`).join("");
+    list.querySelectorAll("[data-wdel]").forEach((b) => (b.onclick = async () => {
+      b.disabled = true;
+      try { await C.rpc("menu_wish_remove", { p_id: Number(b.dataset.wdel) }); C.toast("Wens verwijderd. Wat al in je menu staat, pas je aan in de week of vraag het je coach.", 5000); await show(); list.hidden = false; }
+      catch (e) { b.disabled = false; C.toast(e.message, 4000); }
+    }));
   };
   // live volgen tot de AI klaar is (max 3 min), daarna de week opnieuw tonen
   let polling = false;
