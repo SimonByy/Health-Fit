@@ -1,7 +1,7 @@
 // Voeding: één scherm om te zien waar je staat en in één tik te loggen.
 // Bovenaan de brandstofmeter (kcal over + macro's), daaronder per maaltijd
 // wat je at en de dingen die je daar meestal eet als knoppen.
-import { mealForNow, openAddFood, openEditFood, renderRecipes, pkv, MEALS } from "./food.js";
+import { mealForNow, openAddFood, openEditFood, pkv, MEALS } from "./food.js";
 import { openSuggest } from "./suggest.js";
 const OPEN_KEY = "hh_meal_closed";
 const closedMeals = (() => { try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || "[]")); } catch { return new Set(); } })();
@@ -142,7 +142,6 @@ export async function renderNutrition(ctx, state) {
       }).join("")}</div>
       <p class="small muted" style="margin:6px 0 0">Balk = kcal (streep = doel). Getal = gram eiwit, groen als je je doel haalde. Vandaag telt nog niet mee in het gemiddelde.</p>
     </section>` : ""}
-    <details class="panel"><summary>Mijn recepten</summary><div id="recipes" style="margin-top:8px"></div></details>
 `;
 
   const reload = () => renderNutrition(ctx, state);
@@ -190,9 +189,6 @@ export async function renderNutrition(ctx, state) {
   C.view.querySelector("#selEat").onclick = () => setEaten(true);
   C.view.querySelector("#selCopy")?.addEventListener("click", () => copySheet(chosen(), day, () => { sel.clear(); reload(); }));
   C.view.querySelector("#selRecipe")?.addEventListener("click", () => makeRecipe(chosen(), day, () => { sel.clear(); reload(); }));
-  C.view.querySelector("details.panel").addEventListener("toggle", (e) => {
-    if (e.target.open && !e.target.dataset.loaded) { e.target.dataset.loaded = 1; renderRecipes(C, day, C.view.querySelector("#recipes"), reload); }
-  });
 
   C.view.querySelectorAll(".mcard").forEach((card) => {
     const meal = card.dataset.meal;
