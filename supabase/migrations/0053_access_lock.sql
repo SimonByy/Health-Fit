@@ -1,0 +1,3 @@
+-- 0053: toegang op slot. access_mode 'closed' (alleen admin), 'invite' (admin + app.invites), 'open'.
+-- accept_terms weigert anderen; beheer met public.admin_access(p_mode, p_add, p_remove) (alleen admin).
+-- Volledige SQL: zie de toegepaste migratie 0053_access_lock in Supabase.
