@@ -1487,6 +1487,7 @@ body:has(.fab) .ai-fab { bottom: calc(var(--tabbar-h) + var(--safe-b) + 90px); w
 .tpl-add > summary { list-style: none; } .tpl-add > summary::-webkit-details-marker { display: none; }
 /* gratis versie: geen Premium-functies tonen */
 body[data-plan="free"] [data-premium] { display: none !important; }
+body:not([data-plan="free"]) [data-free] { display: none !important; }
 .rp-bars { display: flex; align-items: flex-end; gap: 2px; height: 70px; margin: 6px 0 4px; }
 .rp-bars i { flex: 1; border-radius: 2px 2px 0 0; background: var(--plate-green); opacity: .45; }
 .rp-bars i.opbouw { background: var(--plate-yellow); } .rp-bars i.piek { background: var(--plate-red); } .rp-bars i.taper, .rp-bars i.wedstrijd { background: var(--plate-blue); }

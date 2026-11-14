@@ -88,6 +88,36 @@ async function rpc(fn, args = {}) {
   return data;
 }
 
+// Agenda-abonnement (iCal-link): de sleutel is alleen zichtbaar vlak na het maken; bewaard wordt enkel een hash
+async function mountCalendar(fresh) {
+  const box = document.getElementById("calState"); if (!box) return;
+  let st = { active: false };
+  try { st = await rpc("calendar_feed_status"); } catch { /* oud schema */ }
+  if (fresh) {
+    const https = `${SUPABASE_URL}/functions/v1/ical?t=${fresh}`, webcal = https.replace(/^https:/, "webcal:");
+    box.innerHTML = `<p><b>Je agendalink</b> (alleen nu zichtbaar, deel hem met niemand):</p>
+      <div class="row"><input class="input" id="calUrl" value="${esc(https)}" readonly><button class="btn" data-copy="calUrl">Kopiëren</button></div>
+      <p style="margin-top:10px"><a class="btn" href="${esc(webcal)}">Toevoegen aan iPhone-agenda</a></p>
+      <details style="margin-top:8px"><summary>Google Agenda</summary><p class="small">Open Google Agenda op een computer → naast <b>Andere agenda's</b> op <b>+</b> → <b>Via URL</b> → plak de link → <b>Agenda toevoegen</b>. Google ververst zelf, soms pas na enkele uren.</p></details>
+      <details><summary>iPhone of Mac (iCloud)</summary><p class="small">Tik op de knop hierboven, of: Instellingen → Agenda → Accounts → Account toevoegen → Andere → <b>Voeg agenda-abonnement toe</b> → plak de link. Op een Mac kies je bij <b>Archief → Nieuw agenda-abonnement</b> hoe vaak hij ververst.</p></details>
+      <details><summary>Outlook</summary><p class="small">Agenda → <b>Agenda toevoegen</b> → <b>Abonneren vanaf internet</b> → plak de link.</p></details>`;
+    box.querySelector("[data-copy]").onclick = async () => { try { await navigator.clipboard.writeText($("#calUrl").value); toast("Gekopieerd"); } catch { $("#calUrl").select(); } };
+    return;
+  }
+  box.innerHTML = st.active
+    ? `<p class="small">Gekoppeld sinds ${esc(shortDate(String(st.since).slice(0, 10)))}. Kwijt of gedeeld? Maak een nieuwe link: de oude werkt dan niet meer.</p>
+       <div class="row"><button class="btn secondary" id="calNew">Nieuwe link maken</button><button class="btn ghost" id="calStop">Koppeling stoppen</button></div>`
+    : `<button class="btn" id="calNew">Agendalink maken</button>`;
+  $("#calNew").onclick = async () => {
+    if (st.active && !confirm("Nieuwe link maken? De agenda's met de oude link krijgen geen updates meer.")) return;
+    try { mountCalendar(await rpc("calendar_feed_new")); } catch (e) { toast(e.message, 5000); }
+  };
+  document.getElementById("calStop")?.addEventListener("click", async () => {
+    if (!confirm("Koppeling stoppen? Je agenda krijgt geen nieuwe trainingen meer; verwijder het abonnement daar ook.")) return;
+    try { await rpc("calendar_feed_stop"); mountCalendar(); } catch (e) { toast(e.message, 5000); }
+  });
+}
+
 async function invoke(fn, body) {
   const { data, error } = await sb.functions.invoke(fn, { body });
   if (fn === "ask" || fn === "tts") window.dispatchEvent(new Event("ai-used"));
@@ -1239,6 +1269,11 @@ async function renderSettings() {
       <div class="row" style="margin-top:10px"><button class="btn ghost" id="rotTok">Nieuw token maken</button></div>
     </div></details>
 
+    <details class="set-group"><summary>Agenda koppelen</summary><div class="set-body" id="calBox">
+      <p class="hint">Zet je geplande trainingen en je mealprep-zondag in Google Agenda, iPhone/iCloud Agenda of Outlook. Je agenda haalt ze zelf op via een geheime link (alleen lezen).</p>
+      <div id="calState" class="small">Laden…</div>
+    </div></details>
+
     <details class="set-group"><summary>Hevy</summary><div class="set-body">
       <p class="hint">Zonder Hevy Pro: exporteer in Hevy via <b>Profiel → Instellingen → Export &amp; Import Data → Export workouts</b> en importeer het CSV-bestand hier. Opnieuw importeren overschrijft niets dubbel. ${sync.hevy_csv ? `Laatste import ${esc(timeAgo(sync.hevy_csv.last_success))}.` : ""}</p>
       <label class="btn" style="display:inline-block;cursor:pointer">CSV importeren<input type="file" id="hevyCsv2" accept=".csv,text/csv" hidden></label>
@@ -1353,6 +1388,7 @@ async function renderSettings() {
       renderSettings();
     } catch (er) { toast(er.message); }
   };
+  mountCalendar();
   // overige
   view.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = async () => {
     const inp = $("#" + b.dataset.copy);

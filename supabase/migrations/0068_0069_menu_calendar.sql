@@ -1,0 +1,6 @@
+-- 0068_menu_save: public.internal_save_menu_week(p jsonb) (service_role; overschrijft geen week met reviewed_at),
+--   app.menu_kick() en cron 'menu-weekly' (vrijdag 10:50 UTC) → edge function 'menu' (Gemini, Premium).
+-- 0069_calendar_feed (+0069b): app.calendar_feeds(user_id, token_hash sha256), RLS hh_own;
+--   calendar_feed_new() / calendar_feed_status() / calendar_feed_stop() (authenticated, owner hh_app),
+--   internal_feed_user(p_token) (service_role) → edge function 'ical' (GET ?t=<64 hex>).
+-- Volledige SQL staat in supabase_migrations.schema_migrations.

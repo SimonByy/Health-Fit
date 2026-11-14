@@ -133,7 +133,8 @@ function weekPicker(w) {
   const cur = D.weeks.find((x) => x.id === D.current_week_id);
   const list = D.weeks.filter((x) => !cur || x.week_start >= cur.week_start).sort((a, b) => a.week_start.localeCompare(b.week_start));
   return `<div class="chips mp-weeks">${list.map((x) => `<button class="chip ${w && x.id === w.id ? "on" : ""}" data-week="${x.id}">${weekLabel(x)} ${C.esc(dshort(x.week_start).replace(/^\S+ /, ""))}</button>`).join("")}
-    <button class="chip" id="newWeek">+ Week erna</button></div>`;
+    <button class="chip" id="newWeek">+ Week erna</button>
+    <button class="chip" id="aiWeek" data-premium>Menu laten maken</button></div>`;
 }
 function bindWeekPicker(box, w) {
   box.querySelectorAll("[data-week]").forEach((b) => (b.onclick = () => { weekSel = Number(b.dataset.week); curDay = null; draw(); }));
@@ -141,6 +142,16 @@ function bindWeekPicker(box, w) {
     const copy = !!w?.items?.length && confirm(`De week erna maken als kopie van de week van ${dshort(w.week_start)}?\n\nOK = kopie, Annuleren = lege week`);
     try { weekSel = await C.rpc("mp_week_new", { p_copy_from: copy ? w.id : null }); curDay = null; C.toast(copy ? "Week gekopieerd" : "Lege week gemaakt"); reload(); }
     catch (e) { C.toast(e.message, 5000); }
+  });
+  box.querySelector("#aiWeek")?.addEventListener("click", async (ev) => {
+    if (!confirm("Je coach maakt het menu voor de komende week (zondag tot vrijdag) uit je eigen recepten, met je regels en wensen. Een week die je al goedkeurde blijft zoals ze is.\n\nDoorgaan?")) return;
+    const b = ev.currentTarget; b.disabled = true; b.textContent = "Bezig, ± 1 minuut…";
+    try {
+      const r = await C.invoke("menu", {});
+      if (r?.skipped) C.toast(r.skipped === "al goedgekeurd" ? "De komende week is al goedgekeurd; er is niets veranderd." : `Niet gelukt: ${r.skipped}`, 5000);
+      else { weekSel = r?.week_id ?? null; curDay = null; C.toast("Je menu staat klaar. Kijk het na en pas aan waar je wil.", 5000); reload(); }
+    } catch (e) { C.toast(e.message, 6000); }
+    finally { b.disabled = false; b.textContent = "Menu laten maken"; }
   });
 }
 
@@ -183,7 +194,8 @@ function drawWeek(box) {
     const prev = D.weeks.find((x) => x.items?.length && (!w || x.week_start < w.week_start));
     box.innerHTML = `${weekBar}<section class="panel"><h3>${w ? "Deze week is nog leeg" : "Nog geen weekmenu"}</h3>
       ${prev ? `<button class="btn" id="copyPrev" style="width:100%;margin:6px 0 10px">⧉ Kopieer de week van ${C.esc(dshort(prev.week_start))}</button>` : ""}
-      <p class="hint">Elke vrijdag wordt je menu voor de komende week gemaakt, met je favorieten en je wensen hieronder.</p>
+      <p class="hint" data-premium>Elke vrijdag maakt je coach het menu voor de komende week, met je favorieten en je wensen hieronder. Of tik op “Menu laten maken”.</p>
+      <p class="hint" data-free>Kopieer een vorige week of vul de dagen zelf met je recepten.</p>
       <button class="btn" id="goRec">Naar mijn recepten</button></section>`;
     $("#goRec").onclick = () => { tab = "recepten"; draw(); };
     $("#copyPrev")?.addEventListener("click", async () => { try { weekSel = await C.rpc("mp_week_new", { p_copy_from: prev.id }); C.toast("Week gekopieerd. Pas aan wat je anders wilt."); reload(); } catch (e) { C.toast(e.message, 5000); } });
