@@ -1,0 +1,4 @@
+-- 0065: AI-verwerking alleen voor Premium/beheerder (app.is_premium):
+-- internal_agent_pending filtert op Premium; before-insert trigger app.premium_only op menu_wishes, recipe_inbox,
+-- capture_inbox en briefing_replies; internal_briefing_users alleen Premium. Handmatig plannen blijft gratis.
+-- Volledige SQL: supabase_migrations.schema_migrations '0065_premium_ai_gates'.
