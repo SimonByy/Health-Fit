@@ -693,7 +693,7 @@ function openSwap(item) {
     <div class="sub-h" style="margin-top:4px">Op welke dagen?</div>
     <div class="mp-days">${dayItems.map((i) => { const r = recById(i.recipe_id); return `<label class="mp-check"><input type="checkbox" data-day="${i.id}" ${i.id === item.id ? "checked" : ""}>
       <span class="t"><b style="text-transform:capitalize">${C.esc(dshort(i.day))}</b> <span class="small muted">· ${C.esc(r?.name || "")}</span></span></label>`; }).join("")}</div>
-    <button class="newidea" id="newIdea"><span>✨</span><span><b>Nieuw recept laten voorstellen</b><br><span class="small">De AI bedenkt iets nieuws dat in je macro's past en zet het op je menu. Binnen een minuut, met een melding.</span></span></button>
+    <button class="newidea" id="newIdea" data-premium><span>✨</span><span><b>Nieuw recept laten voorstellen</b><br><span class="small">De AI bedenkt iets nieuws dat in je macro's past en zet het op je menu. Binnen een minuut, met een melding.</span></span></button>
     <input class="input" id="ideaHint" placeholder="Wens? Bv. iets met zalm, of snel klaar (optioneel)" style="margin:8px 0 10px">
     <div class="sub-h" style="margin-top:4px">Of kies een bestaand recept</div>
     ${opts.map((r) => `<button class="pk-item" data-r="${r.id}"><span><b>${r.favorite ? "★ " : ""}${C.esc(r.name)}</b><br>
@@ -1093,7 +1093,7 @@ function openPreview(rec) {
 // ---------- Wens voor het menu: typen of inspreken ----------
 async function mountWish(box) {
   const anchor = box.firstElementChild;
-  const html = `<section class="wishbar" id="wish">
+  const html = `<section class="wishbar" id="wish" data-premium>
     <div class="wish-row">
       <input id="wishIn" class="input" placeholder="Wat wil je eten? bv. “volgende week eens curry”" enterkeyhint="send" autocomplete="off">
       <button class="wish-mic" id="wishMic" type="button" aria-label="Inspreken">🎙️</button>

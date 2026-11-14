@@ -259,6 +259,7 @@ const navStack = [location.hash]; // eigen spoor van bezochte schermen: bepaalt 
 async function route() {
   let [name, param] = (location.hash.replace(/^#\/?/, "") || "vandaag").split("/");
   if (name === "log") { state.openWeight = param === "gewicht"; state.day = today(); name = "vandaag"; }
+  if (document.body.dataset.plan === "free" && ["briefing", "feedback", "vraag"].includes(name)) { name = "vandaag"; history.replaceState(null, "", "#/vandaag"); }
   const fn = ROUTES[name] || ROUTES.vandaag;
   $("#title").textContent = TITLES[name] || "Vandaag";
   $("#syncBtn").hidden = false;
@@ -428,7 +429,7 @@ async function renderToday() {
     <div class="board">
       <div id="todayReady"></div>
       <a class="todayfuel" href="#/voeding" id="todayFuel"></a>
-      ${brief?.text ? `<a class="panel lk-cta brief-cta" href="#/briefing"><span><b>▶ Ochtendbriefing</b><br><span class="small muted">Laten voorlezen en antwoorden</span></span><span aria-hidden="true">›</span></a>` : ""}
+      ${brief?.text ? `<a class="panel lk-cta brief-cta" href="#/briefing" data-premium><span><b>▶ Ochtendbriefing</b><br><span class="small muted">Laten voorlezen en antwoorden</span></span><span aria-hidden="true">›</span></a>` : ""}
       ${isToday ? `<div id="coachToday"></div>` : ""}
       ${isToday ? `<div id="fatigueBox" data-block="spiervermoeidheid" data-block-title="Spiervermoeidheid"></div>` : ""}
       <div id="todayTimeline"></div>
@@ -1126,8 +1127,8 @@ async function renderSettings() {
   view.innerHTML = `
     <nav class="quicklinks" aria-label="Meer">
       <a href="#/dagboek"><b>Dagboek</b><span>Inspreken of typen</span></a>
-      <a href="#/vraag"><b>Coach</b><span>AI-chat (ook via ✦ rechtsonder)</span></a>
-      <a href="#/briefing"><b>Briefing</b><span>Je ochtendoverzicht</span></a>
+      <a href="#/vraag" data-premium><b>Coach</b><span>AI-chat (ook via ✦ rechtsonder)</span></a>
+      <a href="#/briefing" data-premium><b>Briefing</b><span>Je ochtendoverzicht</span></a>
       <a href="#/koppelen"><b>Koppelen</b><span>Garmin en Gezondheid</span></a>
     </nav>
 
@@ -1264,7 +1265,7 @@ async function renderSettings() {
       <div id="quotaBox" class="small"></div>
     </div></details>
 
-    <details class="set-group"><summary>AI-coach (Gemini)</summary><div class="set-body">
+    <details class="set-group" data-premium><summary>AI-coach (Gemini)</summary><div class="set-body">
       <p class="hint">Tijdens de testfase gebruikt de coach je eigen gratis Gemini-sleutel. Maak er een op <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (inloggen met Google → <b>Create API key</b>) en plak ze hier.
         Status: ${s.secrets?.gemini_api_key ? `<span class="ok">ingesteld</span>` : prof.is_admin ? `<span class="ok">sleutel van de server</span>` : `<span class="warn">niet ingesteld</span>`}</p>
       <div class="row"><input class="input" type="password" id="gemKey" placeholder="${s.secrets?.gemini_api_key ? "•••••••• (opgeslagen)" : "AIza…"}" autocomplete="off">
@@ -1548,10 +1549,10 @@ async function boot() {
   let owner = false;
   try { owner = await rpc("am_i_owner"); } catch { owner = false; }
   if (!owner) return renderOnboarding(session.user);
+  try { document.body.dataset.plan = (await rpc("get_ai_quota")).plan || "free"; } catch { document.body.dataset.plan = "free"; }
   $("#topbar").hidden = false;
   $("#tabbar").hidden = false;
-  aiMod().then((m) => m.mountAssistant(ctx)).catch(() => {});
-  aiBar();
+  if (document.body.dataset.plan !== "free") { aiMod().then((m) => m.mountAssistant(ctx)).catch(() => {}); aiBar(); }
   route();
 }
 

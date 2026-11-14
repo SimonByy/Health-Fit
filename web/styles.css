@@ -1485,3 +1485,11 @@ body:has(.fab) .ai-fab { bottom: calc(var(--tabbar-h) + var(--safe-b) + 90px); w
 .tpl-chip { font-size: 12.5px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); }
 .tpl-chip.kracht { border-color: var(--plate-red); color: #F0A090; } .tpl-chip.cardio { border-color: var(--plate-green); color: #9FD0AE; }
 .tpl-add > summary { list-style: none; } .tpl-add > summary::-webkit-details-marker { display: none; }
+/* gratis versie: geen Premium-functies tonen */
+body[data-plan="free"] [data-premium] { display: none !important; }
+.rp-bars { display: flex; align-items: flex-end; gap: 2px; height: 70px; margin: 6px 0 4px; }
+.rp-bars i { flex: 1; border-radius: 2px 2px 0 0; background: var(--plate-green); opacity: .45; }
+.rp-bars i.opbouw { background: var(--plate-yellow); } .rp-bars i.piek { background: var(--plate-red); } .rp-bars i.taper, .rp-bars i.wedstrijd { background: var(--plate-blue); }
+.rp-bars i.cur { opacity: 1; outline: 1.5px solid var(--ink); }
+.rp-legend { display: flex; gap: 12px; } .rp-legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; background: var(--plate-green); }
+.rp-legend .opbouw::before { background: var(--plate-yellow); } .rp-legend .piek::before { background: var(--plate-red); } .rp-legend .taper::before { background: var(--plate-blue); }

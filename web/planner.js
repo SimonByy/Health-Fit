@@ -4,6 +4,7 @@
 //   Elke week wordt daar automatisch mee ingevuld; aanpassingen voor één week overschrijven het schema niet.
 // - Past zich aan: een training die je echt deed (Garmin, Hevy, logger) vinkt de sessie af, ook als je ze een dag
 //   eerder of later deed; wat je miste kan je met één tik inhalen of overslaan.
+import * as RP from "./runplan.js";
 let C;
 const WDL = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"];
 const WDS = ["ma", "di", "wo", "do", "vr", "za", "zo"];
@@ -81,7 +82,13 @@ export async function renderPlanner(ctx, start) {
   const from = start || monday(C.today());
   const days = Array.from({ length: 7 }, (_, i) => C.addDays(from, i));
   const today = C.today();
-  const [p, R] = await Promise.all([loadPrefs(), C.rpc("get_workout_routines").catch(() => ({ folders: [], routines: [] }))]);
+  const premium = document.body.dataset.plan !== "free";
+  const [p, R, stats] = await Promise.all([loadPrefs(), C.rpc("get_workout_routines").catch(() => ({ folders: [], routines: [] })),
+    premium ? C.rpc("get_run_stats").catch(() => ({})) : {}]);
+  const rp = premium && p.run_plan?.date && p.run_plan.date >= today ? p.run_plan : null;
+  const plan = rp ? RP.buildRunPlan(rp, stats, today) : null;
+  const pw = plan?.weeks.find((w) => w.start === from) || null;
+  const isRun = (x) => x.cat === "cardio" && x.cardio_type === "lopen";
   let list = await C.rpc("get_coach_week", { p_from: from }).catch(() => []);
   const cal = from <= today ? await C.rpc("get_calendar", { p_from: from, p_to: days[6] < today ? days[6] : today }).catch(() => []) : [];
   const did = new Map((cal || []).map((c) => [c.day, c]));
@@ -92,15 +99,20 @@ export async function renderPlanner(ctx, start) {
   for (let i = 0; i < 7; i++) {
     const d = days[i]; if (d < today) continue;
     const day = list.filter((s) => s.day === d);
-    const auto = day.filter((s) => s.source === "planner" && s.status === "gepland");
-    const own = day.filter((s) => !(s.source === "planner" && s.status === "gepland"));
-    const want = own.length ? [] : (p.template[i] || []);
+    const isAuto = (s) => (s.source === "planner" || s.source === "runplan") && s.status === "gepland";
+    const auto = day.filter(isAuto);
+    const own = day.filter((s) => !isAuto(s));
+    const runs = (pw?.sessions || []).filter((x) => x.dow === i).map((x) => ({ cat: "cardio", cardio_type: "lopen", intensity: x.type, duration: x.min,
+      title: x.title, details: RP.sessionDetails(x, stats), runplan: true }));
+    const want = own.length ? [] : [...(p.template[i] || []).filter((x) => !(rp && isRun(x))), ...runs];
     const have = auto.map((s) => sig(catOf(s), s.title, s.duration_min)).sort().join(";");
-    const need = want.map((x) => sig(x.cat, slotTitle(x, R), x.duration)).sort().join(";");
+    const tOf = (x) => (x.runplan ? x.title : slotTitle(x, R));
+    const need = want.map((x) => sig(x.cat, tOf(x), x.duration)).sort().join(";");
     if (have === need) continue;
     for (const s of auto) await C.rpc("save_coach_session", { p: { id: s.id, delete: true } });
-    for (const x of want) await C.rpc("save_coach_session", { p: { day: d, category: x.cat, title: slotTitle(x, R), routine_id: x.routine_id || "",
-      cardio_type: x.cat === "cardio" ? x.cardio_type : null, duration_min: x.duration || null, details: slotDetails(x, R), source: "planner" } });
+    for (const x of want) await C.rpc("save_coach_session", { p: { day: d, category: x.cat, title: tOf(x), routine_id: x.routine_id || "",
+      cardio_type: x.cat === "cardio" ? x.cardio_type : null, duration_min: x.duration || null, details: x.runplan ? x.details : slotDetails(x, R),
+      source: x.runplan ? "runplan" : "planner" } });
     changed = true;
   }
   // 2. Echte trainingen herkennen: afvinken, ook als je een dag schoof
@@ -125,7 +137,7 @@ export async function renderPlanner(ctx, start) {
   const doneN = (a) => a.filter((s) => s.status === "gedaan").length;
   const sessRow = (s) => `<div class="pl-sess ${catOf(s)} ${s.status}" data-id="${s.id}">
       <span class="pl-k"></span>
-      <span class="pl-t"><b>${C.esc(clean(s.title))}</b><small>${[s.duration_min ? `${s.duration_min} min` : "", s.status === "gedaan" ? (s.note && /^gedaan op/.test(s.note) ? s.note : "gedaan") : s.status === "overgeslagen" ? "overgeslagen" : "", s.source === "planner" ? "" : s.source === "user" ? "aangepast" : "coach"].filter(Boolean).join(" · ")}</small></span>
+      <span class="pl-t"><b>${C.esc(clean(s.title))}</b><small>${[s.duration_min ? `${s.duration_min} min` : "", s.status === "gedaan" ? (s.note && /^gedaan op/.test(s.note) ? s.note : "gedaan") : s.status === "overgeslagen" ? "overgeslagen" : "", s.source === "planner" ? "" : s.source === "runplan" ? "loopplan" : s.source === "user" ? "aangepast" : "coach"].filter(Boolean).join(" · ")}</small></span>
       ${s.routine_id && s.day === today && s.status === "gepland" ? `<button class="btn small" data-go="${s.id}">Start</button>` : ""}
       <button class="icon-btn" data-edit="${s.id}" aria-label="Aanpassen">⋯</button></div>`;
 
@@ -152,6 +164,7 @@ export async function renderPlanner(ctx, start) {
       </section>`;
     }).join("")}</div>
 
+    <div id="runPlanBox" data-premium></div>
     <section class="panel">
       <h3 style="margin:0 0 4px">Vast weekschema</h3>
       <p class="small muted" style="margin:0 0 10px">Wat je de meeste weken doet. Elke week wordt hier automatisch mee ingevuld. Cardio kan per dag anders zijn.</p>
@@ -161,6 +174,7 @@ export async function renderPlanner(ctx, start) {
     </section>`;
 
   renderGoals(ctx, C.view.querySelector("#plGoals"));
+  if (premium) renderRunPlan(p, rp, plan, stats, from, () => renderPlanner(ctx, from));
   const rerender = () => renderPlanner(ctx, from);
   C.view.querySelectorAll(".wnav").forEach((b) => (b.onclick = () => renderPlanner(ctx, C.addDays(from, Number(b.dataset.w)))));
   C.view.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => editSession(list.find((s) => String(s.id) === b.dataset.edit), days, R, rerender)));
@@ -263,4 +277,47 @@ function editSession(sess, days, R, after) {
     if (sess.source === "planner") await C.rpc("save_coach_session", { p: { day: sess.day, category: "rust", title: "Rust", source: "user" } });
     s.remove(); after();
   });
+}
+
+// ---------- Loopplan (Premium) ----------
+function renderRunPlan(p, rp, plan, stats, from, after) {
+  const box = C.view.querySelector("#runPlanBox"); if (!box) return;
+  const fmtD = (iso) => new Intl.DateTimeFormat("nl-BE", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(iso + "T12:00:00Z"));
+  if (!rp) {
+    box.innerHTML = `<section class="panel runplan"><h3 style="margin:0 0 4px">Loopplan naar een wedstrijd</h3>
+      <p class="small muted" style="margin:0 0 10px">Een schema van nu tot je wedstrijd, opgebouwd vanuit je echte runs (${stats.avg_week_min_4w || 0} min per week, langste ${stats.longest_min_4w || 0} min). Je coach past het elke week aan op hoe je runs gingen.</p>
+      <div class="field"><label for="rRace">Wedstrijd</label><select class="input" id="rRace">${RP.RACES.map(([k, l]) => `<option value="${k}" ${k === "hm" ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+      <div class="field"><label for="rDate">Datum</label><input class="input" id="rDate" type="date" min="${C.addDays(C.today(), 21)}"></div>
+      <div class="row"><label class="field" style="flex:1"><span class="small muted">Runs per week</span><select class="input" id="rN">${[2, 3, 4, 5].map((n) => `<option ${n === 3 ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+        <label class="field" style="flex:1"><span class="small muted">Lange duurloop op</span><select class="input" id="rL">${RP.WDL.map((w, i) => `<option value="${i}" ${i === 6 ? "selected" : ""}>${w}</option>`).join("")}</select></label></div>
+      <div class="field"><label for="rT">Doeltijd (optioneel)</label><input class="input" id="rT" placeholder="bv. 2:15:00"></div>
+      <button class="btn" id="rMake">Maak mijn loopplan</button></section>`;
+    box.querySelector("#rMake").onclick = async () => {
+      const date = box.querySelector("#rDate").value; if (!date) return C.toast("Kies de datum van je wedstrijd");
+      p.run_plan = { race: box.querySelector("#rRace").value, date, runs_per_week: Number(box.querySelector("#rN").value),
+        long_day: Number(box.querySelector("#rL").value), target_time: box.querySelector("#rT").value.trim() || null, created: C.today(), adjust: {} };
+      const race = RP.RACES.find((r) => r[0] === p.run_plan.race);
+      if (!p.goals.some((g) => g.kind === "uithouding")) p.goals.push({ title: race[1], kind: "uithouding", date: date.slice(0, 7) });
+      await savePrefs(p); C.toast("Loopplan gemaakt"); after();
+    };
+    return;
+  }
+  const cur = plan.weeks.find((w) => w.start === from) || plan.weeks[0];
+  const max = Math.max(...plan.weeks.map((w) => w.total));
+  box.innerHTML = `<section class="panel runplan">
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h3 style="margin:0">${C.esc(plan.race[1])} · ${C.esc(fmtD(rp.date))}</h3>
+      <button class="btn ghost small" id="rStop">Stoppen</button></div>
+    <p class="small muted" style="margin:4px 0 8px">Week ${cur.i + 1} van ${plan.n} · ${C.esc(RP.PHASE_TXT[cur.phase])}${cur.recovery ? " Herstelweek: wat minder." : ""}</p>
+    <div class="rp-bars" role="img" aria-label="Omvang per week tot de wedstrijd">${plan.weeks.map((w) => `<i class="${w.phase} ${w.i === cur.i ? "cur" : ""}" style="height:${Math.max(8, (w.total / max) * 100)}%" title="Week ${w.i + 1}: ${w.total} min"></i>`).join("")}</div>
+    <div class="rp-legend small muted"><span class="basis">basis</span><span class="opbouw">opbouw</span><span class="piek">piek</span><span class="taper">taper</span></div>
+    <h4 class="sub-h">Deze week · ${cur.total} min lopen</h4>
+    ${cur.sessions.map((s) => `<div class="meal"><span><b>${C.esc(s.title)}</b><br><span class="small muted">${RP.WDL[s.dow]} · ${C.esc(RP.sessionDetails(s, stats))}</span></span><span class="k">${s.min}′</span></div>`).join("")}
+    ${cur.note ? `<p class="small" style="margin:8px 0 0"><b>Coach:</b> ${C.esc(cur.note)}</p>` : ""}
+    <details style="margin-top:10px"><summary class="small">Je runs van de laatste weken</summary>
+      <table class="nutrients small">${(stats.runs || []).slice(0, 8).map((r) => `<tr><td>${C.esc(fmtD(r.day))}</td><td>${C.fmt(r.km, 1)} km · ${C.fmt(r.min)} min</td><td>${r.hr ? `${r.hr} bpm` : ""}</td></tr>`).join("") || "<tr><td>Nog geen runs.</td></tr>"}</table></details>
+  </section>`;
+  box.querySelector("#rStop").onclick = async () => {
+    if (!confirm("Loopplan stoppen? De geplande runs verdwijnen uit je komende dagen.")) return;
+    delete p.run_plan; await savePrefs(p); after();
+  };
 }

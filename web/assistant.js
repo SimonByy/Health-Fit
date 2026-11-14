@@ -39,7 +39,7 @@ function emptyHtml() {
 export function mountAssistant(ctx) {
   C = ctx;
   if ($("#aiFab")) return;
-  document.body.insertAdjacentHTML("beforeend", `<button class="ai-fab" id="aiFab" aria-label="Vraag het je AI-coach">${ICON_AI}</button>`);
+  document.body.insertAdjacentHTML("beforeend", `<button class="ai-fab" id="aiFab" data-premium aria-label="Vraag het je AI-coach">${ICON_AI}</button>`);
   $("#aiFab").onclick = () => openAssistant(ctx);
 }
 

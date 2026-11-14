@@ -32,7 +32,7 @@ export function openStartSheet(ctx) {
     <div class="startw" style="margin-top:12px">
       <button class="tpl" data-a="empty"><span><b>Lege training</b><br><small>oefeningen kies je onderweg</small></span><span>＋</span></button>
       <button class="tpl" data-a="mine"><span><b>Mijn routines</b><br><small>je schema's, per map</small></span><span>›</span></button>
-      <button class="tpl" data-a="ai"><span><b>Stel een routine voor</b><br><small>de coach bouwt een schema op maat · Premium</small></span><span>✦</span></button>
+      <button class="tpl" data-a="ai" data-premium><span><b>Stel een routine voor</b><br><small>de coach bouwt een schema op maat · Premium</small></span><span>✦</span></button>
     </div>`, "Training starten");
   s.querySelector('[data-a="empty"]').onclick = async () => { s.remove(); (await import("./workout.js")).startWorkout(C); };
   s.querySelector('[data-a="mine"]').onclick = () => { s.remove(); openRoutines(C); };
@@ -62,7 +62,7 @@ export async function openRoutines(ctx) {
         : `<p class="muted">Nog geen routines. Bewaar een training als routine, of laat de coach er een voorstellen.</p>`}
       <div class="row" style="margin-top:12px">
         <button class="btn secondary" id="rtFolder">Nieuwe map</button>
-        <button class="btn ghost" id="rtAi">✦ Laat er een voorstellen</button>
+        <button class="btn ghost" id="rtAi" data-premium>✦ Laat er een voorstellen</button>
       </div>`;
     body.querySelectorAll("[data-start]").forEach((b) => (b.onclick = async () => {
       s.remove(); (await import("./workout.js")).startWorkout(C, { template: routines.find((r) => r.id === b.dataset.start) });
