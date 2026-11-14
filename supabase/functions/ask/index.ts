@@ -178,7 +178,17 @@ async function converseGemini(schema: string, messages: any[]) {
 }
 
 async function converse(apiKey: string, model: string, schema: string, messages: any[]) {
-  if (GEMINI) return converseGemini(schema, messages);
+  if (GEMINI) {
+    try { return await converseGemini(schema, messages); }
+    catch (e) {
+      // Alle Gemini-modellen op of overbelast: terugvallen op Claude als er een sleutel is
+      console.log("Gemini faalde, terugval op Claude:", e instanceof Error ? e.message : String(e));
+      apiKey = (await rpc<string | null>("internal_get_secret", { p_name: "anthropic_api_key" }).catch(() => null)) || "";
+      if (!apiKey) throw new Error("Gemini is even overbelast of je dagquotum is op. Probeer het later opnieuw.");
+      model = ((await rpc<string | null>("internal_get_setting", { p_key: "ai_model" }).catch(() => null)) as string) || "claude-sonnet-5-5";
+      messages.splice(0, messages.length, ...messages.filter((m) => typeof m.content === "string"));
+    }
+  }
   const actions: { tool: string; purpose?: string; rows?: number; error?: string; summary?: string }[] = [];
   for (let step = 0; step < 10; step++) {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
