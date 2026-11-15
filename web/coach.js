@@ -16,7 +16,6 @@ function item(s, today) {
     </div>
     ${s.details ? `<details><summary class="small muted">Oefeningen en doelen</summary>
       <ul class="mp-ul small">${s.details.split(/\s·\s|\n/).filter(Boolean).map((x) => `<li>${C.esc(x)}</li>`).join("")}</ul></details>` : ""}
-    ${st === "gepland" && today && (s.kind === "z2" || s.category === "cardio") && /run-walk|joggen|interval/i.test(`${s.title} ${s.details || ""}`) ? `<a class="small" href="#/timer" style="display:inline-block;margin-top:6px">Intervaltimer openen ›</a>` : ""}
     ${st === "gepland" && s.day <= C.today() ? `<div class="row" style="gap:8px;margin-top:6px">
       <button class="btn secondary" data-st="gedaan">✓ Gedaan</button>
       <button class="btn ghost" data-st="overgeslagen">Overgeslagen</button></div>` : ""}

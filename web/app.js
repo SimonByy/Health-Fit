@@ -300,10 +300,10 @@ function drawChart(el, { points, color, type = "bar", unit = "", dec = 0, goal =
 // Router
 // ======================================================================
 const state = { day: today(), nutDay: today(), trendDays: 30, trainTab: "workouts", conversation: null };
-const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training", planner: "Planner", koppelen: "Koppelen", menu: "Menu", briefing: "Briefing", feedback: "Feedback", week: "Weekrapport", fotos: "Voortgangsfoto's", timer: "Intervaltimer" };
+const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training", planner: "Planner", koppelen: "Koppelen", menu: "Menu", briefing: "Briefing", feedback: "Feedback", week: "Weekrapport", fotos: "Voortgangsfoto's" };
 const ACCENT = { workout: "--strength", planner: "--strength", dagboek: "--sleep", vandaag: "--move", training: "--strength", voeding: "--fuel", trends: "--heart", vraag: "--sleep", menu: "--fuel", briefing: "--sleep", feedback: "--heart" };
 
-const SUBPAGES = new Set(["instellingen", "dagboek", "koppelen", "briefing", "vraag", "workout", "planner", "week", "fotos", "timer"]);
+const SUBPAGES = new Set(["instellingen", "dagboek", "koppelen", "briefing", "vraag", "workout", "planner", "week", "fotos"]);
 const navStack = [location.hash]; // eigen spoor van bezochte schermen: bepaalt of "terug" ergens naartoe kan
 async function route() {
   let [name, param] = (location.hash.replace(/^#\/?/, "") || "vandaag").split("/");
@@ -1184,7 +1184,6 @@ async function renderSettings() {
       <a href="#/dagboek"><b>Dagboek</b><span>Inspreken of typen</span></a>
       <a href="#/week"><b>Weekrapport</b><span>Je week in cijfers</span></a>
       <a href="#/fotos"><b>Voortgangsfoto's</b><span>Alleen op dit toestel</span></a>
-      <a href="#/timer"><b>Intervaltimer</b><span>Run-walk en intervallen</span></a>
       <a href="#/vraag" data-premium><b>Coach</b><span>AI-chat (ook via ✦ rechtsonder)</span></a>
       <a href="#/briefing" data-premium><b>Briefing</b><span>Je ochtendoverzicht</span></a>
       <a href="#/koppelen"><b>Koppelen</b><span>Garmin en Gezondheid</span></a>
@@ -1610,7 +1609,6 @@ const ROUTES = {
   feedback: async () => (await import("./feedback.js")).renderFeedback(ctx),
   week: async (p) => (await import("./week.js")).renderWeek(ctx, p),
   fotos: async () => (await import("./photos.js")).renderPhotos(ctx),
-  timer: async () => (await import("./timer.js")).renderTimer(ctx),
 };
 
 async function boot() {
