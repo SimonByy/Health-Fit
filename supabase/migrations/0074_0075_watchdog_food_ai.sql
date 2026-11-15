@@ -1,0 +1,2 @@
+-- 0074_briefing_watchdog: app.briefing_watchdog() + cron 'briefing-watchdog' (10:15 UTC): melding naar beheerder als een Premium-gebruiker geen briefing kreeg.
+-- 0075_food_ai_limit: app.plan_limits 'food_ai' (free 0, premium 25/dag) voor edge function 'food-ai'.

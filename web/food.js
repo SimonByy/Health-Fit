@@ -228,7 +228,7 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
       <div id="fRes"></div>
       <div class="actions add-actions">
         <button class="act" id="fCustom" type="button">📷 Nieuw product</button>
-        ${picking ? "" : `<button class="act" id="fQuick" type="button">⚡ Snel kcal</button><button class="act" id="fRecipe" type="button">🍲 Recept maken</button>`}
+        ${picking ? "" : `<button class="act" id="fAi" type="button" data-premium>✨ Beschrijf of foto</button><button class="act" id="fQuick" type="button">⚡ Snel kcal</button><button class="act" id="fRecipe" type="button">🍲 Recept maken</button>`}
       </div>
     </div>`;
     wire();
@@ -261,6 +261,7 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
     q.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); sheet.querySelector(".fi-main")?.click(); } };
     sheet.querySelector("#fScan").onclick = scan;
     sheet.querySelector("#fQuick")?.addEventListener("click", quick);
+    sheet.querySelector("#fAi")?.addEventListener("click", () => describe());
     sheet.querySelector("#fCustom").addEventListener("click", () => custom({ name: q.value.trim() }));
     sheet.querySelector("#fRecipe")?.addEventListener("click", () => { recipe = { name: "", servings: 1, total_g: "", ingredients: [] }; recipeEditor(); });
     sheet.querySelector("#fRes").addEventListener("click", onRowClick);
@@ -695,8 +696,84 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
     };
   }
 
+  // ---- beschrijven of fotograferen (Premium): AI splitst in onderdelen, jij kijkt na en bevestigt ----
+  async function shrinkPhoto(file) {
+    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const k = Math.min(1, 1024 / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement("canvas"); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+    cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
+    return cv.toDataURL("image/jpeg", 0.82);
+  }
+  function describe(prev = {}) {
+    let photo = prev.photo || null;
+    sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Beschrijf of fotografeer je eten">
+      ${head("Beschrijf of foto", true)}
+      ${mealChips()}
+      <div class="field"><label for="aiT">Wat at je?</label>
+        <textarea class="input" id="aiT" rows="3" placeholder="bv. bord spaghetti bolognese met geraspte kaas en een glas cola zero">${C.esc(prev.text || "")}</textarea></div>
+      <p class="small muted" style="margin:-4px 0 8px">Tip: zeg hoeveel als je het weet (“150 g kip”, “2 sneden”). Inspreken kan met de microfoon van je toetsenbord.</p>
+      <div class="row" style="align-items:center;gap:10px">
+        <label class="btn secondary" style="cursor:pointer">${photo ? "Andere foto" : "📷 Foto"}<input type="file" id="aiP" accept="image/*" capture="environment" hidden></label>
+        ${photo ? `<img src="${photo}" alt="Je foto" style="height:56px;border-radius:8px">` : `<span class="small muted">optioneel</span>`}
+      </div>
+      <button class="btn" id="aiGo" style="width:100%;margin-top:12px">Analyseren</button>
+      <p class="small muted" id="aiS" style="margin:8px 0 0"></p></div>`;
+    wire(); bindMeal();
+    sheet.querySelector("#aiP").onchange = async (e) => {
+      const f = e.target.files?.[0]; if (!f) return;
+      try { describe({ text: sheet.querySelector("#aiT").value, photo: await shrinkPhoto(f) }); } catch { C.toast("Foto lezen lukte niet"); }
+    };
+    sheet.querySelector("#aiGo").onclick = async (ev) => {
+      const text = sheet.querySelector("#aiT").value.trim();
+      if (!text && !photo) return C.toast("Beschrijf je eten of voeg een foto toe");
+      const b = ev.currentTarget; b.disabled = true; b.textContent = "Bezig…";
+      sheet.querySelector("#aiS").textContent = "Je maaltijd wordt opgesplitst in onderdelen. Dit duurt een paar seconden.";
+      try {
+        const r = await C.invoke("food-ai", { text, image: photo, meal: mealLabel(meal) });
+        if (!r.items?.length) { sheet.querySelector("#aiS").textContent = r.note || "Ik herkende geen eten. Beschrijf het wat preciezer."; b.disabled = false; b.textContent = "Analyseren"; return; }
+        review(r, { text, photo });
+      } catch (err) { sheet.querySelector("#aiS").textContent = err.message; b.disabled = false; b.textContent = "Opnieuw proberen"; }
+    };
+  }
+  function review(r, prev) {
+    const items = r.items.map((x) => ({ ...x, on: true }));
+    const mac = (x) => { const f = x.grams / 100, p = x.per100 || {}; return { kcal: (p.kcal || 0) * f, protein: (p.protein || 0) * f, carbs: (p.carbs || 0) * f, fat: (p.fat || 0) * f }; };
+    const draw = () => {
+      const tot = items.filter((x) => x.on).map(mac).reduce((a, m) => ({ kcal: a.kcal + m.kcal, protein: a.protein + m.protein, carbs: a.carbs + m.carbs, fat: a.fat + m.fat }), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
+      sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Voorstel nakijken">
+        ${head("Klopt dit?", true)}
+        ${mealChips()}
+        ${r.note ? `<p class="hint" style="margin-top:4px">${C.esc(r.note)}</p>` : ""}
+        <div class="ai-items">${items.map((x, i) => { const m = mac(x); return `<div class="ai-item ${x.on ? "" : "off"}">
+          <label class="ai-chk"><input type="checkbox" data-on="${i}" ${x.on ? "checked" : ""} aria-label="${C.esc(x.name)} meenemen"></label>
+          <span class="ai-n"><b>${C.esc(x.name)}</b><small>${x.source === "eigen" ? "uit je producten" : `schatting${x.zeker === "laag" ? " · onzeker" : ""}`} · ${C.fmt(m.kcal)} kcal · ${C.fmt(m.protein)} g eiwit</small></span>
+          <span class="ai-g"><input class="input" inputmode="numeric" data-g="${i}" value="${x.grams}" aria-label="Gram ${C.esc(x.name)}"><small>g</small></span></div>`; }).join("")}</div>
+        <div class="ai-tot"><b>${C.fmt(tot.kcal)} kcal</b><span>${C.fmt(tot.protein)} g eiwit · ${C.fmt(tot.carbs)} g kh · ${C.fmt(tot.fat)} g vet</span></div>
+        <p class="small muted" style="margin:6px 0 0">Schattingen zijn gemiddelde waarden; pas de grammen aan waar je het beter weet.</p>
+        <button class="btn" id="aiAdd" style="width:100%;margin-top:10px" ${items.some((x) => x.on) ? "" : "disabled"}>Toevoegen bij ${C.esc(mealLabel(meal).toLowerCase())}</button></div>`;
+      wire(() => describe(prev)); bindMeal(draw);
+      sheet.querySelectorAll("[data-on]").forEach((c) => (c.onchange = () => { items[c.dataset.on].on = c.checked; draw(); }));
+      sheet.querySelectorAll("[data-g]").forEach((g) => (g.onchange = () => { const v = numIn(g.value); if (v > 0) items[g.dataset.g].grams = Math.round(v); draw(); }));
+      sheet.querySelector("#aiAdd").onclick = async (ev) => {
+        ev.currentTarget.disabled = true;
+        try {
+          const ids = [];
+          for (const x of items.filter((y) => y.on)) {
+            const m = mac(x);
+            const p = x.food_id ? { day, meal, grams: x.grams, food: { id: x.food_id } }
+              : { day, meal, name: `${x.name} (${x.grams} g)`, kcal: Math.round(m.kcal), protein: Math.round(m.protein * 10) / 10, carbs: Math.round(m.carbs * 10) / 10, fat: Math.round(m.fat * 10) / 10 };
+            const res = await C.rpc("log_food", { p }); if (res?.id) ids.push(res.id);
+          }
+          close(); undoMany(ids, `${ids.length} onderdelen toegevoegd · ${C.fmt(tot.kcal)} kcal`, after); after?.();
+        } catch (err) { C.toast(err.message, 5000); ev.currentTarget.disabled = false; }
+      };
+    };
+    draw();
+  }
+
   if (onPick) search(initial);
   else if (recipeFrom) { recipe = { name: "", servings: 1, total_g: "", ingredients: recipeFrom }; recipeEditor(); }
+  else if (start === "ai") describe();
   else if (start === "recipe") { recipe = { name: "", servings: 1, total_g: "", ingredients: [] }; recipeEditor(); }
   else if (toEdit) editRecipe(toEdit);
   else if (product) amount(product);

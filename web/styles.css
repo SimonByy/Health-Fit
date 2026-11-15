@@ -1530,3 +1530,15 @@ body:not([data-plan="free"]) [data-free] { display: none !important; }
 .ph-grid figure { margin: 0; }
 .ph-grid img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 10px; display: block; }
 .ph-grid figcaption { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+/* eten beschrijven / foto */
+.ai-items { margin-top: 8px; }
+.ai-item { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.ai-item.off .ai-n { opacity: .45; }
+.ai-n { display: flex; flex-direction: column; min-width: 0; }
+.ai-n small { color: var(--muted); font-size: 12px; }
+.ai-g { display: flex; align-items: center; gap: 4px; }
+.ai-g .input { width: 72px; text-align: right; padding: 6px 8px; }
+.ai-chk input { width: 20px; height: 20px; }
+.ai-tot { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; }
+.ai-tot b { font-family: var(--font-num); font-size: 22px; }
+.ai-tot span { color: var(--muted); font-size: 13px; }
