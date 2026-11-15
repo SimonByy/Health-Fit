@@ -62,7 +62,7 @@ async function makeFor(uid: string, force = false) {
     (select to_jsonb(s) from (select day, total_h, deep_h, rem_h, awake_h, sleep_start_local, sleep_end_local from ai.sleep
        where day = ${q(today)} order by total_h desc nulls last limit 1) s) as slaap,
     (select to_jsonb(r) from (select sleep_score, hrv_ms, resting_hr, body_battery_wake from ai.recovery_daily where day = ${q(today)}) r) as herstel,
-    (select jsonb_build_object('hrv', round(avg(hrv_ms)), 'rusthartslag', round(avg(resting_hr), 1)) from ai.recovery_daily where day between ${q(today)}::date - 7 and ${q(today)}::date - 1) as gemiddeld,
+    (select jsonb_build_object('hrv', round(avg(hrv_ms)), 'rusthartslag', round(avg(resting_hr)::numeric, 1)) from ai.recovery_daily where day between ${q(today)}::date - 7 and ${q(today)}::date - 1) as gemiddeld,
     (select jsonb_agg(jsonb_build_object('titel', title, 'soort', kind, 'details', details)) from app.coach_sessions where day = ${q(today)} and status = 'gepland') as training,
     (select jsonb_agg(jsonb_build_object('maaltijd', i.slot, 'gerecht', r.name, 'week_start', w.week_start)) from app.mp_week_items i
        join app.mp_recipes r on r.id = i.recipe_id join app.mp_weeks w on w.id = i.week_id where i.day = ${q(today)}) as menu,
