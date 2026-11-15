@@ -357,7 +357,9 @@ function renderRunPlan(p, rp, plan, stats, from, after) {
     <div class="rp-bars" role="img" aria-label="Omvang per week tot de wedstrijd">${plan.weeks.map((w) => `<i class="${w.phase} ${w.i === cur.i ? "cur" : ""}" style="height:${Math.max(8, (w.total / max) * 100)}%" title="Week ${w.i + 1}: ${w.total} min"></i>`).join("")}</div>
     <div class="rp-legend small muted"><span class="basis">basis</span><span class="opbouw">opbouw</span><span class="piek">piek</span><span class="taper">taper</span></div>
     <h4 class="sub-h">Deze week · ${cur.total} min lopen</h4>
-    ${cur.sessions.map((s) => `<div class="meal"><span><b>${C.esc(s.title)}</b><br><span class="small muted">${RP.WDL[s.dow]} · ${C.esc(RP.sessionDetails(s, stats))}</span></span><span class="k">${s.min}′</span></div>`).join("")}
+    ${cur.sessions.map((s, i) => `<div class="meal"><span><b>${C.esc(s.title)}</b><br><span class="small muted">${RP.WDL[s.dow]} · ${C.esc(RP.sessionDetails(s, stats))}</span></span><span class="k">${s.min}′<br><button class="link-btn inline small" data-fit="${i}" aria-label="${C.esc(s.title)} als Garmin-bestand">⌚ .FIT</button></span></div>`).join("")}
+    <details class="small" style="margin-top:6px"><summary>Runs op je Garmin zetten</summary>
+      <p style="margin:6px 0 0">Tik op ⌚ .FIT: je krijgt een Garmin-workout met de stappen en je hartslagzone, zodat je horloge je begeleidt. Sluit je horloge met een kabel aan op een computer en zet het bestand in de map <b>GARMIN/NewFiles</b>; na het loskoppelen staat de run bij Training → Workouts. Op een Mac heb je daarvoor het gratis OpenMTP nodig. Vanaf je iPhone kan het niet rechtstreeks: Garmin laat dat alleen toe voor goedgekeurde partners.</p></details>
     ${cur.note ? `<p class="small" style="margin:8px 0 0"><b>Coach:</b> ${C.esc(cur.note)}</p>` : ""}
     ${(() => {
       const pr = RP.predictRace(stats.runs, plan.race[2]); if (!pr) return "";
@@ -373,6 +375,12 @@ function renderRunPlan(p, rp, plan, stats, from, after) {
     <details style="margin-top:10px"><summary class="small">Je runs van de laatste weken</summary>
       <table class="nutrients small">${(stats.runs || []).slice(0, 8).map((r) => `<tr><td>${C.esc(fmtD(r.day))}</td><td>${C.fmt(r.km, 1)} km · ${C.fmt(r.min)} min</td><td>${r.hr ? `${r.hr} bpm` : ""}</td></tr>`).join("") || "<tr><td>Nog geen runs.</td></tr>"}</table></details>
   </section>`;
+  box.querySelectorAll("[data-fit]").forEach((b) => (b.onclick = async () => {
+    const s = cur.sessions[Number(b.dataset.fit)];
+    const F = await import("./fit.js");
+    F.downloadFit(`${s.title} ${RP.WDL[s.dow].slice(0, 2)} ${s.min}min`, F.runSteps(s));
+    C.toast("Garmin-bestand gedownload");
+  }));
   box.querySelector("#rStop").onclick = async () => {
     if (!confirm("Loopplan stoppen? De geplande runs verdwijnen uit je komende dagen.")) return;
     delete p.run_plan; await savePrefs(p); after();
