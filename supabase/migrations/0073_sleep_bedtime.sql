@@ -1,0 +1,3 @@
+-- 0073_sleep_bedtime: get_setting/set_setting kennen 'sleep' {wake_weekday, wake_weekend, remind, lead_min};
+--   app.bedtime_nudge() + cron 'bedtime-nudge' (elke 15 min): melding "Bijna bedtijd" (lead_min vóór bedtijd = wekker − slaapdoel − 15 min).
+--   (bedtime_nudge daarna nog bijgewerkt voor een komma in "8,0 u".)

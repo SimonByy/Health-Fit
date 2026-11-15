@@ -16,6 +16,7 @@ function item(s, today) {
     </div>
     ${s.details ? `<details><summary class="small muted">Oefeningen en doelen</summary>
       <ul class="mp-ul small">${s.details.split(/\s·\s|\n/).filter(Boolean).map((x) => `<li>${C.esc(x)}</li>`).join("")}</ul></details>` : ""}
+    ${st === "gepland" && today && (s.kind === "z2" || s.category === "cardio") && /run-walk|joggen|interval/i.test(`${s.title} ${s.details || ""}`) ? `<a class="small" href="#/timer" style="display:inline-block;margin-top:6px">Intervaltimer openen ›</a>` : ""}
     ${st === "gepland" && s.day <= C.today() ? `<div class="row" style="gap:8px;margin-top:6px">
       <button class="btn secondary" data-st="gedaan">✓ Gedaan</button>
       <button class="btn ghost" data-st="overgeslagen">Overgeslagen</button></div>` : ""}
@@ -33,14 +34,46 @@ function bind(el, rerender) {
   }));
 }
 
-export async function renderCoachToday(ctx, el) {
+// Herstel-advies voor de training van vandaag: readiness + spierbelasting van de spieren die vandaag aan de beurt zijn
+const KIND_MUSCLES = { push: ["chest", "shoulders", "triceps"], pull: ["upper_back", "lats", "biceps"], legs: ["quadriceps", "hamstrings", "glutes"],
+  lower: ["quadriceps", "hamstrings", "glutes"], upper: ["chest", "upper_back", "lats", "shoulders"] };
+const MNL = { chest: "borst", shoulders: "schouders", triceps: "triceps", upper_back: "rug", lats: "rug", biceps: "biceps", quadriceps: "benen", hamstrings: "hamstrings", glutes: "bilspieren" };
+async function readinessAdvice(list) {
+  const plan = list.filter((s) => s.status === "gepland");
+  if (!plan.length) return "";
+  const [r, fat] = await Promise.all([C.rpc("get_readiness", { p_day: C.today() }).catch(() => null), C.rpc("get_muscle_fatigue").catch(() => [])]);
+  const nz = (v) => (v == null || v === "" ? NaN : Number(v));
+  const score = r ? nz(r.score_now ?? r.score) : NaN;
+  const bb = r ? nz(r.bb_now ?? r.bb_wake) : NaN;
+  const by = Object.fromEntries((fat || []).map((x) => [x.muscle, Number(x.pct) || 0]));
+  const kinds = plan.map((s) => s.kind).filter((k) => KIND_MUSCLES[k]);
+  const loaded = [...new Set(kinds.flatMap((k) => KIND_MUSCLES[k]).filter((m) => by[m] >= 55).map((m) => MNL[m]))];
+  const cardio = plan.some((s) => s.kind === "z2" || s.category === "cardio");
+  const low = (!isNaN(score) && score < 40) || (!isNaN(bb) && bb < 25);
+  const high = !isNaN(score) && score >= 75 && !loaded.length;
+  if (!low && !loaded.length && !high) return "";
+  let tone = "ok", txt;
+  if (low && loaded.length) { tone = "bad"; txt = `Weinig hersteld (readiness ${isNaN(score) ? "?" : score}) en je ${loaded.join(", ")} ${loaded.length > 1 ? "zijn" : "is"} nog belast. Ruil vandaag voor rust of een rustige wandeling, of doe de helft van je sets.`; }
+  else if (low) { tone = "warn"; txt = `Readiness ${isNaN(score) ? "laag" : score}${!isNaN(bb) ? `, Body Battery ${bb}` : ""}: train lichter. ${kinds.length ? "Eén set minder per oefening en blijf 2–3 herhalingen van falen." : ""}${cardio ? " Houd de cardio echt rustig (zone 2)." : ""}`; }
+  else if (loaded.length) { tone = "warn"; txt = `Je ${loaded.join(", ")} ${loaded.length > 1 ? "zijn" : "is"} nog belast van vorige trainingen. Begin lichter en kijk na de eerste sets hoe het gaat.`; }
+  else { txt = `Goed hersteld (readiness ${score}). Een goede dag om een set zwaarder te gaan.`; }
+  return `<p class="ready-tip rt-${tone} small">${C.esc(txt)}</p>`;
+}
+
+// acts = { html, bind }: de trainingen die vandaag al binnenkwamen (Hevy, Garmin, Apple Gezondheid)
+export async function renderCoachToday(ctx, el, acts = {}) {
   C = ctx;
-  const list = (await C.rpc("get_coach_week", { p_from: C.today() }).catch(() => [])).filter((s) => s.day === C.today());
-  if (!list.length) { el.innerHTML = ""; return; }
-  const done = list.every((s) => s.status !== "gepland");
-  el.innerHTML = `<details class="set-group today-train" ${done ? "" : "open"}><summary><span>Training vandaag <span class="muted small">· ${list.map((s) => C.esc(s.title.replace(/^[^\p{L}\d]+/u, ""))).join(" + ")}${done ? " ✓" : ""}</span></span></summary>
-    <div class="set-body">${list.map((s) => item(s, true)).join("")}</div></details>`;
-  bind(el, () => renderCoachToday(ctx, el));
+  const list = (await C.rpc("get_coach_week", { p_from: C.today() }).catch(() => [])).filter((s) => s.day === C.today() && s.kind !== "rust");
+  const done = list.length ? list.every((s) => s.status !== "gepland") : !!acts.html;
+  const what = list.length ? list.map((s) => C.esc(s.title.replace(/^[^\p{L}\d]+/u, ""))).join(" + ") : acts.html ? "gedaan" : "rustdag";
+  el.innerHTML = `<details class="set-group today-train" ${done || !list.length ? "" : "open"}><summary><span>Training vandaag <span class="muted small">· ${what}${done && list.length ? " ✓" : ""}</span></span></summary>
+    <div class="set-body"><div class="ready-advice"></div>${list.map((s) => item(s, true)).join("")}
+      ${acts.html ? `<h4 class="sub-h" style="margin:${list.length ? "12px" : "0"} 0 4px">Geregistreerd</h4>${acts.html}` : ""}
+      ${!list.length && !acts.html ? `<p class="muted small" style="margin:0">Niets gepland en nog niets geregistreerd. <a href="#/planner">Planner openen</a></p>` : ""}
+    </div></details>`;
+  bind(el, () => renderCoachToday(ctx, el, acts));
+  acts.bind?.(el);
+  readinessAdvice(list).then((h) => { const b = el.querySelector(".ready-advice"); if (b) b.innerHTML = h; }).catch(() => {});
 }
 
 export async function renderCoachWeek(ctx, el) {

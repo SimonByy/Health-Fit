@@ -48,11 +48,20 @@ export async function renderGoals(ctx, el, { compact = false } = {}) {
   C = ctx;
   const p = await loadPrefs();
   if (compact && !p.goals.length) { el.innerHTML = ""; return; }
+  // Krachtdoel: oefening + doel-1RM; voortgang uit je records (geschatte 1RM)
+  const recs = p.goals.some((g) => g.exercise) ? await C.rpc("get_records").catch(() => []) : [];
+  const liftOf = (g) => (recs || []).find((r) => r.exercise === g.exercise);
+  const progress = (g) => {
+    if (!g.exercise || !g.target_kg) return "";
+    const cur = Number(liftOf(g)?.best_1rm?.value) || 0, pct = Math.min(100, Math.round((cur / g.target_kg) * 100));
+    return `<div class="goal-bar" role="img" aria-label="${pct}% van je doel"><i style="width:${pct}%"></i></div>
+      <span class="small">${C.esc(clean(g.exercise))}: ${cur ? `${C.fmt(cur, 1)} kg` : "nog geen set"} van ${C.fmt(g.target_kg, 1)} kg 1RM${cur >= g.target_kg ? " · gehaald!" : cur ? ` · nog ${C.fmt(g.target_kg - cur, 1)} kg` : ""}</span>`;
+  };
   el.innerHTML = `<section class="panel goals-card">
     <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h3 style="margin:0">Mijn doelen</h3>
       ${compact ? `<a class="small muted" href="#/planner">Planner ›</a>` : `<button class="btn ghost small" id="gEdit">Bewerken</button>`}</div>
     ${p.goals.length ? `<div class="goal-list">${p.goals.map((g) => `<div class="goal"><b>${C.esc(g.title)}</b>
-        <span class="small muted">${C.esc(label(GOALKIND, g.kind))}${g.date ? ` · ${C.esc(countdown(g))}` : ""}</span></div>`).join("")}</div>`
+        <span class="small muted">${C.esc(label(GOALKIND, g.kind))}${g.date ? ` · ${C.esc(countdown(g))}` : ""}</span>${progress(g)}</div>`).join("")}</div>`
       : `<p class="small muted" style="margin:6px 0 0">Nog geen doelen. Voeg er een toe, bv. "Halve marathon" tegen juni 2027. Je coach plant er rekening mee.</p>`}
   </section>`;
   el.querySelector("#gEdit")?.addEventListener("click", () => editGoals(p, () => renderGoals(ctx, el)));
@@ -65,11 +74,25 @@ function editGoals(p, after) {
       <input class="input" id="gT" placeholder="bv. Halve marathon in 2 uur" aria-label="Doel">
       <div class="row"><select class="input" id="gK" aria-label="Soort doel">${GOALKIND.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
         <input class="input" id="gD" type="month" aria-label="Tegen wanneer"></div>
+      <div class="row" id="gLift" hidden><select class="input" id="gX" aria-label="Oefening"><option value="">Oefening (optioneel)</option></select>
+        <input class="input" id="gKg" inputmode="decimal" placeholder="doel 1RM (kg)" aria-label="Doel 1RM in kg" style="max-width:150px"></div>
       <button class="btn" id="gAdd">Doel toevoegen</button>
     </div>`);
+  const kSel = s.querySelector("#gK");
+  const showLift = async () => {
+    s.querySelector("#gLift").hidden = kSel.value !== "kracht";
+    if (kSel.value === "kracht" && s.querySelector("#gX").options.length < 2) {
+      const recs = await C.rpc("get_records").catch(() => []);
+      s.querySelector("#gX").insertAdjacentHTML("beforeend", (recs || []).map((r) => `<option value="${C.esc(r.exercise)}">${C.esc(clean(r.exercise))} · nu ${C.fmt(r.best_1rm?.value, 1)} kg</option>`).join(""));
+    }
+  };
+  kSel.onchange = showLift;
   s.querySelector("#gAdd").onclick = async () => {
     const t = s.querySelector("#gT").value.trim(); if (!t) return C.toast("Geef je doel een naam");
-    p.goals.push({ title: t, kind: s.querySelector("#gK").value, date: s.querySelector("#gD").value || null });
+    const g = { title: t, kind: kSel.value, date: s.querySelector("#gD").value || null };
+    const ex = s.querySelector("#gX").value, kg = Number(s.querySelector("#gKg").value.replace(",", "."));
+    if (g.kind === "kracht" && ex && kg > 0) { g.exercise = ex; g.target_kg = kg; }
+    p.goals.push(g);
     await savePrefs(p); s.remove(); C.toast("Doel toegevoegd"); after();
   };
   s.querySelectorAll("[data-gdel]").forEach((b) => (b.onclick = async () => {

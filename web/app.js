@@ -300,10 +300,10 @@ function drawChart(el, { points, color, type = "bar", unit = "", dec = 0, goal =
 // Router
 // ======================================================================
 const state = { day: today(), nutDay: today(), trendDays: 30, trainTab: "workouts", conversation: null };
-const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training", planner: "Planner", koppelen: "Koppelen", menu: "Menu", briefing: "Briefing", feedback: "Feedback", week: "Weekrapport" };
+const TITLES = { vandaag: "Vandaag", training: "Training", voeding: "Voeding", trends: "Trends", vraag: "Vraag het", instellingen: "Instellingen", dagboek: "Dagboek", workout: "Training", planner: "Planner", koppelen: "Koppelen", menu: "Menu", briefing: "Briefing", feedback: "Feedback", week: "Weekrapport", fotos: "Voortgangsfoto's", timer: "Intervaltimer" };
 const ACCENT = { workout: "--strength", planner: "--strength", dagboek: "--sleep", vandaag: "--move", training: "--strength", voeding: "--fuel", trends: "--heart", vraag: "--sleep", menu: "--fuel", briefing: "--sleep", feedback: "--heart" };
 
-const SUBPAGES = new Set(["instellingen", "dagboek", "koppelen", "briefing", "vraag", "workout", "planner", "week"]);
+const SUBPAGES = new Set(["instellingen", "dagboek", "koppelen", "briefing", "vraag", "workout", "planner", "week", "fotos", "timer"]);
 const navStack = [location.hash]; // eigen spoor van bezochte schermen: bepaalt of "terug" ergens naartoe kan
 async function route() {
   let [name, param] = (location.hash.replace(/^#\/?/, "") || "vandaag").split("/");
@@ -474,12 +474,13 @@ async function renderToday() {
         <details ${ins.read_at ? "" : "open"} id="insDet"><summary>${esc(ins.title)} <span class="muted small">${esc(shortDate(ins.created_at.slice(0, 10)))}</span></summary>
         <div class="md">${md(ins.content)}</div></details>
       </section>` : ""}
-    ${isToday && [0, 1].includes(new Date(state.day + "T12:00:00Z").getUTCDay()) ? `<a class="panel lk-cta" href="#/week"><span><b>Je week in cijfers</b><br><span class="small muted">Training, slaap, voeding en gewicht tegenover de week ervoor</span></span><span aria-hidden="true">›</span></a>` : ""}
+    ${isToday && (new Date().getDay() === 1 || (new Date().getDay() === 0 && new Date().getHours() >= 18)) ? `<a class="panel lk-cta" href="#/week"><span><b>Je week in cijfers</b><br><span class="small muted">Training, slaap, voeding en gewicht tegenover de week ervoor</span></span><span aria-hidden="true">›</span></a>` : ""}
     ${mpToday.length ? `<a class="panel lk-cta" href="#/menu/week"><span><b>Vandaag op je menu</b><br><span class="small muted">${mpToday.map((i) => esc(i.r.name)).join(" · ")}</span></span><span aria-hidden="true">›</span></a>` : ""}
     <div class="board">
       <div id="todayReady"></div>
       <a class="todayfuel" href="#/voeding" id="todayFuel"></a>
       ${brief?.text ? `<a class="panel lk-cta brief-cta" href="#/briefing" data-premium><span><b>▶ Ochtendbriefing</b><br><span class="small muted">Laten voorlezen en antwoorden</span></span><span aria-hidden="true">›</span></a>` : ""}
+      ${isToday ? `<div id="bedBox"></div>` : ""}
       ${isToday ? `<div id="coachToday"></div>` : ""}
       ${isToday ? `<div id="fatigueBox" data-block="spiervermoeidheid" data-block-title="Spiervermoeidheid"></div>` : ""}
       <div id="todayTimeline"></div>
@@ -489,11 +490,11 @@ async function renderToday() {
         ${statRow({ name: "Actieve energie", value: t.active_kcal, unit: "kcal", goal: g.active_kcal, avg: a.active_kcal, color: DOMAIN.move })}
       </section>
 
-      <section class="domain" style="--c:${DOMAIN.strength}">
-        <h2>Training ${isToday ? "vandaag" : "deze dag"}</h2>
+      ${isToday ? "" : `<section class="domain" style="--c:${DOMAIN.strength}">
+        <h2>Training deze dag</h2>
         ${acts.length ? `<div class="list flat" id="dayActs">${acts.map(activityItem).join("")}</div>`
-          : `<p class="muted small" style="margin:6px 0 12px">Rustdag, nog geen training ${isToday ? "vandaag" : ""} geregistreerd.</p>`}
-      </section>
+          : `<p class="muted small" style="margin:6px 0 12px">Rustdag, geen training geregistreerd.</p>`}
+      </section>`}
 
 
       <section class="domain" style="--c:${DOMAIN.heart}">
@@ -581,7 +582,11 @@ async function renderToday() {
   }
   if ($("#fatigueBox")) import("./fatigue.js").then((F) => F.renderFatigue(ctx, $("#fatigueBox"))).catch(() => {});
   if (location.hash.startsWith("#/vandaag") || !location.hash || location.hash === "#/") import("./layout.js").then((L) => L.applyLayout(ctx, "vandaag", view)).catch(() => {});
-  if ($("#coachToday")) import("./coach.js").then((m) => m.renderCoachToday(ctx, $("#coachToday"))).catch(() => {});
+  if ($("#bedBox")) import("./sleep.js").then((m) => m.renderBedCard(ctx, $("#bedBox"), g)).catch(() => {});
+  // Eén blok "Training vandaag": het plan én wat je echt deed
+  if ($("#coachToday")) import("./coach.js").then((m) => m.renderCoachToday(ctx, $("#coachToday"), {
+    html: acts.length ? `<div class="list flat" id="dayActs">${acts.map(activityItem).join("")}</div>` : "",
+    bind: (el) => { const l = el.querySelector("#dayActs"); if (l) bindActivityList(l); } })).catch(() => {});
   $("#insDet")?.addEventListener("toggle", (e) => { if (e.target.open && !ins.read_at) rpc("mark_insight_read", { p_id: ins.id }).catch(() => {}); });
   if (ins && !ins.read_at && isToday) rpc("mark_insight_read", { p_id: ins.id }).catch(() => {});
   if (state.openWeight) { state.openWeight = false; openWeightForm(d.last_weight?.kg); }
@@ -1178,6 +1183,8 @@ async function renderSettings() {
     <nav class="quicklinks" aria-label="Meer">
       <a href="#/dagboek"><b>Dagboek</b><span>Inspreken of typen</span></a>
       <a href="#/week"><b>Weekrapport</b><span>Je week in cijfers</span></a>
+      <a href="#/fotos"><b>Voortgangsfoto's</b><span>Alleen op dit toestel</span></a>
+      <a href="#/timer"><b>Intervaltimer</b><span>Run-walk en intervallen</span></a>
       <a href="#/vraag" data-premium><b>Coach</b><span>AI-chat (ook via ✦ rechtsonder)</span></a>
       <a href="#/briefing" data-premium><b>Briefing</b><span>Je ochtendoverzicht</span></a>
       <a href="#/koppelen"><b>Koppelen</b><span>Garmin en Gezondheid</span></a>
@@ -1289,6 +1296,8 @@ async function renderSettings() {
       </details>
       <div class="row" style="margin-top:10px"><button class="btn ghost" id="rotTok">Nieuw token maken</button></div>
     </div></details>
+
+    <details class="set-group"><summary>Slaap en bedtijd</summary><div class="set-body" id="sleepSet"></div></details>
 
     <details class="set-group"><summary>Agenda koppelen</summary><div class="set-body" id="calBox">
       <p class="hint">Zet je trainingen (✅ gedaan, 🚫 overgeslagen) en je mealprep-zondag in Google Agenda, iPhone/iCloud Agenda of Outlook.</p>
@@ -1410,6 +1419,7 @@ async function renderSettings() {
     } catch (er) { toast(er.message); }
   };
   mountCalendar();
+  if ($("#sleepSet")) import("./sleep.js").then((m) => m.renderSleepSettings(ctx, $("#sleepSet"))).catch(() => {});
   // overige
   view.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = async () => {
     const inp = $("#" + b.dataset.copy);
@@ -1599,6 +1609,8 @@ const ROUTES = {
   briefing: async () => (await import("./briefing.js")).renderBriefing(ctx),
   feedback: async () => (await import("./feedback.js")).renderFeedback(ctx),
   week: async (p) => (await import("./week.js")).renderWeek(ctx, p),
+  fotos: async () => (await import("./photos.js")).renderPhotos(ctx),
+  timer: async () => (await import("./timer.js")).renderTimer(ctx),
 };
 
 async function boot() {
