@@ -289,7 +289,7 @@ export function openAddFood(ctx, { day, meal = mealForNow(), after, start = null
         else if (remoteState) html += empty("Open Food Facts: " + C.esc(remoteState));
         else if (!rem.length) html = empty("Niets gevonden. Scan de barcode of maak het product zelf aan met 📷 Nieuw product.");
       }
-      box.innerHTML = html; return;
+      box.innerHTML = html + `<p class="muted fi-note small">Productgegevens: © <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a>-bijdragers, onder de ODbL-licentie.</p>`; return;
     }
 
     // ---- Mijn voedingsmiddelen ----
