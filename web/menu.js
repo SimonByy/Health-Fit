@@ -218,7 +218,12 @@ let dayOpen = null;      // { d, card, close } van het open dag-scherm
 function drawWeek(box) {
   const w = currentWeek();
   const weekBar = weekPicker(w);
-  if (!w || !w.items.length) {
+  // Lege week: toch het rooster tonen (tik een dag om zelf te plannen), met erboven kopiëren/hulp
+  const prev0 = w && !w.items.length ? D.weeks.find((x) => x.items?.length && x.week_start < w.week_start) : null;
+  const emptyBox = w && !w.items.length ? `<section class="panel mp-empty"><b>Deze week is nog leeg</b>
+      <p class="small muted" style="margin:4px 0 10px">Tik hieronder op een dag om zelf te plannen${MP_AUTO ? ", of laat je coach het menu maken" : ""}.</p>
+      ${prev0 ? `<button class="btn secondary" id="copyPrev" style="width:100%">⧉ Kopieer de week van ${C.esc(dshort(prev0.week_start))}</button>` : ""}</section>` : "";
+  if (!w) {
     const prev = D.weeks.find((x) => x.items?.length && (!w || x.week_start < w.week_start));
     box.innerHTML = `${weekBar}<section class="panel"><h3>${w ? "Deze week is nog leeg" : "Nog geen weekmenu"}</h3>
       ${prev ? `<button class="btn" id="copyPrev" style="width:100%;margin:6px 0 10px">⧉ Kopieer de week van ${C.esc(dshort(prev.week_start))}</button>` : ""}
@@ -245,13 +250,14 @@ function drawWeek(box) {
       <span class="wg-d"><b>${wd(d).slice(0, 2)}</b><small>${Number(d.slice(8))}</small></span>${cells}
       <span class="wg-k"><b>${its.length ? C.fmt(t.kcal) : "–"}</b><small>${its.length ? `P ${C.fmt(t.protein)}` : ""}</small></span></button>`;
   }).join("");
-  box.innerHTML = `${weekBar}
+  box.innerHTML = `${weekBar}${emptyBox}
     <section class="panel wg">
       <div class="wg-head" aria-hidden="true"><span></span>${SLOT_ORDER.map((sl) => `<span>${SHORT[sl]}</span>`).join("")}<span>kcal</span></div>
       ${rows}
       <p class="wg-legend small muted"><span><i class="dot ok"></i> klopt</span><span><i class="dot let"></i> kcal of eiwit niet</span><span><i class="dot uit"></i> uit eten of leeg</span><span>· tik een dag</span></p>
     </section>`;
   box.querySelectorAll("[data-dayopen]").forEach((b) => (b.onclick = () => openDay(b.dataset.dayopen)));
+  box.querySelector("#copyPrev")?.addEventListener("click", async () => { try { weekSel = await C.rpc("mp_week_new", { p_copy_from: prev0.id }); C.toast("Week gekopieerd. Pas aan wat je anders wilt."); reload(); } catch (e) { C.toast(e.message, 5000); } });
   bindWeekPicker(box, w); mountWish(box);
   if (dayOpen && document.body.contains(dayOpen.card)) fillDay();
 }
