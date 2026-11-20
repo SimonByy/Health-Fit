@@ -1673,3 +1673,4 @@ body:not([data-plan="free"]) [data-free] { display: none !important; }
 .tl-kinds button { display: grid; justify-items: center; gap: 4px; padding: 12px 4px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
 .tl-kinds button span { font-size: 22px; }
 .tl-kinds button.on { border-color: var(--ink); }
+.chip.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }

@@ -137,7 +137,8 @@ function weekPicker(w) {
   const list = D.weeks.filter((x) => !cur || x.week_start >= cur.week_start).sort((a, b) => a.week_start.localeCompare(b.week_start));
   return `<div class="chips mp-weeks">${list.map((x) => `<button class="chip ${w && x.id === w.id ? "on" : ""}" data-week="${x.id}">${weekLabel(x)} ${C.esc(dshort(x.week_start).replace(/^\S+ /, ""))}</button>`).join("")}
     <button class="chip" id="newWeek">+ Week erna</button>
-    <button class="chip" id="aiWeek" data-premium>Menu laten maken</button></div>
+    <button class="chip" id="aiWeek" data-premium>Menu laten maken</button>
+    ${w?.items?.length ? `<button class="chip danger" id="clearWeek">Planning wissen</button>` : ""}</div>
     <label class="mp-auto" data-premium><span><b>Automatisch weekmenu</b><small>${MP_AUTO ? "Elke vrijdag maakt je coach het menu voor de komende week." : "Uit: je plant zelf. “Menu laten maken” kan nog altijd als je het wil."}</small></span>
       <span class="switch"><input type="checkbox" id="mpAuto" ${MP_AUTO ? "checked" : ""} aria-label="Automatisch weekmenu"><span></span></span></label>`;
 }
@@ -155,6 +156,20 @@ function bindWeekPicker(box, w) {
     const copy = !!w?.items?.length && confirm(`De week erna maken als kopie van de week van ${dshort(w.week_start)}?\n\nOK = kopie, Annuleren = lege week`);
     try { weekSel = await C.rpc("mp_week_new", { p_copy_from: copy ? w.id : null }); curDay = null; C.toast(copy ? "Week gekopieerd" : "Lege week gemaakt"); reload(); }
     catch (e) { C.toast(e.message, 5000); }
+  });
+  // Hele week leegmaken. Wat al gegeten is blijft staan (dat zit in Voeding); met "Ongedaan maken" komt alles terug.
+  box.querySelector("#clearWeek")?.addEventListener("click", async (ev) => {
+    const todo = w.items.filter((i) => !i.eaten), kept = w.items.length - todo.length;
+    if (!todo.length) return C.toast("Alles in deze week is al gegeten: niets te wissen");
+    if (!confirm(`Planning van de week van ${dshort(w.week_start)} wissen? ${todo.length} maaltijd(en) gaan eruit${kept ? `; ${kept} die je al at blijven staan` : ""}.`)) return;
+    ev.currentTarget.disabled = true;
+    try {
+      for (const it of todo) await C.rpc("mp_item_remove", { p_item_id: it.id });
+      C.toast(`Planning gewist (${todo.length})`, 7000, { label: "Ongedaan maken", run: async () => {
+        for (const it of todo) await C.rpc("mp_item_add", { p_week_id: w.id, p_day: it.day, p_slot: it.slot, p_recipe_id: it.recipe_id, p_portions: n(it.portions) || 1 });
+        C.toast("Planning teruggezet"); reload(); } });
+    } catch (e) { C.toast(e.message, 5000); }
+    curDay = null; reload();
   });
   box.querySelector("#aiWeek")?.addEventListener("click", async (ev) => {
     if (!confirm("Je coach maakt het menu voor de komende week (zondag tot vrijdag) uit je eigen recepten, met je regels en wensen. Een week die je al goedkeurde blijft zoals ze is.\n\nDoorgaan?")) return;
