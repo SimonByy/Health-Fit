@@ -479,6 +479,7 @@ async function renderToday() {
     <div class="board">
       <div id="todayReady"></div>
       <a class="todayfuel" href="#/voeding" id="todayFuel"></a>
+      ${isToday ? `<div id="strainBox" data-block="belasting" data-block-title="Belasting"></div>` : ""}
       ${brief?.text ? `<a class="panel lk-cta brief-cta" href="#/briefing" data-premium><span><b>▶ Ochtendbriefing</b><br><span class="small muted">Laten voorlezen en antwoorden</span></span><span aria-hidden="true">›</span></a>` : ""}
       ${isToday ? `<div id="bedBox"></div>` : ""}
       ${isToday ? `<div id="coachToday"></div>` : ""}
@@ -580,6 +581,7 @@ async function renderToday() {
     fab.onclick = async () => { const F = await foodMod(); F.openAddFood(ctx, { day: state.day, meal: F.mealForNow(), after: reload }); };
     view.appendChild(fab);
   }
+  if ($("#strainBox")) import("./insights.js").then((I) => I.renderStrain(ctx, $("#strainBox"))).catch(() => {});
   if ($("#fatigueBox")) import("./fatigue.js").then((F) => F.renderFatigue(ctx, $("#fatigueBox"))).catch(() => {});
   if (location.hash.startsWith("#/vandaag") || !location.hash || location.hash === "#/") import("./layout.js").then((L) => L.applyLayout(ctx, "vandaag", view)).catch(() => {});
   if ($("#bedBox")) import("./sleep.js").then((m) => m.renderBedCard(ctx, $("#bedBox"), g)).catch(() => {});
@@ -833,6 +835,7 @@ async function renderTrends() {
       ${[30, 90, 365].map((n) => `<button data-d="${n}" aria-pressed="${n === days}">${n === 365 ? "1 jaar" : n + " dagen"}</button>`).join("")}
     </div>
     ${energyPanel(energy)}
+    <div id="impactBox"></div>
     ${charts.map((c, i) => `<section class="panel">
         <div class="chart-head"><h3>${esc(c.title)}</h3><span class="now" id="avg${i}"></span></div>
         <div id="ch${i}"></div>
@@ -840,6 +843,7 @@ async function renderTrends() {
     <div id="measCharts"></div>
     <p class="muted small">${byWeek ? "Bij 1 jaar tonen de grafieken weekgemiddelden." : "Tik of beweeg over een grafiek voor de exacte waarde."}</p>`;
   view.querySelectorAll(".seg button").forEach((b) => (b.onclick = () => { state.trendDays = Number(b.dataset.d); renderTrends(); }));
+  import("./insights.js").then((I) => I.renderImpacts(ctx, $("#impactBox"))).catch(() => {});
 
   charts.forEach((c, i) => {
     const week = byWeek || c.forceWeek;
@@ -1229,6 +1233,8 @@ async function renderSettings() {
       <div id="habitSet"><div class="skeleton" style="height:30px"></div></div>
     </div></details>
 
+    <details class="set-group" id="profileGroup"><summary>Profiel en hartslagzones</summary><div class="set-body" id="profileSet"><div class="skeleton" style="height:60px"></div></div></details>
+
     <details class="set-group"><summary>Doelen</summary><div class="set-body">
       <a class="btn secondary" href="#/planner" style="display:block;text-align:center;text-decoration:none;margin-bottom:12px">Trainingsdoelen, voorkeurdagen en weekplan</a>
       <div class="goals">
@@ -1418,6 +1424,7 @@ async function renderSettings() {
     } catch (er) { toast(er.message); }
   };
   mountCalendar();
+  if ($("#profileSet")) import("./profile.js").then((m) => m.renderProfileSettings(ctx, $("#profileSet"))).catch((e) => { $("#profileSet").innerHTML = `<p class="small warn">${esc(e.message)}</p>`; });
   if ($("#sleepSet")) import("./sleep.js").then((m) => m.renderSleepSettings(ctx, $("#sleepSet"))).catch(() => {});
   // overige
   view.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = async () => {

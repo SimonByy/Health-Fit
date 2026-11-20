@@ -5,7 +5,7 @@
 // - Past zich aan: een training die je echt deed (Garmin, Hevy, logger) vinkt de sessie af, ook als je ze een dag
 //   eerder of later deed; wat je miste kan je met één tik inhalen of overslaan.
 import * as RP from "./runplan.js";
-let C, TARGETS = {};
+let C, TARGETS = {}, AUTO = true, ZONES = null;
 const WDL = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"];
 const WDS = ["ma", "di", "wo", "do", "vr", "za", "zo"];
 const CARDIO = [["lopen", "Lopen"], ["loopband", "Loopband"], ["fietsen", "Fietsen"], ["zwemmen", "Zwemmen"], ["roeien", "Roeien"], ["wandelen", "Stevig wandelen"], ["crosstrainer", "Crosstrainer"]];
@@ -110,6 +110,7 @@ export async function renderPlanner(ctx, start) {
   const [p, R, stats] = await Promise.all([loadPrefs(), C.rpc("get_workout_routines").catch(() => ({ folders: [], routines: [] })),
     premium ? C.rpc("get_run_stats").catch(() => ({})) : {}]);
   TARGETS = premium ? p.targets || {} : {};
+  ZONES = await import("./profile.js").then((P) => P.getZones(C)).catch(() => null);
   const rp = premium && p.run_plan?.date && p.run_plan.date >= today ? p.run_plan : null;
   const plan = rp ? RP.buildRunPlan(rp, stats, today) : null;
   const pw = plan?.weeks.find((w) => w.start === from) || null;
@@ -121,7 +122,7 @@ export async function renderPlanner(ctx, start) {
 
   // 1. Week invullen vanuit het vaste schema (alleen vandaag en later; eigen of coach-sessies gaan voor).
   //    Staat automatisch plannen uit (p.auto === false), dan plan je alles zelf en vult de app niets in.
-  const auto = p.auto !== false;
+  const auto = p.auto !== false; AUTO = auto;
   let changed = false;
   for (let i = 0; auto && i < 7; i++) {
     const d = days[i]; if (d < today) continue;
@@ -130,7 +131,7 @@ export async function renderPlanner(ctx, start) {
     const auto = day.filter(isAuto);
     const own = day.filter((s) => !isAuto(s));
     const runs = (pw?.sessions || []).filter((x) => x.dow === i).map((x) => ({ cat: "cardio", cardio_type: "lopen", intensity: x.type, duration: x.min,
-      title: x.title, details: RP.sessionDetails(x, stats), runplan: true }));
+      title: x.title, details: RP.sessionDetails(x, stats, ZONES), runplan: true }));
     const want = own.length ? [] : [...(p.template[i] || []).filter((x) => !(rp && isRun(x))), ...runs];
     const have = auto.map((s) => sig(catOf(s), s.title, s.duration_min) + "|" + (s.details || "")).sort().join(";");
     const tOf = (x) => (x.runplan ? x.title : slotTitle(x, R));
@@ -185,7 +186,8 @@ export async function renderPlanner(ctx, start) {
       <span class="pl-k"></span>
       <span class="pl-t"><b>${C.esc(clean(s.title))}</b><small>${[s.duration_min ? `${s.duration_min} min` : "", s.status === "gedaan" ? (s.note && /^gedaan op/.test(s.note) ? s.note : "gedaan") : s.status === "overgeslagen" ? "overgeslagen" : "", s.source === "planner" ? "" : s.source === "runplan" ? "loopplan" : s.source === "user" ? "aangepast" : "coach"].filter(Boolean).join(" · ")}</small></span>
       ${s.routine_id && s.day === today && s.status === "gepland" ? `<button class="btn small" data-go="${s.id}">Start</button>` : ""}
-      <button class="icon-btn" data-edit="${s.id}" aria-label="Aanpassen">⋯</button></div>`;
+      <button class="icon-btn" data-edit="${s.id}" aria-label="Aanpassen">⋯</button>
+      ${s.status === "gepland" ? `<button class="icon-btn pl-del" data-del="${s.id}" aria-label="${C.esc(clean(s.title))} verwijderen">✕</button>` : ""}</div>`;
 
   C.view.innerHTML = `
     <div id="plGoals"></div>
@@ -197,6 +199,9 @@ export async function renderPlanner(ctx, start) {
       </div>
       <div class="pl-sum"><span><b>${doneN(kracht)}/${kracht.length}</b> kracht</span><span><b>${doneN(cardio)}/${cardio.length}</b> cardio</span></div>
     </section>
+    <label class="mp-auto">
+        <span><b>Automatisch plannen</b><br><span class="small muted">${auto ? "De app vult elke week in met je vaste weekschema" + (premium ? " en loopplan" : "") + "." : "Uit: je plant zelf met “+ sessie”. Je trainingen worden nog altijd afgevinkt."}</span></span>
+        <span class="switch"><input type="checkbox" id="plAuto" ${auto ? "checked" : ""} aria-label="Automatisch plannen"><span></span></span></label>
     ${missed.map((s) => { const fd = freeDay(catOf(s)); return `<div class="panel pl-missed" data-id="${s.id}">
       <span><b>${C.esc(clean(s.title))}</b> van ${WDL[days.indexOf(s.day)]} is nog niet gedaan.</span>
       <div class="row">${fd ? `<button class="btn small" data-move="${s.id}" data-to="${fd}">Inhalen op ${WDL[days.indexOf(fd)]}</button>` : ""}
@@ -211,11 +216,6 @@ export async function renderPlanner(ctx, start) {
       </section>`;
     }).join("")}</div>
 
-    <section class="panel">
-      <label class="row" style="justify-content:space-between;flex-wrap:nowrap;gap:12px;cursor:pointer">
-        <span><b>Automatisch plannen</b><br><span class="small muted">${auto ? "De app vult elke week in met je vaste weekschema" + (premium ? " en loopplan" : "") + "." : "Uit: je plant zelf met “+ sessie”. Je trainingen worden nog altijd afgevinkt."}</span></span>
-        <input type="checkbox" id="plAuto" ${auto ? "checked" : ""} style="width:22px;height:22px;flex:none" aria-label="Automatisch plannen"></label>
-    </section>
     ${auto ? `<div id="runPlanBox" data-premium></div>
     <section class="panel">
       <h3 style="margin:0 0 4px">Vast weekschema</h3>
@@ -242,6 +242,10 @@ export async function renderPlanner(ctx, start) {
   };
   C.view.querySelectorAll(".wnav").forEach((b) => (b.onclick = () => renderPlanner(ctx, C.addDays(from, Number(b.dataset.w)))));
   C.view.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => editSession(list.find((s) => String(s.id) === b.dataset.edit), days, R, rerender)));
+  C.view.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
+    const s = list.find((x) => String(x.id) === b.dataset.del); b.closest(".pl-sess")?.remove();
+    await deleteSession(s); C.toast(`${clean(s.title)} verwijderd`); rerender();
+  }));
   C.view.querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => editSession({ day: b.dataset.add }, days, R, rerender)));
   C.view.querySelectorAll("[data-go]").forEach((b) => (b.onclick = async () => {
     const s = list.find((x) => String(x.id) === b.dataset.go);
@@ -256,6 +260,14 @@ export async function renderPlanner(ctx, start) {
     await C.rpc("set_coach_status", { p_id: Number(b.dataset.skip), p_status: "overgeslagen", p_note: null }); rerender();
   }));
   C.view.querySelectorAll("[data-tday]").forEach((b) => (b.onclick = () => editTemplateDay(p, Number(b.dataset.tday), R, rerender)));
+}
+
+// Sessie weghalen. Met automatisch plannen aan: een sessie uit het schema weghalen = bewust rust die dag
+// (anders vult het schema ze bij de volgende keer opnieuw in). Zelf plannen: gewoon weg.
+async function deleteSession(sess) {
+  await C.rpc("save_coach_session", { p: { id: sess.id, delete: true } });
+  if (AUTO && (sess.source === "planner" || sess.source === "runplan"))
+    await C.rpc("save_coach_session", { p: { day: sess.day, category: "rust", title: "Rust", source: "user" } });
 }
 
 function sheet(title, body) {
@@ -336,10 +348,7 @@ function editSession(sess, days, R, after) {
   s.querySelector("#eSkip")?.addEventListener("click", () => st("overgeslagen"));
   s.querySelector("#eDel")?.addEventListener("click", async () => {
     if (!confirm("Deze sessie verwijderen voor deze week?")) return;
-    await C.rpc("save_coach_session", { p: { id: sess.id, delete: true } });
-    // een sessie uit het schema weghalen = bewust rust die dag (anders vult het schema ze opnieuw in)
-    if (sess.source === "planner") await C.rpc("save_coach_session", { p: { day: sess.day, category: "rust", title: "Rust", source: "user" } });
-    s.remove(); after();
+    await deleteSession(sess); s.remove(); after();
   });
 }
 
@@ -376,7 +385,7 @@ function renderRunPlan(p, rp, plan, stats, from, after) {
     <div class="rp-bars" role="img" aria-label="Omvang per week tot de wedstrijd">${plan.weeks.map((w) => `<i class="${w.phase} ${w.i === cur.i ? "cur" : ""}" style="height:${Math.max(8, (w.total / max) * 100)}%" title="Week ${w.i + 1}: ${w.total} min"></i>`).join("")}</div>
     <div class="rp-legend small muted"><span class="basis">basis</span><span class="opbouw">opbouw</span><span class="piek">piek</span><span class="taper">taper</span></div>
     <h4 class="sub-h">Deze week · ${cur.total} min lopen</h4>
-    ${cur.sessions.map((s, i) => `<div class="meal"><span><b>${C.esc(s.title)}</b><br><span class="small muted">${RP.WDL[s.dow]} · ${C.esc(RP.sessionDetails(s, stats))}</span></span><span class="k">${s.min}′<br><button class="link-btn inline small" data-fit="${i}" aria-label="${C.esc(s.title)} als Garmin-bestand">⌚ .FIT</button></span></div>`).join("")}
+    ${cur.sessions.map((s, i) => `<div class="meal"><span><b>${C.esc(s.title)}</b><br><span class="small muted">${RP.WDL[s.dow]} · ${C.esc(RP.sessionDetails(s, stats, ZONES))}</span></span><span class="k">${s.min}′<br><button class="link-btn inline small" data-fit="${i}" aria-label="${C.esc(s.title)} als Garmin-bestand">⌚ .FIT</button></span></div>`).join("")}
     <details class="small" style="margin-top:6px"><summary>Runs op je Garmin zetten</summary>
       <p style="margin:6px 0 0">Tik op ⌚ .FIT: je krijgt een Garmin-workout met de stappen en je hartslagzone, zodat je horloge je begeleidt. Sluit je horloge met een kabel aan op een computer en zet het bestand in de map <b>GARMIN/NewFiles</b>; na het loskoppelen staat de run bij Training → Workouts. Op een Mac heb je daarvoor het gratis OpenMTP nodig. Vanaf je iPhone kan het niet rechtstreeks: Garmin laat dat alleen toe voor goedgekeurde partners.</p></details>
     ${cur.note ? `<p class="small" style="margin:8px 0 0"><b>Coach:</b> ${C.esc(cur.note)}</p>` : ""}
@@ -397,7 +406,7 @@ function renderRunPlan(p, rp, plan, stats, from, after) {
   box.querySelectorAll("[data-fit]").forEach((b) => (b.onclick = async () => {
     const s = cur.sessions[Number(b.dataset.fit)];
     const F = await import("./fit.js");
-    F.downloadFit(`${s.title} ${RP.WDL[s.dow].slice(0, 2)} ${s.min}min`, F.runSteps(s));
+    F.downloadFit(`${s.title} ${RP.WDL[s.dow].slice(0, 2)} ${s.min}min`, F.runSteps(s, ZONES?.z2));
     C.toast("Garmin-bestand gedownload");
   }));
   box.querySelector("#rStop").onclick = async () => {

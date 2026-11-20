@@ -76,7 +76,13 @@ function pickDays(runs, longDay, pref) {
   return [longDay, ...pattern.map((o) => (longDay + 1 + o) % 7)].filter((v, i, a) => a.indexOf(v) === i).slice(0, runs).sort((a, b) => a - b);
 }
 
-export function sessionDetails(s, stats) {
+export function sessionDetails(s, stats, zones) {
+  // zones = getZones() uit profile.js: zet je eigen hartslaggrenzen erbij
+  const z = zones?.zones, bpm = (i) => (z ? ` · ${z[i][0]}–${z[i][1]} bpm` : "");
+  const d = sessionText(s, stats);
+  return d + ({ easy: bpm(1), long: bpm(1), interval: z ? ` · stevig in Z4 (${z[3][0]}–${z[3][1]} bpm)` : "", tempo: z ? ` · tempo in Z3 (${z[2][0]}–${z[2][1]} bpm)` : "" }[s.type] || "");
+}
+function sessionText(s, stats) {
   const easy = stats?.easy_pace ? `${Math.floor(stats.easy_pace)}:${String(Math.round((stats.easy_pace % 1) * 60)).padStart(2, "0")}/km of trager` : "praattempo";
   return {
     easy: `Zone 2, ${easy} · je kan nog praten`,

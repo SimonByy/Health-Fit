@@ -101,7 +101,7 @@ function detail(m, r) {
       ${h ? ` Over ongeveer ${h < 30 ? `${h} uur` : `${Math.round(h / 24)} dagen`} is die spiergroep weer klaar.` : ""}</p>
     ${Object.entries(byDay).map(([day, g]) => `<h4 class="sub-h">${C.esc(C.shortDate(day))} · ${C.esc(g.workout || "Training")}</h4>
       ${g.items.map((w) => `<div class="meal"><span>${C.esc(w.exercise)}</span><span class="k">${w.sets} set${w.sets > 1 ? "s" : ""}<br><span class="small muted">+${w.share}%</span></span></div>`).join("")}`).join("")}
-    <p class="small muted" style="margin-top:12px">Hoe het werkt: elke werkset telt mee en weegt na 48 uur nog maar half. Ongeveer 6 harde sets net gedaan = 100%. Trainde je een spier hard (4+ sets), dan staat ze de eerste 24 uur minstens op belast en tot 48 uur minstens op half belast. Onder 25% = klaar, tot 55% = half belast, daarboven = belast. Het is een schatting op basis van je sets, geen meting.</p>
+    <p class="small muted" style="margin-top:12px">Hoe het werkt: elke werkset telt mee en weegt na 48 uur nog maar half (36 of 60 uur als je in Instellingen → Profiel snel of traag herstel kiest). Ongeveer 6 harde sets net gedaan = 100%. Trainde je een spier hard (4+ sets), dan staat ze de eerste 24 uur minstens op belast en tot 48 uur minstens op half belast. Onder 25% = klaar, tot 55% = half belast, daarboven = belast. Het is een schatting op basis van je sets, geen meting.</p>
   </div>`;
   document.body.appendChild(s);
   s.addEventListener("click", (e) => { if (e.target === s || e.target.closest("[data-close]")) s.remove(); });

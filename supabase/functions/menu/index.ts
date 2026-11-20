@@ -45,7 +45,7 @@ function clean(items: any[], R: Map<number, any>, days: string[]) {
   }).filter(Boolean) as any[];
 }
 
-async function runFor(uid: string, force = false, dry = false) {
+async function runFor(uid: string, force = false, dry = false, scheduled = false) {
   const db = asUser(uid);
   const legacy = (await call<string>(admin, "internal_legacy_user")) === uid;
   const key = (await call<string | null>(db, "internal_get_secret", { p_name: "gemini_api_key" })) || (legacy ? Deno.env.get("GEMINI_API_KEY") ?? "" : "");
@@ -63,6 +63,8 @@ async function runFor(uid: string, force = false, dry = false) {
        from app.mp_recipes where not coalesce(hidden, false) and not coalesce(disliked, false) and status = 'klaar' and kcal is not null) as recepten,
     (select jsonb_agg(jsonb_build_object('week', w.week_start, 'dag', i.day, 'slot', i.slot, 'recept', i.recipe_id) order by i.day)
        from app.mp_week_items i join app.mp_weeks w on w.id = i.week_id where w.week_start >= ${q(add(W, -28))} and w.week_start < ${q(W)}) as vorige_weken` });
+  // Automatisch weekmenu uitgezet in de app (Menu → Automatisch weekmenu): de vrijdagse run slaat je over; zelf vragen kan nog
+  if (scheduled && d?.regels?.auto === false) return { uid, skipped: "automatisch uit" };
   if (d?.al_goedgekeurd && !force && !dry) return { uid, skipped: "al goedgekeurd" };
   const recipes = d?.recepten || [];
   if (recipes.length < 4) return { uid, skipped: "te weinig recepten" };
@@ -113,7 +115,7 @@ Deno.serve(async (req) => {
     const users = await call<string[]>(admin, "internal_briefing_users");
     const work = (async () => {
       const out = [];
-      for (const u of users) { try { out.push(await runFor(u, false, !!body.dry)); } catch (e) { out.push({ uid: u, error: String(e).slice(0, 300) }); } }
+      for (const u of users) { try { out.push(await runFor(u, false, !!body.dry, true)); } catch (e) { out.push({ uid: u, error: String(e).slice(0, 300) }); } }
       console.log(JSON.stringify(out));
       return out;
     })();

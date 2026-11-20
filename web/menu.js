@@ -40,7 +40,10 @@ const ingLine = (i, mult = 1, shop = false) => {
   return amt ? `${amt} ${i.name}` : `${i.name} (naar smaak)`;
 };
 
-async function load() { D = await C.rpc("mp_get"); return D; }
+async function load() {
+  const [d, mp] = await Promise.all([C.rpc("mp_get"), C.rpc("get_setting", { p_key: "mealprep" }).catch(() => null)]);
+  D = d; MP_AUTO = mp?.auto !== false; return D;
+}
 async function reload() { await load(); draw(); }
 
 // ======================================================================
@@ -134,9 +137,19 @@ function weekPicker(w) {
   const list = D.weeks.filter((x) => !cur || x.week_start >= cur.week_start).sort((a, b) => a.week_start.localeCompare(b.week_start));
   return `<div class="chips mp-weeks">${list.map((x) => `<button class="chip ${w && x.id === w.id ? "on" : ""}" data-week="${x.id}">${weekLabel(x)} ${C.esc(dshort(x.week_start).replace(/^\S+ /, ""))}</button>`).join("")}
     <button class="chip" id="newWeek">+ Week erna</button>
-    <button class="chip" id="aiWeek" data-premium>Menu laten maken</button></div>`;
+    <button class="chip" id="aiWeek" data-premium>Menu laten maken</button></div>
+    <label class="mp-auto" data-premium><span><b>Automatisch weekmenu</b><small>${MP_AUTO ? "Elke vrijdag maakt je coach het menu voor de komende week." : "Uit: je plant zelf. “Menu laten maken” kan nog altijd als je het wil."}</small></span>
+      <span class="switch"><input type="checkbox" id="mpAuto" ${MP_AUTO ? "checked" : ""} aria-label="Automatisch weekmenu"><span></span></span></label>`;
 }
+let MP_AUTO = true;
 function bindWeekPicker(box, w) {
+  box.querySelector("#mpAuto")?.addEventListener("change", async (e) => {
+    const on = e.target.checked;
+    try {
+      await C.rpc("mp_set_auto", { p_on: on });
+      MP_AUTO = on; C.toast(on ? "Je coach maakt weer elke vrijdag je weekmenu" : "Automatisch weekmenu staat uit: je plant zelf"); draw();
+    } catch (err) { e.target.checked = !on; C.toast(err.message, 5000); }
+  });
   box.querySelectorAll("[data-week]").forEach((b) => (b.onclick = () => { weekSel = Number(b.dataset.week); curDay = null; draw(); }));
   box.querySelector("#newWeek")?.addEventListener("click", async () => {
     const copy = !!w?.items?.length && confirm(`De week erna maken als kopie van de week van ${dshort(w.week_start)}?\n\nOK = kopie, Annuleren = lege week`);
@@ -194,12 +207,13 @@ function drawWeek(box) {
     const prev = D.weeks.find((x) => x.items?.length && (!w || x.week_start < w.week_start));
     box.innerHTML = `${weekBar}<section class="panel"><h3>${w ? "Deze week is nog leeg" : "Nog geen weekmenu"}</h3>
       ${prev ? `<button class="btn" id="copyPrev" style="width:100%;margin:6px 0 10px">⧉ Kopieer de week van ${C.esc(dshort(prev.week_start))}</button>` : ""}
-      <p class="hint" data-premium>Elke vrijdag maakt je coach het menu voor de komende week, met je favorieten en je wensen hieronder. Of tik op “Menu laten maken”.</p>
+      <p class="hint" data-premium>${MP_AUTO ? "Elke vrijdag maakt je coach het menu voor de komende week, met je favorieten en je wensen hieronder. Of tik op “Menu laten maken”." : "Automatisch plannen staat uit. Vul de dagen zelf met je recepten, of tik op “Menu laten maken”."}</p>
       <p class="hint" data-free>Kopieer een vorige week of vul de dagen zelf met je recepten.</p>
       <button class="btn" id="goRec">Naar mijn recepten</button></section>`;
     $("#goRec").onclick = () => { tab = "recepten"; draw(); };
     $("#copyPrev")?.addEventListener("click", async () => { try { weekSel = await C.rpc("mp_week_new", { p_copy_from: prev.id }); C.toast("Week gekopieerd. Pas aan wat je anders wilt."); reload(); } catch (e) { C.toast(e.message, 5000); } });
     bindWeekPicker(box, w); mountWish(box);
+    if (dayOpen && document.body.contains(dayOpen.card)) fillDay();
     return;
   }
   const g = D.goals || {};
@@ -263,7 +277,8 @@ function fillDay() {
       return `<div class="dt-row ${it.eaten ? "eaten" : ""}"><span class="dt-t">${SLOT_AT[sl]}</span>
         ${canEat ? `<label class="dt-ck" title="Gegeten"><input type="checkbox" data-eat="${it.id}" ${it.eaten ? "checked" : ""} aria-label="${C.esc(r.name)} gegeten"><span></span></label>` : `<span class="dt-dot"></span>`}
         <button class="dt-it" data-item="${it.id}"><span class="dt-n"><i aria-hidden="true">${emoOf(r, sl)}</i> ${C.esc(r.name)}${q !== 1 ? ` <span class="mp-q">× ${C.fmt(q, 2)}</span>` : ""}</span>
-          <span class="dt-m"><b>${C.fmt(q * (n(r.kcal) || 0))} kcal</b> <span class="pkv"><i class="p">P ${C.fmt(q * (n(r.protein) || 0))}</i><i class="c">C ${C.fmt(q * (n(r.carbs) || 0))}</i><i class="f">F ${C.fmt(q * (n(r.fat) || 0))}</i></span></span></button></div>`;
+          <span class="dt-m"><b>${C.fmt(q * (n(r.kcal) || 0))} kcal</b> <span class="pkv"><i class="p">P ${C.fmt(q * (n(r.protein) || 0))}</i><i class="c">C ${C.fmt(q * (n(r.carbs) || 0))}</i><i class="f">F ${C.fmt(q * (n(r.fat) || 0))}</i></span></span></button>
+        <button class="icon-btn dt-rm" data-rm="${it.id}" aria-label="${C.esc(r.name)} uit het menu halen">✕</button></div>`;
     }).join("")}</div>
     ${suggestHtml(d, its, t, g)}
     ${d <= D.today && its.length && !its.every((x) => x.eaten) ? `<button class="btn secondary" data-dayeat="${d}" style="width:100%;margin-top:10px">✓ Alles van deze dag gegeten</button>` : ""}`;
@@ -273,6 +288,7 @@ function fillDay() {
     const it = w.items.find((x) => x.id === Number(b.dataset.item)); openRecipe(recById(it.recipe_id), { item: it });
   }));
   card.querySelectorAll("[data-addslot]").forEach((b) => (b.onclick = () => openAddSlot(w, d, b.dataset.addslot)));
+  card.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = () => removeItem(w.items.find((x) => x.id === Number(b.dataset.rm)))));
   card.querySelectorAll("[data-eat]").forEach((cb) => (cb.onchange = async () => {
     const it = w.items.find((x) => x.id === Number(cb.dataset.eat)); const r = recById(it.recipe_id);
     try { await C.rpc("mp_item_eaten", { p_item_id: it.id, p_eaten: cb.checked }); it.eaten = cb.checked;
@@ -525,47 +541,68 @@ function openRecipe(r, { item = null } = {}) {
 
   const render = () => {
     const m = (k) => n(r[k]);
-    card.innerHTML = `${head(C.esc(r.name))}
-      <p class="small muted" style="margin:2px 0 8px">${SLOTS[r.meal_type]}${r.status === "concept" ? " · concept" : ""} · ${r.macros_checked ? `<span class="ok-badge">✓ uitgerekend uit je producten</span>` : `<span class="warn-badge">geschat</span> <button class="linkbtn" id="fixMac">koppel de ingrediënten</button>`}</p>
-      ${item ? `<section class="mp-box"><div class="row" style="justify-content:space-between">
-          <span class="small"><b style="text-transform:capitalize">${C.esc(dshort(item.day))}</b> · ${SLOTS[item.slot].toLowerCase()}</span>
-          <span class="mp-step" aria-label="Porties in je menu"><button data-ip="-">−</button><b>${C.fmt(itemPortions, 2)}</b><button data-ip="+">+</button><span class="small muted">${itemPortions === 1 ? "portie" : "porties"}</span></span></div>
-          <div class="mp-stepset"><span class="small muted">Porties aanpassen per</span>${[[0.25, "¼"], [0.5, "½"], [1, "hele"]].map(([v, l]) =>
-            `<button class="chip ${Number(r.portion_step || 0.25) === v ? "on" : ""}" data-pstep="${v}">${l}</button>`).join("")}</div>
+    const g = D.goals || {};
+    const kc = m("kcal"), P = m("protein") || 0, Cb = m("carbs") || 0, F = m("fat") || 0;
+    // aandeel kcal uit eiwit/koolh./vet (4/4/9) voor de ring
+    const ek = P * 4 + Cb * 4 + F * 9 || 1;
+    const share = [["p", P * 4 / ek], ["c", Cb * 4 / ek], ["f", F * 9 / ek]];
+    let acc = 0;
+    const ring = `<svg viewBox="0 0 42 42" class="rx-ring" aria-hidden="true"><circle cx="21" cy="21" r="15.9" fill="none" stroke="var(--surface-2)" stroke-width="4.2"/>
+      ${share.map(([k, v]) => { const seg = `<circle cx="21" cy="21" r="15.9" fill="none" class="rx-seg ${k}" stroke-width="4.2" stroke-dasharray="${(v * 100).toFixed(2)} ${(100 - v * 100).toFixed(2)}" stroke-dashoffset="${(25 - acc * 100).toFixed(2)}"/>`; acc += v; return seg; }).join("")}</svg>`;
+    const pctOf = (v, goal) => (n(goal) ? Math.round((v / n(goal)) * 100) : null);
+    const mrow = (cls, label, v, goal) => { const p = pctOf(v, goal); return `<div class="rx-m ${cls}"><span class="rx-ml"><i></i>${label}</span>
+      <b>${C.fmt(v, v < 10 ? 1 : 0)} g</b><span class="rx-mp">${p != null ? `${p}% dagdoel` : ""}</span>
+      <span class="rx-bar"><i style="width:${p != null ? Math.min(100, p) : 0}%"></i></span></div>`; };
+    const ings = r.ingredients || [];
+    const ingRows = ings.map((i) => { const mm = ingMacros(i); return `<tr>
+      <td class="rx-in">${C.esc(i.name)}${i.pantry ? `<small>altijd in huis</small>` : ""}</td>
+      <td class="rx-ia">${n(i.amount) === null ? "naar smaak" : C.esc(amountText(n(i.amount) * portions, i.unit))}</td>
+      <td class="rx-ik">${mm ? C.fmt(mm.kcal * portions) : "–"}</td><td class="rx-ip">${mm ? C.fmt(mm.protein * portions, 1) : "–"}</td></tr>`; }).join("");
+    const totG = ings.reduce((a, i) => a + (ingGrams(i) || 0), 0);
+    const per100 = totG && kc != null && r.servings ? (kc * (r.servings || 1)) / totG * 100 : null;
+    card.innerHTML = `<div class="rx-top"><button class="icon-btn rx-fav ${r.favorite ? "on" : ""}" data-op="lekker" aria-label="${r.favorite ? "Lekker (aan)" : "Markeer als lekker"}" aria-pressed="${!!r.favorite}">${r.favorite ? "★" : "☆"}</button>
+        <button class="icon-btn" data-close aria-label="Sluiten">✕</button></div>
+      <header class="rx-hero"><span class="rx-emo" aria-hidden="true">${emoOf(r, r.meal_type)}</span>
+        <div><h2 class="rx-title">${C.esc(r.name)}</h2>
+        <p class="rx-tags"><span class="rx-tag">${SLOTS[r.meal_type] || "Gerecht"}</span>${r.servings > 1 ? `<span class="rx-tag">${C.fmt(r.servings)} porties</span>` : ""}${r.status === "concept" ? `<span class="rx-tag warn">concept</span>` : ""}
+          ${r.macros_checked ? `<span class="rx-tag ok">✓ echte productwaarden</span>` : `<button class="rx-tag warn" id="fixMac">geschat · koppel producten</button>`}${r.disliked ? `<span class="rx-tag bad">niet lekker</span>` : ""}</p></div></header>
+      ${item ? `<section class="rx-plan">
+          <div class="rx-plan-h"><span><b style="text-transform:capitalize">${C.esc(dshort(item.day))}</b><small>${SLOTS[item.slot]}</small></span>
+            <span class="mp-step" aria-label="Porties in je menu"><button data-ip="-" aria-label="Minder">−</button><b>${C.fmt(itemPortions, 2)}</b><button data-ip="+" aria-label="Meer">+</button></span></div>
+          <div class="mp-stepset"><span class="small muted">Stap</span>${[[0.25, "¼"], [0.5, "½"], [1, "1"]].map(([v, l]) =>
+            `<button class="chip ${Number(r.portion_step || 0.25) === v ? "on" : ""}" data-pstep="${v}" aria-label="Per ${l} portie">${l}</button>`).join("")}</div>
           <div class="mp-acts">
             <button class="mp-act" id="swap"><span>⇄</span>Wisselen</button>
             ${item.day <= D.today ? `<button class="mp-act ${item.eaten ? "on" : ""}" id="eat"><span>${item.eaten ? "✓" : "○"}</span>${item.eaten ? "Gegeten" : "Gegeten?"}</button>` : ""}
-            <button class="mp-act" id="edit2"><span>✏️</span>Aanpassen</button>
-            ${r.ingredients?.length ? `<button class="mp-act" id="cook2"><span>👨‍🍳</span>Koken</button>` : ""}
-          </div>
-          <button class="linkbtn" id="unplan" style="margin-top:8px;color:var(--bad)">Uit het menu van deze dag halen</button></section>` : ""}
-      ${r.status === "concept" ? `<section class="mp-box"><p class="small" style="margin:0 0 8px">${C.esc(r.description || "Nog geen details.")}</p>
-          <button class="btn" id="finish" style="width:100%">✏️ Afmaken: koppel de ingrediënten aan producten</button></section>` : ""}
-      ${m("kcal") != null ? `<div class="macros" style="grid-template-columns:repeat(4,1fr)">
-          ${[["kcal", "kcal", ""], ["protein", "eiwit", "g"], ["carbs", "koolh.", "g"], ["fat", "vet", "g"]].map(([k, l, u]) =>
-            `<div class="macro"><div class="v">${C.fmt(m(k))}${u ? `<small> ${u}</small>` : ""}</div><div class="l">${l} / portie</div></div>`).join("")}</div>` : ""}
-      ${r.ingredients?.length ? `<div class="row" style="justify-content:space-between;margin-top:14px">
-          <h4 style="margin:0">Ingrediënten</h4>
-          <span class="mp-step" aria-label="Aantal porties"><button data-p="-">−</button><b>${C.fmt(portions, 2)}</b><button data-p="+">+</button><span class="small muted">porties</span></span></div>
-        <ul class="mp-ul">${r.ingredients.map((i) => `<li>${C.esc(ingLine(i, portions))}${i.pantry ? ` <span class="small muted">· altijd in huis</span>` : ""}</li>`).join("")}</ul>` : ""}
-      ${r.steps?.length ? `<h4 style="margin:14px 0 4px">Bereiding</h4><ol class="mp-ul">${r.steps.map((s) => `<li>${C.esc(s)}</li>`).join("")}</ol>` : ""}
-      ${r.storage ? `<p class="small" style="margin:10px 0 0"><b>Bewaren:</b> ${C.esc(r.storage)}</p>` : ""}
-      ${r.source_url && /^https?:\/\//.test(r.source_url) ? `<p class="small" style="margin:6px 0 0"><a href="${C.esc(r.source_url)}" target="_blank" rel="noopener noreferrer">Bron van het recept</a></p>` : ""}
+            <button class="mp-act" id="edit2"><span>✎</span>Aanpassen</button>
+            ${ings.length ? `<button class="mp-act" id="cook2"><span>▶</span>Koken</button>` : ""}
+            <button class="mp-act danger" id="unplan"><span>✕</span>Weghalen</button>
+          </div></section>` : ""}
+      ${r.status === "concept" ? `<section class="rx-card"><p class="small" style="margin:0 0 8px">${C.esc(r.description || "Nog geen details.")}</p>
+          <button class="btn" id="finish" style="width:100%">Afmaken: koppel de ingrediënten aan producten</button></section>` : ""}
+      ${kc != null ? `<section class="rx-card rx-nutri">
+          <div class="rx-ringwrap">${ring}<div class="rx-kc"><b>${C.fmt(kc * (item ? itemPortions : 1))}</b><small>kcal${item && itemPortions !== 1 ? ` · ${C.fmt(itemPortions, 2)} porties` : " / portie"}</small></div></div>
+          <div class="rx-ms">${mrow("p", "Eiwit", P * (item ? itemPortions : 1), g.protein_g)}${mrow("c", "Koolhydraten", Cb * (item ? itemPortions : 1), g.carbs_g)}${mrow("f", "Vet", F * (item ? itemPortions : 1), g.fat_g)}</div>
+          <p class="rx-foot">${n(g.kcal_in) ? `${pctOf(kc * (item ? itemPortions : 1), g.kcal_in)}% van je ${C.fmt(g.kcal_in)} kcal` : ""}${kc ? `${n(g.kcal_in) ? " · " : ""}${C.fmt(P / kc * 100, 1)} g eiwit per 100 kcal` : ""}${per100 ? ` · ${C.fmt(per100)} kcal per 100 g` : ""}</p>
+        </section>` : ""}
+      ${ings.length ? `<section class="rx-card"><div class="rx-sh"><h4>Ingrediënten</h4>
+          <span class="mp-step" aria-label="Aantal porties"><button data-p="-" aria-label="Minder porties">−</button><b>${C.fmt(portions, 2)}</b><button data-p="+" aria-label="Meer porties">+</button><span class="small muted">${portions === 1 ? "portie" : "porties"}</span></span></div>
+        <table class="rx-ing"><thead><tr><th>Ingrediënt</th><th>Hoeveel</th><th>kcal</th><th>eiwit</th></tr></thead><tbody>${ingRows}</tbody></table></section>` : ""}
+      ${r.steps?.length ? `<section class="rx-card"><h4>Bereiding</h4><ol class="rx-steps">${r.steps.map((st) => `<li>${C.esc(st)}</li>`).join("")}</ol>
+        ${r.storage ? `<p class="rx-store"><b>Bewaren</b> ${C.esc(r.storage)}</p>` : ""}</section>` : (r.storage ? `<p class="rx-store"><b>Bewaren</b> ${C.esc(r.storage)}</p>` : "")}
+      ${r.source_url && /^https?:\/\//.test(r.source_url) ? `<p class="small" style="margin:6px 2px 0"><a href="${C.esc(r.source_url)}" target="_blank" rel="noopener noreferrer">Bron van het recept ↗</a></p>` : ""}
       ${!item ? `<div class="mp-actions">
-          ${r.ingredients?.length ? `<button class="btn" id="cook">👨‍🍳 Kookmodus</button>` : ""}
-          <button class="btn secondary" id="edit">✏️ Recept aanpassen</button>
+          ${ings.length ? `<button class="btn" id="cook">Kookmodus</button>` : ""}
+          <button class="btn secondary" id="edit">Recept aanpassen</button>
         </div>` : ""}
-      <details class="mp-more"><summary>Meer</summary>
-        <div class="row mp-op" style="margin-top:8px">
-          <button class="btn ${r.favorite ? "" : "secondary"}" data-op="lekker">${r.favorite ? "★ Lekker" : "☆ Lekker"}</button>
-          <button class="btn ${r.disliked ? "" : "secondary"}" data-op="niet" ${r.disliked ? 'style="background:var(--bad)"' : ""}>👎 Niet lekker</button>
+      <details class="mp-more rx-more"><summary>Meer opties</summary>
+        <div class="rx-list">
+          ${ings.length ? `<button class="rx-li" id="toList"><span>🛒</span>${C.fmt(portions, 2)} ${portions === 1 ? "portie" : "porties"} extra op mijn boodschappenlijst</button>
+          <button class="rx-li" id="bevel"><span>⧉</span>Kopieer voor Bevel</button>` : ""}
+          ${kc != null && !item ? `<button class="rx-li" id="logIt"><span>＋</span>1 portie loggen in Voeding</button>` : ""}
+          <button class="rx-li ${r.disliked ? "on" : ""}" data-op="niet"><span>👎</span>${r.disliked ? "Niet lekker (tik om te wissen)" : "Niet lekker: niet meer in mijn menu"}</button>
         </div>
-        ${r.ingredients?.length ? `<div class="mp-actions">
-          <button class="btn secondary" id="toList">+ ${C.fmt(portions, 2)} porties extra op mijn lijst</button>
-          <button class="btn secondary" id="bevel">Kopieer voor Bevel</button>
-          ${m("kcal") != null && !item ? `<button class="btn secondary" id="logIt">1 portie loggen in Voeding</button>` : ""}
-        </div>` : ""}
-        <div class="field" style="margin-top:14px"><label for="note">Opmerking voor de planner</label>
+        <div class="field" style="margin-top:12px"><label for="note">Opmerking voor de planner</label>
           <textarea class="input" id="note" rows="2" maxlength="500" placeholder="bv. minder zout, meer saus, enkel in het weekend">${C.esc(r.note || "")}</textarea></div>
         <div class="row" style="justify-content:space-between"><button class="btn ghost" id="saveNote">Opmerking bewaren</button>
           <button class="linkbtn" id="hide" style="color:var(--bad)">Recept verwijderen</button></div>
@@ -615,10 +652,7 @@ function openRecipe(r, { item = null } = {}) {
       catch (e) { C.toast(e.message, 4000); }
     }));
     card.querySelector("#swap")?.addEventListener("click", () => { close(); openSwap(item); });
-    card.querySelector("#unplan")?.addEventListener("click", async () => {
-      try { await C.rpc("mp_item_remove", { p_item_id: item.id }); close(); C.toast(`${r.name} uit het menu gehaald`); reload(); }
-      catch (e) { C.toast(e.message, 5000); }
-    });
+    card.querySelector("#unplan")?.addEventListener("click", async () => { close(); removeItem(item); });
     card.querySelector("#aiFill")?.addEventListener("click", async (e) => {
       e.target.disabled = true;
       try {
@@ -676,6 +710,24 @@ function openRecipe(r, { item = null } = {}) {
     };
   };
   render();
+}
+
+// Maaltijd uit het menu halen: meteen weg in rooster, dagtotalen en boodschappenlijst; was ze al gegeten, dan ook uit Voeding.
+// Met "Ongedaan maken" zet je ze terug.
+async function removeItem(it) {
+  if (!it) return;
+  const r = recById(it.recipe_id), w = currentWeek();
+  try {
+    if (it.eaten) await C.rpc("mp_item_eaten", { p_item_id: it.id, p_eaten: false });
+    await C.rpc("mp_item_remove", { p_item_id: it.id });
+    if (w) w.items = w.items.filter((x) => x.id !== it.id);
+    draw();
+    C.toast(`${r?.name || "Maaltijd"} uit het menu gehaald`, 5000, { label: "Ongedaan maken", run: async () => {
+      try { await C.rpc("mp_item_add", { p_week_id: it.week_id ?? w?.id, p_day: it.day, p_slot: it.slot, p_recipe_id: it.recipe_id, p_portions: n(it.portions) || 1 }); reload(); }
+      catch (e) { C.toast(e.message, 5000); }
+    } });
+    reload();
+  } catch (e) { C.toast(e.message, 5000); }
 }
 
 function showText(title, text) {

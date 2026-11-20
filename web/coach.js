@@ -124,7 +124,7 @@ export async function renderCoachCalendar(ctx, el, start) {
     }).join("")}</div>
     <label class="row" style="justify-content:space-between;flex-wrap:nowrap;gap:10px;margin-top:10px;cursor:pointer">
       <span class="small"><b>Automatisch plannen</b> · ${autoOn ? "aan: vult je week met je vaste schema" : "uit: je plant zelf"}</span>
-      <input type="checkbox" id="wAuto" ${autoOn ? "checked" : ""} style="width:22px;height:22px;flex:none" aria-label="Automatisch plannen"></label>
+      <span class="switch"><input type="checkbox" id="wAuto" ${autoOn ? "checked" : ""} aria-label="Automatisch plannen"><span></span></span></label>
     <a class="btn secondary" href="#/planner" style="display:block;text-align:center;text-decoration:none;margin-top:10px">${list.length ? "Planner openen" : "Week plannen"}</a>
   </section>`;
   el.querySelector("#wAuto").onchange = async (e) => {

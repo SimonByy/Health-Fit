@@ -48,6 +48,8 @@ const restLabel = (s) => (s ? (s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60)
 const e1rm = (kg, reps) => (kg > 0 && reps >= 1 && reps <= 15 ? kg * (1 + reps / 30) : null);
 
 let ctxCache = {};
+let DEF_REST = 90; // standaard rusttijd (Instellingen → Profiel)
+async function loadDefRest() { try { const P = await import("./profile.js"); DEF_REST = Number((await P.getProfile(C)).p.rest_sec) || 90; } catch { /* standaard 90 s */ } }
 
 // ---------------- progressie: voorstel voor vandaag ----------------
 // Dubbele progressie: eerst herhalingen opbouwen binnen je bereik, dan zwaarder.
@@ -85,7 +87,7 @@ async function loadContext(titles) {
   if (need.length) Object.assign(ctxCache, await C.rpc("get_exercise_context", { p_titles: need }));
 }
 
-function newExercise(title, muscle, rest_s = 90, nSets = 3) {
+function newExercise(title, muscle, rest_s = DEF_REST, nSets = 3) {
   const last = ctxCache[title]?.last?.filter((s) => s.type !== "warmup") || [];
   const sets = [];
   for (let i = 0; i < Math.max(nSets, 1); i++) sets.push({ type: "normal", kg: "", reps: "", done: false });
@@ -109,8 +111,9 @@ export async function startWorkout(ctx, { template = null, repeatOf = null } = {
     list = (d.exercises || []).map((e) => ({ title: e.exercise, muscle: e.muscle, sets: (e.sets || []).filter((s) => s.type !== "warmup").length || 3 }));
   }
   ctxCache = {};
+  await loadDefRest();
   if (list.length) await loadContext(list.map((e) => e.title));
-  w.exercises = list.map((e) => newExercise(e.title, e.muscle, e.rest_s ?? 90, e.sets || 3));
+  w.exercises = list.map((e) => newExercise(e.title, e.muscle, e.rest_s ?? DEF_REST, e.sets || 3));
   save(w);
   location.hash = "#/workout";
 }
@@ -486,7 +489,7 @@ export async function editTemplate(ctx, tpl, after) {
       ${t.exercises.map((e, i) => `<div class="tpl-ex" data-i="${i}">
           <span><b>${C.esc(e.title)}</b><br><span class="small muted">${C.esc(MUSCLES[e.muscle] || e.muscle || "")}</span></span>
           <label class="small">Sets <input class="input tsets" inputmode="numeric" value="${e.sets || 3}" style="width:56px"></label>
-          <select class="input trest" aria-label="Rusttijd">${REST_OPTIONS.map((r) => `<option value="${r}" ${r === (e.rest_s ?? 90) ? "selected" : ""}>⏱ ${restLabel(r)}</option>`).join("")}</select>
+          <select class="input trest" aria-label="Rusttijd">${REST_OPTIONS.map((r) => `<option value="${r}" ${r === (e.rest_s ?? DEF_REST) ? "selected" : ""}>⏱ ${restLabel(r)}</option>`).join("")}</select>
           <button class="icon-btn tdel" aria-label="Verwijderen">✕</button></div>`).join("") || `<p class="muted small">Nog geen oefeningen.</p>`}
       <button class="btn secondary" id="tAdd" style="width:100%;margin:8px 0">+ Oefening</button>
       <div class="row">
@@ -501,7 +504,7 @@ export async function editTemplate(ctx, tpl, after) {
       row.querySelector(".trest").onchange = (ev) => (e.rest_s = Number(ev.target.value));
       row.querySelector(".tdel").onclick = () => { t.exercises.splice(Number(row.dataset.i), 1); draw(); };
     });
-    sheet.querySelector("#tAdd").onclick = () => openPicker((title, muscle) => { t.exercises.push({ title, muscle, sets: 3, rest_s: 90 }); draw(); });
+    sheet.querySelector("#tAdd").onclick = () => openPicker((title, muscle) => { t.exercises.push({ title, muscle, sets: 3, rest_s: DEF_REST }); draw(); });
     sheet.querySelector("#tSave").onclick = async () => {
       if (!t.name.trim()) return C.toast("Geef het schema een naam");
       await C.rpc("save_template", { p: { id: tpl?.id, name: t.name, exercises: t.exercises } });
