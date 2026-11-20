@@ -567,6 +567,7 @@ async function renderToday() {
   $("#addCaff")?.addEventListener("click", () => quickLog("dietary_caffeine", 50, "50 mg cafeïne gelogd", reload));
   $("#logWeight")?.addEventListener("click", () => openWeightForm(d.last_weight?.kg));
   import("./timeline.js").then((T) => { const el = $("#todayTimeline"); if (el) T.renderTimeline(ctx, el, state.day); }).catch(() => {});
+  if (!window.__tlHook) { window.__tlHook = true; window.addEventListener("hh-day-changed", (e) => { if ($("#todayTimeline")) { e.preventDefault(); renderToday(); } }); }
   import("./ready.js").then((R) => {
     const el = $("#todayReady"); if (!el) return;
     readyRefresh = () => { const cur = $("#todayReady"); if (cur) R.renderReadiness(ctx, cur, state.day); };

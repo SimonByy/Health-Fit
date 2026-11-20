@@ -97,10 +97,11 @@ export async function renderNutrition(ctx, state) {
         <span class="mk">${eat.length ? `<b>${C.fmt(kc)} kcal${shut ? ` · ${eat.length} ${eat.length === 1 ? "item" : "items"}` : ""}</b>${pkv(sum("protein"), sum("carbs"), sum("fat"))}` : ""}</span></button>
         <button class="madd" data-add="${m}" aria-label="Iets toevoegen aan ${(LABEL[m] || m).toLowerCase()}">+</button></header>
       <div class="mbody">
-      ${plan.map((p) => { const q = Number(p.portions) || 1; return `<label class="mplan ${p.eaten ? "eaten" : ""}">
-          <input type="checkbox" data-plan="${p.id}" ${p.eaten ? "checked" : ""}>
-          <span class="mi-t">${C.esc(p.r.name)}<small>${p.eaten ? "gegeten · " : "gepland · "}${q !== 1 ? `${C.fmt(q, 2)} porties ` : ""}${pkv((Number(p.r.protein) || 0) * q, (Number(p.r.carbs) || 0) * q, (Number(p.r.fat) || 0) * q)}</small></span>
-          <span class="mi-k">${C.fmt((Number(p.r.kcal) || 0) * q)}</span></label>`; }).join("")}
+      ${plan.map((p) => { const q = Number(p.portions) || 1; return `<div class="mplan ${p.eaten ? "eaten" : ""}">
+          <input type="checkbox" data-plan="${p.id}" ${p.eaten ? "checked" : ""} aria-label="${C.esc(p.r.name)} gegeten">
+          <button class="mi-t" type="button" data-planopen="${p.id}" aria-label="${C.esc(p.r.name)} aanpassen">${C.esc(p.r.name)}<small>${p.eaten ? "gegeten · " : "gepland · "}${q !== 1 ? `${C.fmt(q, 2)} porties ` : ""}${pkv((Number(p.r.protein) || 0) * q, (Number(p.r.carbs) || 0) * q, (Number(p.r.fat) || 0) * q)}</small></button>
+          <span class="mi-k">${C.fmt((Number(p.r.kcal) || 0) * q)}</span>
+          <button class="icon-btn mplan-more" type="button" data-planopen="${p.id}" aria-label="${C.esc(p.r.name)}: aanpassen of weghalen">⋯</button></div>`; }).join("")}
       ${list.map((i) => `<div class="mi selmode ${sel.has(i.id) ? "sel" : ""} ${i.skipped ? "skip" : ""}" data-id="${i.id}">
           <button class="mi-cb" type="button" role="checkbox" aria-checked="${sel.has(i.id)}" aria-label="${C.esc(i.name)} selecteren"></button>
           <button class="mi-t" type="button" aria-label="${C.esc(i.name)} aanpassen">${C.esc(i.name)}<small>${i.skipped ? "niet gegeten · " : ""}${i.grams != null ? `${C.fmt(i.grams)} g ` : ""}${pkv(i.protein, i.carbs, i.fat)}</small></button>
@@ -231,6 +232,10 @@ export async function renderNutrition(ctx, state) {
         C.toast(`${short(s.name)} toegevoegd`, 5000, { label: "Ongedaan maken", run: async () => { await C.rpc("void_food_many", { p_ids: [r.id] }); reload(); } });
         reload();
       } catch (e) { b.disabled = false; b.classList.remove("busy"); C.toast(e.message, 4000); }
+    }));
+    card.querySelectorAll("[data-planopen]").forEach((b) => (b.onclick = async () => {
+      const p = menu.find((i) => i.id === Number(b.dataset.planopen));
+      (await import("./planitem.js")).openPlanItem(C, p, reload);
     }));
     card.querySelectorAll("[data-plan]").forEach((cb) => (cb.onchange = async () => {
       const p = menu.find((i) => i.id === Number(cb.dataset.plan));

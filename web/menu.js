@@ -648,7 +648,12 @@ function openRecipe(r, { item = null } = {}) {
       const stp = Number(r.portion_step) || 0.25;
       const nv = Math.max(stp, Math.min(3, Math.round((itemPortions + (b.dataset.ip === "+" ? stp : -stp)) / stp) * stp));
       if (nv === itemPortions) return;
-      try { await C.rpc("mp_item_set", { p_item_id: item.id, p_recipe_id: r.id, p_portions: nv }); itemPortions = nv; item.portions = nv; render(); reload(); }
+      try {
+        // al gegeten? dan ook in Voeding bijwerken
+        if (item.eaten) await C.rpc("mp_item_eaten", { p_item_id: item.id, p_eaten: false });
+        await C.rpc("mp_item_set", { p_item_id: item.id, p_recipe_id: r.id, p_portions: nv });
+        if (item.eaten) await C.rpc("mp_item_eaten", { p_item_id: item.id, p_eaten: true });
+        itemPortions = nv; item.portions = nv; render(); reload(); }
       catch (e) { C.toast(e.message, 4000); }
     }));
     card.querySelector("#swap")?.addEventListener("click", () => { close(); openSwap(item); });
