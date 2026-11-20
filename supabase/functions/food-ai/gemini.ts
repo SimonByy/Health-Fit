@@ -39,7 +39,7 @@ export async function geminiLoop(opts: {
       mi++; step--; continue;
     }
     try { await opts.track?.(models[mi], res.status === 429); } catch { /* tellen mag nooit iets breken */ }
-    if (res.status === 503 && mi < models.length - 1) { await res.body?.cancel(); mi++; step--; continue; }
+    if ((res.status === 503 || res.status === 404) && mi < models.length - 1) { await res.body?.cancel(); mi++; step--; continue; }
     if (res.status === 429 && mi < models.length - 1) {
       // dagquotum of gratis limiet van dit model op: elk model heeft een eigen quotum, dus meteen het volgende proberen
       const body = (await res.text()).slice(0, 400);
