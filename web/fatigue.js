@@ -1,6 +1,6 @@
 // Spierbelasting: lichaamskaart voor- en achterkant in vier stijlen die de gebruiker zelf kiest.
 // Groen = klaar, oranje = half belast, rood = belast. Werksets van de laatste 7 dagen, uitdovend met een
-// halfwaardetijd van ±36 uur. Tik op een spier voor het waarom.
+// halfwaardetijd van ±48 uur, met een minimum de eerste 1–2 dagen na een harde training. Tik op een spier voor het waarom.
 import { BODY } from "./bodydata.js";
 let C;
 const NAMES = { chest: "Borst", lats: "Lats", upper_back: "Bovenrug en lats", lower_back: "Onderrug", traps: "Trapezius", shoulders: "Schouders",
@@ -12,7 +12,7 @@ const step = (p) => (p >= 55 ? R : p >= 25 ? O : G);
 const smooth = (p) => (p < 25 ? `color-mix(in srgb, ${O} ${Math.round((p / 25) * 100)}%, ${G})`
   : `color-mix(in srgb, ${R} ${Math.round(Math.min(1, (p - 25) / 50) * 100)}%, ${O})`);
 const state = (p) => (p >= 55 ? "belast" : p >= 25 ? "half belast" : "klaar");
-const hoursTo25 = (pct) => (pct > 25 ? Math.ceil(36 * Math.log2(pct / 25)) : 0);
+const hoursTo25 = (pct) => (pct > 25 ? Math.ceil(48 * Math.log2(pct / 25)) : 0);
 
 let STYLE = null;
 async function getStyle() {
@@ -90,7 +90,7 @@ function detail(m, r) {
   const s = document.createElement("div");
   s.className = "sheet";
   const pct = r?.pct ?? 0;
-  const h = hoursTo25(pct);
+  const h = r?.ready_in_h ?? hoursTo25(pct);
   const byDay = {};
   for (const w of r?.why || []) (byDay[w.day] ||= { workout: w.workout, items: [] }).items.push(w);
   s.innerHTML = `<div class="sheet-card" role="dialog" aria-label="${NAMES[m]}">
@@ -101,7 +101,7 @@ function detail(m, r) {
       ${h ? ` Over ongeveer ${h < 30 ? `${h} uur` : `${Math.round(h / 24)} dagen`} is die spiergroep weer klaar.` : ""}</p>
     ${Object.entries(byDay).map(([day, g]) => `<h4 class="sub-h">${C.esc(C.shortDate(day))} · ${C.esc(g.workout || "Training")}</h4>
       ${g.items.map((w) => `<div class="meal"><span>${C.esc(w.exercise)}</span><span class="k">${w.sets} set${w.sets > 1 ? "s" : ""}<br><span class="small muted">+${w.share}%</span></span></div>`).join("")}`).join("")}
-    <p class="small muted" style="margin-top:12px">Hoe het werkt: elke werkset telt mee en weegt na 36 uur nog maar half. Ongeveer 8 harde sets net gedaan = 100%. Onder 25% = klaar, tot 55% = half belast, daarboven = belast. Het is een schatting op basis van je sets, geen meting.</p>
+    <p class="small muted" style="margin-top:12px">Hoe het werkt: elke werkset telt mee en weegt na 48 uur nog maar half. Ongeveer 6 harde sets net gedaan = 100%. Trainde je een spier hard (4+ sets), dan staat ze de eerste 24 uur minstens op belast en tot 48 uur minstens op half belast. Onder 25% = klaar, tot 55% = half belast, daarboven = belast. Het is een schatting op basis van je sets, geen meting.</p>
   </div>`;
   document.body.appendChild(s);
   s.addEventListener("click", (e) => { if (e.target === s || e.target.closest("[data-close]")) s.remove(); });

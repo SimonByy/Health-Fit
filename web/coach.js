@@ -103,6 +103,7 @@ export async function renderCoachCalendar(ctx, el, start) {
     from <= C.today() ? C.rpc("get_calendar", { p_from: from, p_to: days[6] < C.today() ? days[6] : C.today() }).catch(() => []) : [],
   ]);
   const done = new Map((cal || []).map((c) => [c.day, c]));
+  const autoOn = ((await C.rpc("get_setting", { p_key: "training_prefs" }).catch(() => null)) || {}).auto !== false;
   const doneMark = (d) => {
     const c = done.get(d); if (!c || d > C.today()) return "";
     const what = [c.strength > 0 ? "Kracht" : "", c.cardio > 0 ? "Cardio" : ""].filter(Boolean);
@@ -121,8 +122,22 @@ export async function renderCoachCalendar(ctx, el, start) {
         ${items.map((s) => `<button class="wpill ${KIND_CLS(s.kind)} ${s.status}" data-id="${s.id}">${C.esc(SHORT(s))}${s.status === "gedaan" ? " ✓" : ""}</button>`).join("") || doneMark(d) || `<span class="wrest">rust</span>`}
       </div>`;
     }).join("")}</div>
+    <label class="row" style="justify-content:space-between;flex-wrap:nowrap;gap:10px;margin-top:10px;cursor:pointer">
+      <span class="small"><b>Automatisch plannen</b> · ${autoOn ? "aan: vult je week met je vaste schema" : "uit: je plant zelf"}</span>
+      <input type="checkbox" id="wAuto" ${autoOn ? "checked" : ""} style="width:22px;height:22px;flex:none" aria-label="Automatisch plannen"></label>
     <a class="btn secondary" href="#/planner" style="display:block;text-align:center;text-decoration:none;margin-top:10px">${list.length ? "Planner openen" : "Week plannen"}</a>
   </section>`;
+  el.querySelector("#wAuto").onchange = async (e) => {
+    const p = (await C.rpc("get_setting", { p_key: "training_prefs" }).catch(() => null)) || {};
+    if (!e.target.checked) {
+      const fut = list.filter((x) => x.day >= C.today() && x.status === "gepland" && (x.source === "planner" || x.source === "runplan"));
+      if (fut.length && confirm(`De ${fut.length} automatisch geplande sessie(s) vanaf vandaag ook weghalen? (Annuleren = laten staan)`))
+        for (const x of fut) await C.rpc("save_coach_session", { p: { id: x.id, delete: true } });
+    }
+    p.auto = e.target.checked;
+    await C.rpc("set_setting", { p_key: "training_prefs", p_value: p });
+    C.toast(p.auto ? "Automatisch plannen staat aan" : "Je plant nu zelf"); renderCoachCalendar(ctx, el, from);
+  };
   el.querySelectorAll(".wnav").forEach((b) => (b.onclick = () => renderCoachCalendar(ctx, el, C.addDays(from, Number(b.dataset.w)))));
   el.querySelectorAll(".wpill").forEach((b) => (b.onclick = () => openSession(list.find((s) => String(s.id) === b.dataset.id), () => renderCoachCalendar(ctx, el, from))));
 }
