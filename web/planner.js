@@ -119,9 +119,11 @@ export async function renderPlanner(ctx, start) {
   const did = new Map((cal || []).map((c) => [c.day, c]));
   const hasDone = (d, cat) => { const c = did.get(d); return !!c && (cat === "kracht" ? c.strength > 0 : cat === "cardio" ? c.cardio > 0 : false); };
 
-  // 1. Week invullen vanuit het vaste schema (alleen vandaag en later; eigen of coach-sessies gaan voor)
+  // 1. Week invullen vanuit het vaste schema (alleen vandaag en later; eigen of coach-sessies gaan voor).
+  //    Staat automatisch plannen uit (p.auto === false), dan plan je alles zelf en vult de app niets in.
+  const auto = p.auto !== false;
   let changed = false;
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; auto && i < 7; i++) {
     const d = days[i]; if (d < today) continue;
     const day = list.filter((s) => s.day === d);
     const isAuto = (s) => (s.source === "planner" || s.source === "runplan") && s.status === "gepland";
@@ -209,18 +211,35 @@ export async function renderPlanner(ctx, start) {
       </section>`;
     }).join("")}</div>
 
-    <div id="runPlanBox" data-premium></div>
+    <section class="panel">
+      <label class="row" style="justify-content:space-between;flex-wrap:nowrap;gap:12px;cursor:pointer">
+        <span><b>Automatisch plannen</b><br><span class="small muted">${auto ? "De app vult elke week in met je vaste weekschema" + (premium ? " en loopplan" : "") + "." : "Uit: je plant zelf met “+ sessie”. Je trainingen worden nog altijd afgevinkt."}</span></span>
+        <input type="checkbox" id="plAuto" ${auto ? "checked" : ""} style="width:22px;height:22px;flex:none" aria-label="Automatisch plannen"></label>
+    </section>
+    ${auto ? `<div id="runPlanBox" data-premium></div>
     <section class="panel">
       <h3 style="margin:0 0 4px">Vast weekschema</h3>
       <p class="small muted" style="margin:0 0 10px">Wat je de meeste weken doet. Elke week wordt hier automatisch mee ingevuld. Cardio kan per dag anders zijn.</p>
       <div class="tpl-rows">${WDL.map((w, i) => `<button class="tpl-row" data-tday="${i}"><span class="tpl-d">${WDS[i]}</span>
         <span class="tpl-s">${(p.template[i] || []).map((x) => `<span class="tpl-chip ${x.cat}">${C.esc(slotTitle(x, R))}${x.duration ? ` · ${x.duration}′` : ""}</span>`).join("") || `<span class="muted small">rust</span>`}</span>
         <span aria-hidden="true">›</span></button>`).join("")}</div>
-    </section>`;
+    </section>` : ""}`;
 
   renderGoals(ctx, C.view.querySelector("#plGoals"));
-  if (premium) renderRunPlan(p, rp, plan, stats, from, () => renderPlanner(ctx, from));
+  if (premium && auto) renderRunPlan(p, rp, plan, stats, from, () => renderPlanner(ctx, from));
   const rerender = () => renderPlanner(ctx, from);
+  C.view.querySelector("#plAuto").onchange = async (e) => {
+    const on = e.target.checked;
+    if (!on) {
+      const fut = list.filter((s) => s.day >= today && s.status === "gepland" && (s.source === "planner" || s.source === "runplan"));
+      if (fut.length && confirm(`De ${fut.length} automatisch geplande sessie(s) vanaf vandaag ook weghalen? (Annuleren = laten staan)`))
+        for (const s of fut) await C.rpc("save_coach_session", { p: { id: s.id, delete: true } });
+      // laten staan = ze worden gewone sessies die je zelf beheert
+      else for (const s of fut) await C.rpc("save_coach_session", { p: { id: s.id, day: s.day, category: catOf(s), source: "user" } });
+    }
+    p.auto = on; await savePrefs(p);
+    C.toast(on ? "Automatisch plannen staat aan" : "Je plant nu zelf"); rerender();
+  };
   C.view.querySelectorAll(".wnav").forEach((b) => (b.onclick = () => renderPlanner(ctx, C.addDays(from, Number(b.dataset.w)))));
   C.view.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => editSession(list.find((s) => String(s.id) === b.dataset.edit), days, R, rerender)));
   C.view.querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => editSession({ day: b.dataset.add }, days, R, rerender)));

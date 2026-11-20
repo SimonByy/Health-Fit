@@ -7,13 +7,15 @@ const BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 export async function geminiLoop(opts: {
   apiKey: string; model: string; system: string; tools: Tool[]; run: ToolRunner;
   userParts: any[]; history?: any[]; maxSteps?: number; deadline?: number; json?: boolean; callTimeout?: number; maxTokens?: number;
-  track?: (model: string, limited: boolean) => unknown;
+  track?: (model: string, limited: boolean) => unknown; fastThinking?: boolean; models?: string[];
 }): Promise<{ text: string; actions: { tool: string; purpose?: string; rows?: number; error?: string }[] }> {
   const contents: any[] = [...(opts.history ?? []), { role: "user", parts: opts.userParts }];
   const actions: { tool: string; purpose?: string; rows?: number; error?: string }[] = [];
   let retries = 0;
   // Bij drukte (503) of time-out naar het volgende model
-  const models = [...new Set([opts.model, "gemini-3.8-flash", "gemini-3.5-flash", "gemini-flash-lite-latest"])];
+  const models = [...new Set([opts.model, ...(opts.models ?? ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-flash-lite-latest"])])];
+  // Snel antwoord: weinig "denken" (scheelt veel seconden). Kent een model die instelling niet, dan zonder opnieuw.
+  let thinking = !!opts.fastThinking;
   let mi = 0;
   for (let step = 0; step < (opts.maxSteps ?? 16); step++) {
     let res: Response;
@@ -28,7 +30,8 @@ export async function geminiLoop(opts: {
         systemInstruction: { parts: [{ text: opts.system }] },
         contents,
         tools: opts.tools.length ? [{ functionDeclarations: opts.tools }] : undefined,
-        generationConfig: { temperature: 0.3, maxOutputTokens: opts.maxTokens ?? 4096, ...(opts.json ? { responseMimeType: "application/json" } : {}) },
+        generationConfig: { temperature: 0.3, maxOutputTokens: opts.maxTokens ?? 4096, ...(opts.json ? { responseMimeType: "application/json" } : {}),
+          ...(thinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}) },
       }),
       });
     } catch (e) {
@@ -54,6 +57,7 @@ export async function geminiLoop(opts: {
       step--;
       continue;
     }
+    if (res.status === 400 && thinking) { await res.body?.cancel(); thinking = false; step--; continue; }
     if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 400)}`);
     const out = await res.json();
     const content = out.candidates?.[0]?.content;

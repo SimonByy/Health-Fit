@@ -54,9 +54,11 @@ Deno.serve(async (req) => {
   const parts: any[] = [{ text: JSON.stringify({ beschrijving: text || null, maaltijd: body.meal || null, mijn_producten: foods }) }];
   if (img) parts.push({ inline_data: { mime_type: "image/jpeg", data: img } });
   try {
-    const { text: out } = await geminiLoop({ apiKey: key, model: MODEL, system: SYS, tools: [], json: true, maxSteps: 2, run: async () => null,
-      deadline: Date.now() + 55000, callTimeout: 45000, track: (m: string, l: boolean) => call(db, "internal_ai_usage_add", { p_model: m, p_limited: l }), userParts: parts });
-    const r = JSON.parse(out.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+    const { text: out } = await geminiLoop({ apiKey: key, model: MODEL, system: SYS, tools: [], json: true, maxSteps: 2, run: async () => null, fastThinking: true,
+      models: ["gemini-flash-lite-latest", "gemini-3.5-flash"],
+      deadline: Date.now() + 50000, callTimeout: 20000, track: (m: string, l: boolean) => call(db, "internal_ai_usage_add", { p_model: m, p_limited: l }), userParts: parts });
+    let r: any = {};
+    try { r = JSON.parse(out.match(/\{[\s\S]*\}/)?.[0] ?? "{}"); } catch { throw new Error("onleesbaar antwoord van Gemini"); }
     const items = (r.items || []).slice(0, 15).map((it: any) => {
       const g = Math.max(1, Math.min(2000, Math.round(num(it.grams) || 0)));
       const own = it.food_id != null ? byId.get(String(it.food_id)) : null;
@@ -68,6 +70,7 @@ Deno.serve(async (req) => {
     }).filter(Boolean);
     return json({ items, note: String(r.opmerking || "").slice(0, 300) });
   } catch (e) {
+    console.error("food-ai", e);
     return json({ error: "Analyseren lukte niet: " + (e instanceof Error ? e.message : String(e)).slice(0, 200) }, 502);
   }
 });
